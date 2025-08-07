@@ -32,7 +32,7 @@ if (!isset($_SESSION['usuario'])) {
         <link href="<?= BASE_URL ?>/assets/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
         <link href="<?= BASE_URL ?>/assets/css/icons.min.css" rel="stylesheet" type="text/css" />
         <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet" type="text/css" />
-
+        <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
     </head>
 
     <body>
@@ -50,6 +50,12 @@ if (!isset($_SESSION['usuario'])) {
         <!-- ============================================================== -->
 
         <div class="wrapper">
+            <div class="wrapper-loader fade" id="LoadingImage" style="display: none;">
+                <div class="loader">
+                    <div class="loader__figure"></div>
+                    <p class="loader__label">Cargando...</p>
+                </div>
+            </div>
             <div class="container-fluid">
 
                 <!-- start page title -->
@@ -124,6 +130,8 @@ if (!isset($_SESSION['usuario'])) {
         <script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script>
         <!-- App js-->
         <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
+        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
         <script>
             $(document).ready(function () {
                 let paginaActual = 1;
@@ -160,7 +168,7 @@ if (!isset($_SESSION['usuario'])) {
                     });
                 }
 
-              function renderizarTabla(ventas) {
+                function renderizarTabla(ventas) {
                     let tbody = '';
                     if (ventas.length === 0) {
                         tbody = '<tr><td colspan="8" class="text-center">No hay ventas disponibles</td></tr>';
@@ -195,7 +203,6 @@ if (!isset($_SESSION['usuario'])) {
                     }
                     $('#tablaVentas tbody').html(tbody);
                 }
-
 
                 function renderizarPaginador(pagina, totalPaginas) {
                     const paginador = $('#paginadorVentas ul');

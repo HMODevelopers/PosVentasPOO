@@ -102,34 +102,12 @@ if (isset($_SESSION['usuario'])) {
     <!-- Scripts -->
     <script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
-    <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
+    <script src="<?= BASE_URL ?>/assets/js/pages/login.js"></script>
 
-    <!-- Script AJAX para login -->
-    <script>
-        $(document).ready(function () {
-            $('#formLogin').on('submit', function (e) {
-                e.preventDefault();
-                $('#mensaje-error').hide().text('');
 
-                $.ajax({
-                    url: '<?= BASE_URL ?>/controllers/LoginController.php',
-                    type: 'POST',
-                    data: $(this).serialize(),
-                    success: function (response) {
-                        if (response.trim() === 'ok') {
-                            window.location.href = '<?= BASE_URL ?>/views/private/inicio/index.php';
-                        } else {
-                            $('#mensaje-error').text(response).fadeIn();
-                        }
-                    },
-                    error: function () {
-                        $('#mensaje-error').text('Error del servidor. Intenta más tarde.').fadeIn();
-                    }
-                });
-            });
-        });
-    </script>
+   
 
 </body>
 </html>

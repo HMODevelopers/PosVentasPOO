@@ -19,13 +19,7 @@ if ($usuario === '' || $contrasena === '') {
 }
 
 try {
-    $stmt = $pdo->prepare("
-        SELECT u.*, r.nombre AS nombre_rol
-        FROM usuarios u
-        LEFT JOIN roles r ON u.id_rol = r.id_rol
-        WHERE u.usuario = ?
-        LIMIT 1
-    ");
+    $stmt = $pdo->prepare("SELECT u.*, r.nombre AS nombre_rol FROM usuarios u LEFT JOIN roles r ON u.id_rol = r.id_rol WHERE u.usuario = ? LIMIT 1");
     $stmt->execute([$usuario]);
     $user = $stmt->fetch();
 
