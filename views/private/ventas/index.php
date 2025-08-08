@@ -62,7 +62,45 @@ if (!isset($_SESSION['usuario'])) {
                 <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>    
                     <!-- end page title --> 
 
-                    
+                 <div class="card-header" style="border-color:darkgray; border-style:dotted;">
+                        <h5>Filtros</h5>
+
+                        <div class="row">
+                            <div class="col-lg-12">
+                                    <div class="row">
+                                        <!-- Filtro por Código -->
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label for="Codigo" class="control-label">Código</label>
+                                                <div class="input-group">
+                                                    <input type="text" id="Codigo" name="Codigo" class="form-control filtrar">
+                                                    <div class="input-group-append clean-filter">
+                                                        <span class="input-group-text">
+                                                            <i class="mdi mdi-close-circle text-danger" onclick="clearField('Codigo')"></i>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Filtro por Descripción -->
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label for="Descripcion" class="control-label">Descripción</label>
+                                                <div class="input-group">
+                                                    <input type="text" id="Descripcion" name="Descripcion" class="form-control filtrar">
+                                                    <div class="input-group-append clean-filter">
+                                                        <span class="input-group-text">
+                                                            <i class="mdi mdi-close-circle text-danger" onclick="clearField('Descripcion')"></i>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                            </div>
+                        </div>
+                </div>   
                 <!--Contenido-->
                 <div class="row">
                     <div class="col-12">
@@ -91,14 +129,14 @@ if (!isset($_SESSION['usuario'])) {
                             </div>
 
                             <!-- Info y paginador (fuera del .table-responsive) -->
-                            <div class="row align-items-center justify-content-between mt-2">
+                           <div class="row align-items-center justify-content-between mt-2">
                                 <div class="col-md-6">
                                     <div id="infoVentas" class="dataTables_info" role="status" aria-live="polite"></div>
                                 </div>
                                 <div class="col-md-6 d-flex justify-content-end">
-                                    <div id="paginadorVentas" class="dataTables_paginate paging_simple_numbers">
-                                        <ul class="pagination pagination-rounded mb-0"></ul>
-                                    </div>
+                                    <nav aria-label="Page navigation">
+                                    <ul id="pagination" class="pagination justify-content-end mb-0"></ul>
+                                    </nav>
                                 </div>
                             </div>
 
@@ -152,15 +190,16 @@ if (!isset($_SESSION['usuario'])) {
                         success: function (response) {
                             let ventas = response.data;
                             let total = parseInt(response.total || 0);
-                            let totalPaginas = Math.ceil(total / limitePorPagina);
 
                             renderizarTabla(ventas);
 
+                            // Info "Mostrando X a Y de Z"
                             let desde = (pagina - 1) * limitePorPagina + 1;
                             let hasta = Math.min(pagina * limitePorPagina, total);
-                            $('#infoVentas').text(`Mostrando ${desde} a ${hasta} de ${total} ventas`);
+                            $('#infoVentas').text(`Mostrando ${total === 0 ? 0 : desde} a ${hasta} de ${total} ventas`);
 
-                            renderizarPaginador(pagina, totalPaginas);
+                            // NUEVO: usa el paginador tipo #pagination
+                            configurarPaginacion(pagina, total, limitePorPagina);
                         },
                         error: function () {
                             alert('Error al cargar las ventas.');
@@ -177,12 +216,12 @@ if (!isset($_SESSION['usuario'])) {
                             tbody += `
                                 <tr>
                                     <td><center><b>${v.folio}</b></center></td>
-                                    <td>${new Date(v.fecha).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',  hour12: true })}</td>
-                                    <td>${v.usuario}</td>
-                                    <td>${v.caja}</td>
-                                    <td>${parseFloat(v.total).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</td>
-                                    <td>${v.estatus}</td>
-                                    <td>${v.cliente ? v.cliente : 'Público en general'}</td>
+                                    <td><center>${new Date(v.fecha).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',  hour12: true })}</center></td>
+                                    <td><center>${v.usuario}</center></td>
+                                    <td><center>${v.caja}</center></td>
+                                    <td><center><b>${parseFloat(v.total).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</b></center></td>
+                                    <td><center>${v.estatus}</center></td>
+                                    <td><center>${v.cliente ? v.cliente : 'Público en general'}</center></td>
                                     <td>
                                         <center>
                                             <div class="btn-group dropdown">
@@ -204,46 +243,54 @@ if (!isset($_SESSION['usuario'])) {
                     $('#tablaVentas tbody').html(tbody);
                 }
 
-                function renderizarPaginador(pagina, totalPaginas) {
-                    const paginador = $('#paginadorVentas ul');
-                    paginador.empty();
+                function configurarPaginacion(currentPage, totalItems, itemsPerPage = 10) {
+                    var totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+                    var $ul = $('#pagination');
+                    var maxVisiblePages = 5; // páginas visibles
+                    $ul.empty();
 
-                    // Botón anterior
-                    const prevClass = pagina === 1 ? 'disabled' : '';
-                    paginador.append(`
-                        <li class="paginate_button page-item previous ${prevClass}">
-                            <a href="#" class="page-link" data-pagina="${pagina - 1}">
-                                <i class="mdi mdi-chevron-left"></i>
-                            </a>
-                        </li>
-                    `);
-
-                    // Botones de número
-                    for (let i = 1; i <= totalPaginas; i++) {
-                        const activeClass = i === pagina ? 'active' : '';
-                        paginador.append(`
-                            <li class="paginate_button page-item ${activeClass}">
-                                <a href="#" class="page-link" data-pagina="${i}">${i}</a>
-                            </li>
-                        `);
-                    }
-
-                    // Botón siguiente
-                    const nextClass = pagina === totalPaginas ? 'disabled' : '';
-                    paginador.append(`
-                        <li class="paginate_button page-item next ${nextClass}">
-                            <a href="#" class="page-link" data-pagina="${pagina + 1}">
-                                <i class="mdi mdi-chevron-right"></i>
-                            </a>
-                        </li>
-                    `);
-
-                    // Mostrar u ocultar según necesidad
-                    if (totalPaginas <= 1) {
-                        $('#paginadorVentas').hide();
+                    // Ocultar si no hay más de 1 página
+                    if (totalPages <= 1) {
+                        $ul.closest('nav').hide();
+                        return;
                     } else {
-                        $('#paginadorVentas').show();
+                        $ul.closest('nav').show();
                     }
+
+                    // Rango mostrado
+                    var startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                    var endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                    if (endPage - startPage + 1 < maxVisiblePages) {
+                        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                    }
+
+                    // Primera / Anterior
+                    if (currentPage > 1) {
+                        $ul.append(`<li class="page-item"><a class="page-link" href="javascript:void(0);" data-page="1">Primera</a></li>`);
+                        $ul.append(`<li class="page-item"><a class="page-link" href="javascript:void(0);" data-page="${currentPage - 1}">&laquo; Anterior</a></li>`);
+                    }
+
+                    // Números
+                    for (var i = startPage; i <= endPage; i++) {
+                        var activeClass = (i === currentPage) ? 'active' : '';
+                        $ul.append(`<li class="page-item ${activeClass}"><a class="page-link" href="javascript:void(0);" data-page="${i}">${i}</a></li>`);
+                    }
+
+                    // Siguiente / Última
+                    if (currentPage < totalPages) {
+                        $ul.append(`<li class="page-item"><a class="page-link" href="javascript:void(0);" data-page="${currentPage + 1}">Siguiente &raquo;</a></li>`);
+                        $ul.append(`<li class="page-item"><a class="page-link" href="javascript:void(0);" data-page="${totalPages}">Última</a></li>`);
+                    }
+
+                    // Delegación de eventos SOLO dentro de #pagination
+                    $ul.off('click', 'a.page-link').on('click', 'a.page-link', function (event) {
+                        event.preventDefault();
+                        var page = Number($(this).data('page'));
+                        if (Number.isFinite(page)) {
+                            paginaActual = page;        // usa tu variable global
+                            cargarVentas(paginaActual); // reusa tu función existente
+                        }
+                    });
                 }
 
                 // Evento para cambiar página
