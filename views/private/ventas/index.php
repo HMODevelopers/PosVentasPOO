@@ -68,30 +68,30 @@ if (!isset($_SESSION['usuario'])) {
                         <div class="row">
                             <div class="col-lg-12">
                                     <div class="row">
-                                        <!-- Filtro por Código -->
+                                        <!-- Filtro por Folio -->
                                         <div class="col-md-6">
                                             <div class="form-group">
-                                                <label for="Codigo" class="control-label">Código</label>
+                                                <label for="Folio" class="control-label">Folio</label>
                                                 <div class="input-group">
-                                                    <input type="text" id="Codigo" name="Codigo" class="form-control filtrar">
+                                                    <input type="text" id="Folio" name="Folio" class="form-control filtrar">
                                                     <div class="input-group-append clean-filter">
                                                         <span class="input-group-text">
-                                                            <i class="mdi mdi-close-circle text-danger" onclick="clearField('Codigo')"></i>
+                                                            <i class="mdi mdi-close-circle text-danger" onclick="clearField('Folio')"></i>
                                                         </span>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <!-- Filtro por Descripción -->
+                                        <!-- Filtro por Fecha -->
                                         <div class="col-md-6">
                                             <div class="form-group">
-                                                <label for="Descripcion" class="control-label">Descripción</label>
+                                                <label for="Fecha" class="control-label">Fecha</label>
                                                 <div class="input-group">
-                                                    <input type="text" id="Descripcion" name="Descripcion" class="form-control filtrar">
+                                                    <input type="date" id="Fecha" name="Fecha" class="form-control filtrar" value="<?php echo date('Y-m-d'); ?>">
                                                     <div class="input-group-append clean-filter">
                                                         <span class="input-group-text">
-                                                            <i class="mdi mdi-close-circle text-danger" onclick="clearField('Descripcion')"></i>
+                                                            <i class="mdi mdi-close-circle text-danger" onclick="clearField('Fecha')"></i>
                                                         </span>
                                                     </div>
                                                 </div>
@@ -178,13 +178,18 @@ if (!isset($_SESSION['usuario'])) {
                 cargarVentas(paginaActual);
 
                 function cargarVentas(pagina) {
+                    const folio = $('#Folio').val();                                // obtiene el valor actual del input
+                    const fecha = $('#Fecha').val() || new Date().toISOString().split('T')[0]; // si está vacío, usa la fecha actual
+
                     $.ajax({
                         url: '<?= BASE_URL ?>/controllers/VentasController.php',
                         method: 'POST',
                         data: {
                             accion: 'listar',
                             pagina: pagina,
-                            limite: limitePorPagina
+                            limite: limitePorPagina,
+                            folio: folio,
+                            fecha: fecha
                         },
                         dataType: 'json',
                         success: function (response) {
@@ -198,7 +203,7 @@ if (!isset($_SESSION['usuario'])) {
                             let hasta = Math.min(pagina * limitePorPagina, total);
                             $('#infoVentas').text(`Mostrando ${total === 0 ? 0 : desde} a ${hasta} de ${total} ventas`);
 
-                            // NUEVO: usa el paginador tipo #pagination
+                            // Paginación
                             configurarPaginacion(pagina, total, limitePorPagina);
                         },
                         error: function () {
@@ -301,6 +306,51 @@ if (!isset($_SESSION['usuario'])) {
                         paginaActual = nuevaPagina;
                         cargarVentas(paginaActual);
                     }
+                });
+
+             //Funcion para filtrar resultados
+                $(".filtrar")
+                    .change(function () {
+                        var vElement = $(this);
+                        if ($(vElement).val().length > 0) {
+                            $(vElement).siblings(".clean-filter").css({ display: "flex" });
+                        } else {
+                            $(vElement).siblings(".clean-filter").css({ display: "none" });
+                        }
+
+                        $(vElement).blur();
+
+                        setTimeout(function () {
+                            cargarVentas(1); // Cambiado aquí
+                        }, 200);
+                    })
+                    .keypress(function (event) {
+                        if (event.charCode == 13) {
+                            cargarVentas(1); // Cambiado aquí
+                        }
+                    })
+                    .keyup(function () {
+                        if ($(this).val().length > 0) {
+                            $(this).siblings(".clean-filter").css({ display: "flex" });
+                        } else {
+                            $(this).siblings(".clean-filter").css({ display: "none" });
+                        }
+                    })
+                    .click(function () {
+                        if ($(this).is(":button")) {
+                            cargarVentas(1); // Cambiado aquí
+                        }
+                    });
+
+                $(".clean-filter").click(function () {
+                    var $vElement = $(this).parent().find(".filtrar");
+                    $vElement.val("").trigger("change");
+
+                    if ($vElement.hasClass("select2")) {
+                        $vElement.select2("val", 0);
+                    }
+
+                    cargarVentas(1); // Cambiado aquí
                 });
             });
         </script>

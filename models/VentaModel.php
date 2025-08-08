@@ -14,35 +14,77 @@ class VentaModel
     }
 
     // ✅ Obtener ventas paginadas
-    public function obtenerVentas($pagina = 1, $limite = 10)
+    public function obtenerVentas($pagina = 1, $limite = 10, $folio = '', $fecha = '')
     {
         $offset = ($pagina - 1) * $limite;
 
         $sql = "SELECT v.*, 
-                   c.nombre AS cliente, 
-                   u.nombre AS usuario, 
-                   cj.nombre AS caja
-            FROM ventas v
-            LEFT JOIN clientes c ON v.id_cliente = c.id_cliente
-            INNER JOIN usuarios u ON v.id_usuario = u.id_usuario
-            INNER JOIN cajas cj ON v.id_caja = cj.id_caja
-            WHERE v.activo = 1
-            ORDER BY v.id_venta DESC
-            LIMIT :limite OFFSET :offset";
+                    c.nombre AS cliente, 
+                    u.nombre AS usuario, 
+                    cj.nombre AS caja
+                FROM ventas v
+                LEFT JOIN clientes c ON v.id_cliente = c.id_cliente
+                INNER JOIN usuarios u ON v.id_usuario = u.id_usuario
+                INNER JOIN cajas cj ON v.id_caja = cj.id_caja
+                WHERE v.activo = 1";
+
+        $params = [];
+
+        // Filtro por folio (LIKE parcial)
+        if (!empty($folio)) {
+            $sql .= " AND v.folio LIKE :folio";
+            $params[':folio'] = "%$folio%";
+        }
+
+        // Filtro por fecha exacta
+        if (!empty($fecha)) {
+            $sql .= " AND DATE(v.fecha) = :fecha";
+            $params[':fecha'] = $fecha;
+        }
+
+        $sql .= " ORDER BY v.id_venta DESC
+                LIMIT :limite OFFSET :offset";
 
         $stmt = $this->conn->prepare($sql);
+
+        // Bind dinámico de filtros
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+
         $stmt->bindValue(':limite', $limite, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
         $stmt->execute();
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+
     // ✅ Contar total de ventas activas
-    public function contarVentas()
+    public function contarVentas($folio = '', $fecha = '')
     {
-        $sql = "SELECT COUNT(*) as total FROM ventas WHERE activo = 1";
-        $stmt = $this->conn->query($sql);
+        $sql = "SELECT COUNT(*) as total FROM ventas v WHERE v.activo = 1";
+        $params = [];
+
+        if (!empty($folio)) {
+            $sql .= " AND v.folio LIKE :folio";
+            $params[':folio'] = "%$folio%";
+        }
+
+        if (!empty($fecha)) {
+            $sql .= " AND DATE(v.fecha) = :fecha";
+            $params[':fecha'] = $fecha;
+        }
+
+        $stmt = $this->conn->prepare($sql);
+
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+
+        $stmt->execute();
+
         return $stmt->fetch(PDO::FETCH_ASSOC)['total'];
     }
 

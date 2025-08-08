@@ -15,9 +15,12 @@ switch ($accion) {
     case 'listar':
     $pagina = $_POST['pagina'] ?? 1;
     $limite = $_POST['limite'] ?? 10;
+    $folio = $_POST['folio'] ?? '';
+    $fecha = $_POST['fecha'] ?? '';
 
-    $ventas = $ventaModel->obtenerVentas($pagina, $limite);
-    $total = $ventaModel->contarVentas();
+    // Pasa los filtros al modelo
+    $ventas = $ventaModel->obtenerVentas($pagina, $limite, $folio, $fecha);
+    $total = $ventaModel->contarVentas($folio, $fecha);
 
     echo json_encode([
         'data' => $ventas,
