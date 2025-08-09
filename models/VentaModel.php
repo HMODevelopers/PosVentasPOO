@@ -21,11 +21,15 @@ class VentaModel
         $sql = "SELECT v.*, 
                     c.nombre AS cliente, 
                     u.nombre AS usuario, 
-                    cj.nombre AS caja
+                    cj.nombre AS caja,
+                    fp.descripcion AS forma_pago,
+                    tp.nombre AS tipo_precio
                 FROM ventas v
                 LEFT JOIN clientes c ON v.id_cliente = c.id_cliente
                 INNER JOIN usuarios u ON v.id_usuario = u.id_usuario
                 INNER JOIN cajas cj ON v.id_caja = cj.id_caja
+                INNER JOIN formas_pago fp ON v.id_forma_pago = fp.id_forma_pago
+                INNER JOIN tipo_precio tp ON v.id_tipo_precio = tp.id_tipo_precio
                 WHERE v.activo = 1";
 
         $params = [];

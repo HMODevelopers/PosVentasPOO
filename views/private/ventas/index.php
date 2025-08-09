@@ -46,118 +46,127 @@ if (!isset($_SESSION['usuario'])) {
         <!-- End Navigation Bar-->
 
         <!-- ============================================================== -->
-        <!-- Start Page Content here -->
+        <!-- ================== Start Page Content here =================== -->
         <!-- ============================================================== -->
 
         <div class="wrapper">
-            <div class="wrapper-loader fade" id="LoadingImage" style="display: none;">
-                <div class="loader">
-                    <div class="loader__figure"></div>
-                    <p class="loader__label">Cargando...</p>
-                </div>
-            </div>
-            <div class="container-fluid">
-
-                <!-- start page title -->
-                <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>    
-                    <!-- end page title --> 
-
-                 <div class="card-header" style="border-color:darkgray; border-style:dotted;">
-                        <h5>Filtros</h5>
-
-                        <div class="row">
-                            <div class="col-lg-12">
-                                    <div class="row">
-                                        <!-- Filtro por Folio -->
-                                        <div class="col-md-6">
-                                            <div class="form-group">
-                                                <label for="Folio" class="control-label">Folio</label>
-                                                <div class="input-group">
-                                                    <input type="text" id="Folio" name="Folio" class="form-control filtrar">
-                                                    <div class="input-group-append clean-filter">
-                                                        <span class="input-group-text">
-                                                            <i class="mdi mdi-close-circle text-danger" onclick="clearField('Folio')"></i>
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Filtro por Fecha -->
-                                        <div class="col-md-6">
-                                            <div class="form-group">
-                                                <label for="Fecha" class="control-label">Fecha</label>
-                                                <div class="input-group">
-                                                    <input type="date" id="Fecha" name="Fecha" class="form-control filtrar" value="<?php echo date('Y-m-d'); ?>">
-                                                    <div class="input-group-append clean-filter">
-                                                        <span class="input-group-text">
-                                                            <i class="mdi mdi-close-circle text-danger" onclick="clearField('Fecha')"></i>
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                            </div>
-                        </div>
-                </div>   
-                <!--Contenido-->
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card-box">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <h4 class="header-title">Listado de Ventas</h4>
-                            </div>
-
-                            <!-- Tabla -->
-                            <div class="table-responsive">
-                                <table id="tablaVentas" class="table table-bordered table-hover table-striped">
-                                    <thead>
-                                        <tr>
-                                            <th>Folio</th>
-                                            <th>Fecha</th>
-                                            <th>Cajero</th>
-                                            <th>Caja</th>
-                                            <th class="text-end">Total</th>
-                                            <th>Estatus</th>
-                                            <th>Cliente</th>
-                                            <th>Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
-
-                            <!-- Info y paginador (fuera del .table-responsive) -->
-                           <div class="row align-items-center justify-content-between mt-2">
-                                <div class="col-md-6">
-                                    <div id="infoVentas" class="dataTables_info" role="status" aria-live="polite"></div>
-                                </div>
-                                <div class="col-md-6 d-flex justify-content-end">
-                                    <nav aria-label="Page navigation">
-                                    <ul id="pagination" class="pagination justify-content-end mb-0"></ul>
-                                    </nav>
-                                </div>
-                            </div>
-
-                        </div>
+            
+                <!-- Loader -->
+                <div class="wrapper-loader fade" id="LoadingImage" style="display: none;">
+                    <div class="loader">
+                        <div class="loader__figure"></div>
+                        <p class="loader__label">Cargando...</p>
                     </div>
                 </div>
+                <!-- Fin Loader -->
 
-                <!--Fin Contenido-->
+                <div class="container-fluid">
+
+                    <!-- start page title -->
+                    <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>    
+                    <!-- end page title --> 
+
+                    <!-- start filters -->
+                    <div class="card-header" style="border-color:darkgray; border-style:dotted;">
+                            <h5>Filtros</h5>
+
+                            <div class="row">
+                                <div class="col-lg-12">
+                                        <div class="row">
+                                            <!-- Filtro por Folio -->
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label for="Folio" class="control-label">Folio</label>
+                                                    <div class="input-group">
+                                                        <input type="text" id="Folio" name="Folio" class="form-control filtrar">
+                                                        <div class="input-group-append clean-filter">
+                                                            <span class="input-group-text">
+                                                                <i class="mdi mdi-close-circle text-danger" onclick="clearField('Folio')"></i>
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Filtro por Fecha -->
+                                            <div class="col-md-6">
+                                                <div class="form-group">
+                                                    <label for="Fecha" class="control-label">Fecha</label>
+                                                    <div class="input-group">
+                                                        <input type="date" id="Fecha" name="Fecha" class="form-control filtrar" value="<?php echo date('Y-m-d'); ?>">
+                                                        <div class="input-group-append clean-filter">
+                                                            <span class="input-group-text">
+                                                                <i class="mdi mdi-close-circle text-danger" onclick="clearField('Fecha')"></i>
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                </div>
+                            </div>
+                    </div>   
+                    <!--End Filters-->
+
+                    <!--Tabla Ventas-->
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card-box">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h4 class="header-title">Listado de Ventas</h4>
+                                </div>
+
+                                <!-- Tabla -->
+                                <div class="table-responsive">
+                                    <table id="tablaVentas" class="table table-bordered table-hover table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Folio</th>
+                                                <th>Cajero</th>
+                                                <th>Caja</th>
+                                                <th>Forma de Pago</th>
+                                                <th>Tipo de Precio</th>
+                                                <th class="text-end">Total</th>
+                                                <th>Estatus</th>
+                                                <th>Cliente</th>
+                                                <th>Fecha</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+
+                                <!-- Paginador -->
+                                <div class="row align-items-center justify-content-between mt-2">
+                                        <div class="col-md-6">
+                                            <div id="infoVentas" class="dataTables_info" role="status" aria-live="polite"></div>
+                                        </div>
+                                        <div class="col-md-6 d-flex justify-content-end">
+                                            <nav aria-label="Page navigation">
+                                            <ul id="pagination" class="pagination justify-content-end mb-0"></ul>
+                                            </nav>
+                                        </div>
+                                </div>
+                                <!-- Fin Paginador -->
+                                 
+                            </div>
+                        </div>
+                    </div>
+                    <!--Fin Tabla Ventas-->
 
                 
-            </div> <!-- end container -->
+                </div> <!-- end container -->
         </div>
         <!-- end wrapper -->
 
         <!-- ============================================================== -->
-        <!-- End Page content -->
+        <!-- ===================== End Page content ======================= -->
         <!-- ============================================================== -->
 
         <!-- Footer Start -->
         <?php include_once __DIR__ . '/../../../includes/footer.php'; ?>
-        <!-- end Footer -->
+        <!-- End Footer -->
 
         
 
@@ -171,14 +180,17 @@ if (!isset($_SESSION['usuario'])) {
         <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
         <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
         <script>
+
             $(document).ready(function () {
+
                 let paginaActual = 1;
                 const limitePorPagina = 10;
 
                 cargarVentas(paginaActual);
 
                 function cargarVentas(pagina) {
-                    const folio = $('#Folio').val();                                // obtiene el valor actual del input
+                    
+                    const folio = $('#Folio').val();// obtiene el valor actual del input
                     const fecha = $('#Fecha').val() || new Date().toISOString().split('T')[0]; // si está vacío, usa la fecha actual
 
                     $.ajax({
@@ -215,18 +227,20 @@ if (!isset($_SESSION['usuario'])) {
                 function renderizarTabla(ventas) {
                     let tbody = '';
                     if (ventas.length === 0) {
-                        tbody = '<tr><td colspan="8" class="text-center">No hay ventas disponibles</td></tr>';
+                        tbody = '<tr><td colspan="10" class="text-center">No hay ventas disponibles</td></tr>';
                     } else {
                         ventas.forEach(v => {
                             tbody += `
                                 <tr>
                                     <td><center><b>${v.folio}</b></center></td>
-                                    <td><center>${new Date(v.fecha).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',  hour12: true })}</center></td>
                                     <td><center>${v.usuario}</center></td>
                                     <td><center>${v.caja}</center></td>
+                                    <td><center>${v.forma_pago}</center></td>
+                                    <td><center>${v.tipo_precio}</center></td>
                                     <td><center><b>${parseFloat(v.total).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</b></center></td>
                                     <td><center>${v.estatus}</center></td>
                                     <td><center>${v.cliente ? v.cliente : 'Público en general'}</center></td>
+                                     <td><center>${new Date(v.fecha).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',  hour12: true })}</center></td>
                                     <td>
                                         <center>
                                             <div class="btn-group dropdown">
@@ -297,20 +311,20 @@ if (!isset($_SESSION['usuario'])) {
                         }
                     });
                 }
-
-                // Evento para cambiar página
-                $(document).on('click', '#paginadorVentas .page-link', function (e) {
-                    e.preventDefault();
-                    const nuevaPagina = parseInt($(this).data('pagina'));
-                    if (!isNaN(nuevaPagina) && nuevaPagina > 0) {
-                        paginaActual = nuevaPagina;
-                        cargarVentas(paginaActual);
-                    }
+                    // Evento para cambiar página
+                    $(document).on('click', '#paginadorVentas .page-link', function (e) {
+                        e.preventDefault();
+                        const nuevaPagina = parseInt($(this).data('pagina'));
+                        if (!isNaN(nuevaPagina) && nuevaPagina > 0) {
+                            paginaActual = nuevaPagina;
+                            cargarVentas(paginaActual);
+                        }
                 });
 
-             //Funcion para filtrar resultados
+                //Funcion para filtrar resultados
                 $(".filtrar")
                     .change(function () {
+
                         var vElement = $(this);
                         if ($(vElement).val().length > 0) {
                             $(vElement).siblings(".clean-filter").css({ display: "flex" });
@@ -352,6 +366,8 @@ if (!isset($_SESSION['usuario'])) {
 
                     cargarVentas(1); // Cambiado aquí
                 });
+
+                
             });
         </script>
 

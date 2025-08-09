@@ -122,38 +122,39 @@
                             </div>
                         </li>
 
-                        <!--Usuario-->
+                        <!--USUARIO-->
                         <li class="dropdown notification-list">
                             <a class="nav-link dropdown-toggle nav-user mr-0 waves-effect" data-toggle="dropdown" href="#" role="button" aria-haspopup="false" aria-expanded="false">
                                 <img src="<?= BASE_URL ?>/assets/images/users/user-1.jpg" alt="user-image" class="rounded-circle">
                                 <span class="pro-user-name ml-1">
-                                    Marcia J. <i class="mdi mdi-chevron-down"></i> 
+                                    <?= htmlspecialchars($_SESSION['usuario']['nombre'] ?? 'Invitado') ?> <i class="mdi mdi-chevron-down"></i> 
                                 </span>
+
                             </a>
                             <div class="dropdown-menu dropdown-menu-right profile-dropdown ">
                                 <!-- item-->
                                 <div class="dropdown-item noti-title">
                                     <h5 class="m-0">
-                                        Welcome !
+                                        Bienvenido
                                     </h5>
                                 </div>
 
                                 <!-- item-->
                                 <a href="javascript:void(0);" class="dropdown-item notify-item">
                                     <i class="fe-user"></i>
-                                    <span>My Account</span>
+                                    <span>Mi Cuenta</span>
                                 </a>
 
                                 <!-- item-->
                                 <a href="javascript:void(0);" class="dropdown-item notify-item">
                                     <i class="fe-settings"></i>
-                                    <span>Settings</span>
+                                    <span>Configuración</span>
                                 </a>
 
                                 <!-- item-->
                                 <a href="javascript:void(0);" class="dropdown-item notify-item">
                                     <i class="fe-lock"></i>
-                                    <span>Lock Screen</span>
+                                    <span>Bloquear Pantalla</span>
                                 </a>
 
                                 <div class="dropdown-divider"></div>
@@ -161,7 +162,7 @@
                                 <!-- item-->
                                <a href="<?= BASE_URL ?>/controllers/LogoutController.php" class="dropdown-item notify-item">
                                  <i class="fe-log-out"></i>
-                                <span>Logout</span>
+                                <span>Cerrar Sesión</span>
                                 </a>
 
                             </div>
@@ -173,7 +174,7 @@
 
                     <!-- LOGO -->
                     <div class="logo-box">
-                        <a href="index.html" class="logo text-center">
+                        <a href="" class="logo text-center">
                             <span class="logo-lg">
                                 <img src="<?= BASE_URL ?>/assets/images/logo-dark.png" alt="" height="16">
                                 <!-- <span class="logo-lg-text-dark">Xeria</span> -->
