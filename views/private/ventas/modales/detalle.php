@@ -1,13 +1,92 @@
-<div class="modal fade bs-example-modal-lg" tabindex="-1" role="dialog" aria-labelledby="myLargeModalLabel" aria-hidden="true" style="display: none;">
-     <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                  <div class="modal-header">
-                        <h4 class="modal-title" id="myLargeModalLabel">Detalle</h4>
-                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-                  </div>
-               <div class="modal-body">
-                ...
-                </div>
-            </div><!-- /.modal-content -->
-       </div><!-- /.modal-dialog -->
-</div><!-- /.modal -->
+<div class="modal fade" id="modalDetalle" tabindex="-1" role="dialog" aria-hidden="true">  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 class="modal-title fw-bold" id="myLargeModalLabel">Detalle de venta</h4>
+        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+      </div>
+
+      <div class="modal-body">
+      <!-- Loader -->
+      <div id="det-loader" class="text-center py-3" style="display:none;">
+      <div class="spinner-border" role="status"></div>
+      <div class="mt-2 small text-muted">Cargando detalle...</div>
+      </div>
+
+      <!-- Contenido -->
+      <div id="det-contenido" style="display:none;">
+      <div class="row">
+            <div class="col-md-4 mb-3">
+            <small class="text-primary font-weight-bold">Folio</small>
+            <div class="h5 mb-0" id="det-folio">—</div>
+            </div>
+            <div class="col-md-4 mb-3">
+            <small class="text-primary font-weight-bold">Fecha</small>
+            <div class="h5 mb-0" id="det-fecha">—</div>
+            </div>
+            <div class="col-md-4 mb-3">
+            <small class="text-primary font-weight-bold">Estatus</small>
+            <div class="h5 mb-0" id="det-estatus">—</div>
+            </div>
+
+            <div class="col-md-4 mb-3">
+            <small class="text-primary font-weight-bold">Cliente</small>
+            <div class="h5 mb-0" id="det-cliente">—</div>
+            </div>
+            <div class="col-md-4 mb-3">
+            <small class="text-primary font-weight-bold">Cajero</small>
+            <div class="h5 mb-0" id="det-usuario">—</div>
+            </div>
+            <div class="col-md-4 mb-3">
+            <small class="text-primary font-weight-bold">Caja</small>
+            <div class="h5 mb-0" id="det-caja">—</div>
+            </div>
+
+            <div class="col-md-6 mb-3">
+            <small class="text-primary font-weight-bold">Forma de pago</small>
+            <div class="h5 mb-0" id="det-forma">—</div>
+            </div>
+            <div class="col-md-6 mb-3">
+            <small class="text-primary font-weight-bold">Tipo de precio</small>
+            <div class="h5 mb-0" id="det-tipo">—</div>
+            </div>
+      </div>
+
+      <hr>
+
+      <!-- Detalle (items) -->
+      <div class="table-responsive">
+            <table class="table table-sm table-striped mb-0">
+            <thead>
+            <tr>
+                  <th>Producto</th>
+                  <th class="text-center">Cant.</th>
+                  <th class="text-right">Precio</th>
+                  <th class="text-right">Subtotal</th>
+            </tr>
+            </thead>
+            <tbody id="det-tbody"></tbody>
+            <tfoot>
+            <tr>
+                  <th colspan="3" class="text-right">Total</th>
+                  <th class="text-right h5 mb-0" id="det-total">$0.00</th>
+            </tr>
+            </tfoot>
+            </table>
+      </div>
+
+      <!-- Error -->
+      <div id="det-error" class="alert alert-danger my-3" style="display:none;">
+            No se pudo cargar el detalle.
+      </div>
+      </div>
+      </div>
+
+
+
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>

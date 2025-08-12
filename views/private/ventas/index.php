@@ -27,12 +27,16 @@ if (!isset($_SESSION['usuario'])) {
 
         <!-- plugin css -->
         <link href="<?= BASE_URL ?>/assets/libs/jquery-vectormap/jquery-jvectormap-1.2.2.css" rel="stylesheet" type="text/css" />
-
+        
+        <!-- Custom box css -->
+        <link href="<?= BASE_URL ?>/assets/libs/custombox/custombox.min.css" rel="stylesheet">
         <!-- App css -->
         <link href="<?= BASE_URL ?>/assets/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
         <link href="<?= BASE_URL ?>/assets/css/icons.min.css" rel="stylesheet" type="text/css" />
         <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet" type="text/css" />
         <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
+        <!-- Toastr -->
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
     </head>
 
     <body>
@@ -155,7 +159,15 @@ if (!isset($_SESSION['usuario'])) {
                     </div>
                     <!--Fin Tabla Ventas-->
 
-                
+                    <!-- Modal para ver detalle de venta -->
+                    <?php include_once __DIR__ . '/../ventas/modales/detalle.php'; ?>  
+
+                    <!-- Modal para ticket -->
+                    <?php include_once __DIR__ . '/../ventas/modales/ticket.php'; ?>
+
+                    <!-- Modal para eliminar venta -->
+                    <?php include_once __DIR__ . '/../ventas/modales/eliminar.php'; ?>
+
                 </div> <!-- end container -->
         </div>
         <!-- end wrapper -->
@@ -173,12 +185,16 @@ if (!isset($_SESSION['usuario'])) {
         <!-- Right bar overlay-->
         <div class="rightbar-overlay"></div>
 
-        <!-- Vendor js -->
+        <!-- 1) Librerías base (jQuery 3.3.1 + Bootstrap 4.3.1, etc.) -->
         <script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script>
-        <!-- App js-->
+
+        <!-- 2) JS del template (inicializa tooltips, menú, etc.) -->
         <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
-        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+        <!-- 3) Tus scripts propios -->
         <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
+        <!-- 4) Toastr Js-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
         <script>
 
             $(document).ready(function () {
@@ -248,9 +264,9 @@ if (!isset($_SESSION['usuario'])) {
                                                     <i class="mdi mdi-dots-horizontal"></i>
                                                 </a>
                                                 <div class="dropdown-menu dropdown-menu-right">
-                                                    <a class="dropdown-item" href="#"><i class="mdi mdi-eye mr-2 text-muted font-18 vertical-middle"></i>Ver Detalle</a>
-                                                    <a class="dropdown-item" href="#"><i class="mdi mdi-content-copy mr-2 text-muted font-18 vertical-middle"></i>Reimprimir</a>
-                                                    <a class="dropdown-item text-danger" href="#"><i class="mdi mdi-delete mr-2 text-muted font-18 vertical-middle"></i>Eliminar</a>
+                                                    <a class="dropdown-item accion-ver-detalle" href="#" data-toggle="modal" data-target="#modalDetalle" data-id="${v.id_venta}"><i class="mdi mdi-eye mr-2 text-muted font-18 vertical-middle"></i>Ver Detalle</a>
+                                                    <a class="dropdown-item" href="javascript:void(0);" onclick="abrirTicket(${v.id_venta});"><i class="mdi mdi-printer mr-2 text-muted font-18 vertical-middle"></i>Ticket / Imprimir</a>
+                                                    <a class="dropdown-item accion-eliminar" href="#" data-id="${v.id_venta}" data-folio="${v.folio}"><i class="mdi mdi-delete mr-2 text-muted font-18 vertical-middle"></i>Cancelar</a>
                                                 </div>
                                             </div>
                                         </center>
@@ -366,10 +382,237 @@ if (!isset($_SESSION['usuario'])) {
 
                     cargarVentas(1); // Cambiado aquí
                 });
+            
+                // Utilidades
+                function mxn(n) {
+                const v = Number(n || 0);
+                return v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+                }
+                function fechaMx(dt) {
+                try {
+                    const d = new Date(dt);
+                    return d.toLocaleString('es-MX', {
+                    day:'2-digit', month:'2-digit', year:'numeric',
+                    hour:'2-digit', minute:'2-digit', hour12:true
+                    });
+                } catch { return dt || '—'; }
+                }
 
+                // Delegación: click en Ver Detalle
+                $(document).on('click', 'a.accion-ver-detalle', function (e) {
+                    e.preventDefault();
+
+                    const id = $(this).data('id');
+                    if (!id) return;
+
+                    // estados UI
+                    $('#det-error').hide();
+                    $('#det-contenido').hide();
+                    $('#det-loader').show();
+
+                    // abrir modal
+                    $('#modalDetalle').modal('show');
+
+                    // pedir detalle
+                    $.ajax({
+                        url: '<?= BASE_URL ?>/controllers/VentasController.php',
+                        method: 'GET',
+                        dataType: 'json',
+                        data: { accion: 'detalle', id_venta: id }
+                    })
+                    .done(function (resp) {
+                        // Validar respuesta
+                        if (!resp || !resp.venta) {
+                        $('#det-loader').hide();
+                        $('#det-error').show().text('No se encontró la venta.');
+                        return;
+                        }
+
+                        const v = resp.venta;
+                        const dets = Array.isArray(resp.detalles) ? resp.detalles : [];
+
+                        // Encabezado
+                        $('#det-folio').text(v.folio || '—');
+                        $('#det-fecha').text(fechaMx(v.fecha));
+                        $('#det-estatus').text(v.estatus || '—');
+                        $('#det-cliente').text(v.cliente || 'Público en general');
+                        $('#det-usuario').text(v.usuario || '—');
+                        $('#det-caja').text(v.caja || '—');
+                        $('#det-forma').text(v.forma_pago || '—');
+                        $('#det-tipo').text(v.tipo_precio || '—');
+
+                        // Items
+                        let tbody = '';
+                        let total = 0;
+                        if (dets.length === 0) {
+                        tbody = `<tr><td colspan="4" class="text-center text-muted">Sin productos</td></tr>`;
+                        total = Number(v.total || 0);
+                        } else {
+                        dets.forEach(d => {
+                            const cant = Number(d.cantidad || 0);
+                            const precio = Number(d.precio_unitario || 0);
+                            const subt = Number(d.subtotal || (cant * precio));
+                            total += subt;
+
+                            tbody += `
+                            <tr>
+                                <td>${d.producto || ('#'+(d.id_producto||''))}</td>
+                                <td class="text-center">${cant}</td>
+                                <td class="text-right">${mxn(precio)}</td>
+                                <td class="text-right">${mxn(subt)}</td>
+                            </tr>
+                            `;
+                        });
+                        }
+                        $('#det-tbody').html(tbody);
+                        $('#det-total').text(mxn(total || v.total || 0));
+
+                        // Mostrar contenido
+                        $('#det-loader').hide();
+                        $('#det-contenido').show();
+                    })
+                    .fail(function () {
+                        $('#det-loader').hide();
+                        $('#det-error').show().text('Error al cargar el detalle.');
+                    });
+                });
                 
-            });
-        </script>
+
+                //Tiket
+
+               // --- Renglón de ticket con layout en grid ---
+                function renderItem({ cantidad, articulo, precio_unitario, subtotal, descripcion }) {
+                    const cant = (Number(cantidad || 0)).toFixed(2);
+                    const art  = (articulo || '').toString(); // ya no cortamos, dejamos que haga word-wrap
+                    const precio = mxn(precio_unitario);
+                    const total  = mxn(subtotal);
+
+                    // Fila principal
+                    const row1 = `
+                        <div class="tk-item">
+                            <div class="c-cant">${cant}</div>
+                            <div class="c-art">${art}</div>
+                            <div class="c-precio">${precio}</div>
+                            <div class="c-total">${total}</div>
+                        </div>
+                    `;
+
+                    // Si hay descripción extra, la agregamos en otra fila (sin columnas)
+                    const row2 = descripcion 
+                        ? `<div style="margin-left:50px; font-size:11px; white-space:normal; overflow-wrap:anywhere;">${descripcion}</div>`
+                        : '';
+
+                    return row1 + row2;
+                }
+
+                // --- Hacer global para el onclick del menú ---
+                window.abrirTicket = function(idVenta) {
+                // limpia
+                $('#tk-items').empty();
+                $('#tk-folio').text('—');
+                $('#tk-fecha').text('—');
+                $('#tk-total').text('$0.00');
+
+                $.ajax({
+                    url: '<?= BASE_URL ?>/controllers/VentasController.php',
+                    method: 'GET',
+                    dataType: 'json',
+                    data: { accion: 'detalle', id_venta: idVenta }
+                })
+                .done(function (resp) {
+                    if (!resp || !resp.venta) {
+                    alert('No se encontró la venta.');
+                    return;
+                    }
+                    const v   = resp.venta || {};
+                    const det = Array.isArray(resp.detalles) ? resp.detalles : [];
+
+                    $('#tk-folio').text(v.folio || '—');
+                    $('#tk-fecha').text(fechaMx(v.fecha));
+
+                    let html = '';
+                    let total = 0;
+                    det.forEach(d => {
+                    const cantidad = Number(d.cantidad || 0);
+                    const precio   = Number(d.precio_unitario || 0);
+                    const importe  = (d.subtotal != null) ? Number(d.subtotal) : (cantidad * precio);
+                    total += importe;
+
+                    html += renderItem({
+                        cantidad,
+                        articulo: d.producto || d.clave || d.codigo || '',
+                        precio_unitario: precio,
+                        subtotal: importe,
+                        descripcion: d.descripcion || d.nombre || ''
+                    });
+                    });
+
+                    $('#tk-items').html(html);
+                    $('#tk-total').text(mxn(v.total != null ? v.total : total));
+                    $('#modalTicket').modal('show');
+                })
+                .fail(function(){
+                    alert('Error al cargar el ticket.');
+                });
+                };
+
+                // --- Imprimir (solo el área del ticket gracias al @media print) ---
+                $(document).on('click', '#btnImprimirTicket', function () {
+                window.print();
+                });
+
+                //Eliminar Venta
+                // Abrir modal de eliminar (desde el dropdown)
+                $(document).on('click', 'a.accion-eliminar', function (e) {
+                e.preventDefault();
+                const id    = $(this).data('id');
+                const folio = $(this).data('folio');
+
+                if (!id) return;
+
+                $('#el-id-venta').val(id);
+                $('#el-folio').text(folio);
+                $('#modalEliminar').modal('show');
+                });
+
+                // Confirmar eliminación (bind único)
+                $(document).off('click', '#btnConfirmarEliminar').on('click', '#btnConfirmarEliminar', function () {
+                    const id = $('#el-id-venta').val();
+                    if (!id) return;
+
+                    const $btn = $(this);
+                    const originalHtml = $btn.html();
+
+                    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Eliminando...');
+
+                    $.ajax({
+                        url: '<?= BASE_URL ?>/controllers/VentasController.php',
+                        method: 'POST',
+                        dataType: 'json',
+                        data: { accion: 'eliminar', id_venta: id }
+                    })
+                    .done(function (resp) {
+                        // resp esperado: { ok: true|false, msg: "texto" }
+                        if (resp && (resp.ok === true || resp.resultado === 'ok')) {
+                        toastr.success(resp?.msg || 'Venta eliminada con éxito');
+                        cargarVentas(paginaActual);
+                        } else {
+                        const msg = resp?.msg || resp?.resultado || 'Error al eliminar.';
+                        toastr.error(msg);
+                        }
+                    })
+                    .fail(function (xhr) {
+                        toastr.error('No se pudo conectar con el servidor.');
+                        // Por si el backend está enviando texto no-JSON, ayuda ver qué llegó:
+                        console.warn('Respuesta fallo:', xhr.responseText);
+                    })
+                    .always(function () {
+                        $('#modalEliminar').modal('hide');
+                        $btn.prop('disabled', false).html(originalHtml);
+                    });
+                });
+        });
+    </script>
 
 
 

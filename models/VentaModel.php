@@ -64,7 +64,6 @@ class VentaModel
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-
     // ✅ Contar total de ventas activas
     public function contarVentas($folio = '', $fecha = '')
     {
@@ -95,18 +94,32 @@ class VentaModel
     // ✅ Obtener una venta específica por ID
     public function obtenerVentaPorId($idVenta)
     {
-        $sql = "SELECT * FROM ventas WHERE id_venta = :id";
+        $sql = "SELECT v.*,
+                    c.nombre AS cliente,
+                    u.nombre AS usuario,
+                    cj.nombre AS caja,
+                    fp.descripcion AS forma_pago,
+                    tp.nombre AS tipo_precio
+                FROM ventas v
+                LEFT JOIN clientes c      ON v.id_cliente = c.id_cliente
+                INNER JOIN usuarios u     ON v.id_usuario = u.id_usuario
+                INNER JOIN cajas cj       ON v.id_caja = cj.id_caja
+                INNER JOIN formas_pago fp ON v.id_forma_pago = fp.id_forma_pago
+                INNER JOIN tipo_precio tp ON v.id_tipo_precio = tp.id_tipo_precio
+                WHERE v.id_venta = :id
+                LIMIT 1";
+
         $stmt = $this->conn->prepare($sql);
-        $stmt->bindParam(':id', $idVenta);
+        $stmt->bindParam(':id', $idVenta, PDO::PARAM_INT);
         $stmt->execute();
-        return $stmt->fetch(); // Devuelve una sola venta
+        return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
     // ✅ Obtener el detalle de productos vendidos en una venta
     public function obtenerDetalleVenta($idVenta)
     {
         $sql = "SELECT vd.*, 
-                       p.nombre AS producto
+                       p.descripcion AS producto
                 FROM ventas_detalle vd
                 INNER JOIN productos p ON vd.id_producto = p.id_producto
                 WHERE vd.id_venta = :id";
@@ -180,10 +193,138 @@ class VentaModel
     }
 
     // ✅ Eliminar venta (borrado lógico)
-    public function eliminarVenta($idVenta)
+    public function cancelarVenta($idVenta, $idSucursal, $idUsuario, $motivo = 'Cancelación de venta')
     {
-        $sql = "UPDATE ventas SET activo = 0 WHERE id_venta = :id";
-        $stmt = $this->conn->prepare($sql);
-        return $stmt->execute([':id' => $idVenta]);
+        try {
+            $this->conn->beginTransaction();
+
+            // Bloquea venta para lectura consistente
+            $st = $this->conn->prepare("SELECT folio, estatus FROM ventas WHERE id_venta = :id FOR UPDATE");
+            $st->execute([':id' => $idVenta]);
+            $venta = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$venta) {
+                throw new Exception('Venta no encontrada.');
+            }
+            if (strcasecmp($venta['estatus'], 'Cancelada') === 0) {
+                // Ya cancelada: registrar en bitácora como idempotente y salir
+                $this->registrarBitacora($idUsuario, 'ventas', 'CANCEL', $idVenta, 
+                    'Intento de cancelar venta ya cancelada', 
+                    json_encode(['estatus_prev' => $venta['estatus']]), 
+                    json_encode(['estatus_new'  => $venta['estatus']]));
+                $this->conn->commit();
+                return ['ok' => true, 'msg' => 'La venta ya estaba cancelada.'];
+            }
+
+            $folio = $venta['folio'];
+
+            // Traer detalle
+            $stDet = $this->conn->prepare(
+                "SELECT id_producto, cantidad
+                FROM ventas_detalle
+                WHERE id_venta = :id AND (activo = 1 OR activo IS NULL)"
+            );
+            $stDet->execute([':id' => $idVenta]);
+            $detalles = $stDet->fetchAll(PDO::FETCH_ASSOC);
+
+            // Preparar statements
+            $stUpdProd = $this->conn->prepare(
+                "UPDATE productos SET stock_actual = stock_actual + :cant WHERE id_producto = :idp"
+            );
+            $stMov = $this->conn->prepare(
+                "INSERT INTO inventario_movimientos
+                (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
+                VALUES (:idp, 'Devolucion Venta', :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+            );
+
+            // Reponer inventario + movimiento por renglón
+            $items = [];
+            foreach ($detalles as $d) {
+                $cant = (int)$d['cantidad'];
+                $idp  = (int)$d['id_producto'];
+
+                $stUpdProd->execute([':cant' => $cant, ':idp' => $idp]);
+                $stMov->execute([
+                    ':idp'   => $idp,
+                    ':cant'  => $cant,
+                    ':idsuc' => $idSucursal,
+                    ':idusr' => $idUsuario,
+                    ':ref'   => $folio,
+                    ':mot'   => $motivo
+                ]);
+
+                $items[] = ['id_producto' => $idp, 'cantidad' => $cant];
+            }
+
+            // Marcar venta cancelada   
+            $stVenta = $this->conn->prepare(
+                "UPDATE ventas SET estatus = 'Cancelada' WHERE id_venta = :id"
+            );
+            $stVenta->execute([':id' => $idVenta]);
+
+            // BITÁCORA
+            $this->registrarBitacora(
+                $idUsuario,
+                'ventas',
+                'CANCEL',
+                $idVenta,
+                'Cancelación de venta y devolución a inventario',
+                json_encode(['estatus_prev' => $venta['estatus']]),
+                json_encode(['estatus_new'  => 'Cancelada', 'devoluciones' => $items])
+            );
+
+            $this->conn->commit();
+            return ['ok' => true, 'msg' => 'Venta cancelada, stock repuesto y bitácora registrada.'];
+
+        } catch (Exception $e) {
+            $this->conn->rollBack();
+            // Intentar registrar error en bitácora
+            try {
+                $this->registrarBitacora($idUsuario, 'ventas', 'ERROR', (int)$idVenta, $e->getMessage());
+            } catch (\Throwable $th) {}
+            return ['ok' => false, 'msg' => $e->getMessage()];
+        }
     }
+
+    /**
+     * Registra eventos en bitacora_movimientos.
+     * Campos: id_usuario, tabla, accion, registro_id, campo_modificado, valor_anterior, valor_nuevo,
+     *         descripcion, ip_origen, activo, fecha
+     */
+    private function registrarBitacora(
+        $idUsuario,
+        string $tabla,
+        string $accion,
+        int $registroId,
+        string $descripcion = '',
+        ?string $valorAnterior = null,
+        ?string $valorNuevo = null,
+        ?string $campoModificado = null
+    ) {
+        // IP origen
+        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? null;
+        if (is_string($ip) && strpos($ip, ',') !== false) {
+            $ip = trim(explode(',', $ip)[0]); // primera ip si viene lista
+        }
+
+        $sql = "INSERT INTO bitacora_movimientos
+                (id_usuario, tabla, accion, registro_id, campo_modificado, valor_anterior, valor_nuevo,
+                descripcion, ip_origen, activo, fecha)
+                VALUES
+                (:usr, :tbl, :acc, :rid, :campo, :val_ant, :val_nvo, :desc, :ip, 1, NOW())";
+
+        $st = $this->conn->prepare($sql);
+        $st->execute([
+            ':usr'     => $idUsuario,
+            ':tbl'     => $tabla,
+            ':acc'     => $accion,        // INSERT|UPDATE|DELETE|LOGIN|LOGOUT|CANCEL|PRINT|ERROR
+            ':rid'     => $registroId,
+            ':campo'   => $campoModificado,
+            ':val_ant' => $valorAnterior,
+            ':val_nvo' => $valorNuevo,
+            ':desc'    => $descripcion,
+            ':ip'      => $ip
+        ]);
+    }
+
 }

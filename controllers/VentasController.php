@@ -28,7 +28,7 @@ switch ($accion) {
     ]);
     break;
 
-    // 🆕 Crear nueva venta
+    //  Crear nueva venta
     case 'crear':
         $data = json_decode(file_get_contents("php://input"), true);
         
@@ -39,7 +39,7 @@ switch ($accion) {
         echo json_encode(['resultado' => $respuesta]);
         break;
 
-    // 📄 Obtener detalle de una venta
+    //  Obtener detalle de una venta
     case 'detalle':
         $idVenta = $_GET['id_venta'] ?? 0;
         $venta = $ventaModel->obtenerVentaPorId($idVenta);
@@ -51,7 +51,7 @@ switch ($accion) {
         ]);
         break;
 
-    // 🔄 Cambiar estatus de venta (ej: Cancelada, Devuelta)
+    // Cambiar estatus de venta (ej: Cancelada, Devuelta)
     case 'cambiar-estatus':
         $id = $_POST['id_venta'] ?? 0;
         $estatus = $_POST['estatus'] ?? 'Cancelada';
@@ -60,12 +60,25 @@ switch ($accion) {
         echo json_encode(['resultado' => $ok ? 'ok' : 'error']);
         break;
 
-    // 🗑️ Eliminar venta (borrado lógico)
-    case 'eliminar':
-        $id = $_POST['id_venta'] ?? 0;
-        $ok = $ventaModel->eliminarVenta($id);
-        echo json_encode(['resultado' => $ok ? 'ok' : 'error']);
+    //  Eliminar venta (borrado lógico)
+    case 'eliminar': // realmente es cancelar + reponer inventario
+    session_start();
+
+    $id = $_POST['id_venta'] ?? 0;
+    $motivo = $_POST['motivo'] ?? 'Cancelación de venta';
+
+    // Ajusta estos nombres a tu estructura de sesión:
+    $id_sucursal = $_SESSION['id_sucursal']  ?? ($_SESSION['usuario']['id_sucursal'] ?? 1);
+    $id_usuario  = $_SESSION['usuario']['id_usuario'] ?? ($_SESSION['usuario']['id'] ?? null);
+
+    if (!$id || !$id_sucursal || !$id_usuario) {
+        echo json_encode(['ok' => false, 'msg' => 'Faltan datos de sesión o id_venta.']);
         break;
+    }
+
+    $resp = $ventaModel->cancelarVenta($id, $id_sucursal, $id_usuario, $motivo);
+    echo json_encode($resp);
+    break;
 
     // 🚫 Acción no reconocida
     default:
