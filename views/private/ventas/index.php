@@ -35,6 +35,8 @@ if (!isset($_SESSION['usuario'])) {
         <link href="<?= BASE_URL ?>/assets/css/icons.min.css" rel="stylesheet" type="text/css" />
         <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet" type="text/css" />
         <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
+        <link href="<?= BASE_URL ?>/assets/css/ticket.css" rel="stylesheet" />
+
         <!-- Toastr -->
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
     </head>
@@ -512,6 +514,7 @@ if (!isset($_SESSION['usuario'])) {
                 $('#tk-folio').text('—');
                 $('#tk-fecha').text('—');
                 $('#tk-total').text('$0.00');
+                $('#tk-idventa').val(idVenta);
 
                 $.ajax({
                     url: '<?= BASE_URL ?>/controllers/VentasController.php',
@@ -557,9 +560,18 @@ if (!isset($_SESSION['usuario'])) {
                 };
 
                 // --- Imprimir (solo el área del ticket gracias al @media print) ---
-                $(document).on('click', '#btnImprimirTicket', function () {
-                window.print();
-                });
+               $(document).on('click', '#btnImprimirTicket', function () {
+                    const id = $('#tk-idventa').val();
+                    if(!id){ alert('No hay venta seleccionada'); return; }
+
+                    $.get('<?= BASE_URL ?>/utils/ticket_mike42.php', { id_venta: id })
+                        .done(function(resp){
+                            console.log("Impresión:", resp);
+                        })
+                        .fail(function(xhr){
+                            console.error("Error al imprimir:", xhr.responseText || 'Error al imprimir');
+                        });
+               });
 
                 //Eliminar Venta
                 // Abrir modal de eliminar (desde el dropdown)

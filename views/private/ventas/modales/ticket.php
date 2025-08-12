@@ -8,13 +8,12 @@
       </div>
 
       <div class="modal-body pt-2">
+        <input type="hidden" id="tk-idventa" />
         <!-- SOLO ESTO SE IMPRIME -->
-        <div id="ticketArea" class="print-area tk"
-             style="margin:0 auto; font-family:monospace; font-size:12px; line-height:1.15;">
-
+        <div id="ticketArea" class="print-area tk">
           <!-- ENCABEZADO -->
           <div class="text-center">
-            <div style="font-size:14px; font-weight:700;">REFACCIONARIA RIVERA</div>
+            <div class="tk-razon">REFACCIONARIA RIVERA</div>
             <div>KARINA VALENTINA RIVERA LEON</div>
             <div>RFC: RILK830214NI9</div>
             <div>Régimen Fiscal: 612</div>
@@ -26,8 +25,8 @@
           <div class="tk-line my-2"></div>
 
           <!-- FECHA Y FOLIO -->
-          <div class="d-flex justify-content-between">
-            <div id="tk-fecha">2025-08-11</div>
+          <div class="tk-meta">
+            <div id="tk-fecha">—</div>
             <div><strong>FOLIO:</strong> <span id="tk-folio">—</span></div>
           </div>
 
@@ -47,9 +46,9 @@
           <div class="tk-line my-2"></div>
 
           <!-- TOTALES -->
-          <div class="d-flex justify-content-end">
-            <div style="width:120px; text-align:right; font-weight:700;">TOTAL:</div>
-            <div id="tk-total" style="width:80px; text-align:right; font-weight:700;">$ 0.00</div>
+          <div class="tk-totals">
+            <div class="lbl">TOTAL:</div>
+            <div id="tk-total" class="val">$ 0.00</div>
           </div>
 
           <div class="text-center mt-2">
@@ -69,37 +68,3 @@
     </div>
   </div>
 </div>
-
-<!-- CSS -->
-<style>
-  /* layout general del ticket en pantalla */
-  .tk { max-width: 340px; }
-  .tk-line{ border-top:1px dashed #000; }
-
-  /* cabecera de columnas + filas de items en "grid" fijo */
-  .tk-head,
-  .tk-item{
-    display:grid;
-    grid-template-columns: 50px 1fr 70px 80px; /* cant | artículo | precio | total */
-    column-gap: 6px;
-    align-items:start;
-  }
-  .tk-head{ font-weight:700; }
-  .tk-item .c-art{ word-break:break-word; overflow-wrap:anywhere; }
-  .tk-item .c-precio,
-  .tk-item .c-total{ text-align:right; }
-
-  /* separar filas un poco */
-  .tk-item{ padding:2px 0; }
-  .tk-item + .tk-item{ border-top:1px dotted #ccc; }
-
-  /* impresión: solo 80mm y ocultar resto */
-  @media print {
-    body * { visibility: hidden !important; }
-    .print-area, .print-area * { visibility: visible !important; }
-    .modal, .modal-dialog, .modal-content { position: static !important; box-shadow:none !important; border:0 !important; }
-    @page { size: 80mm auto; margin: 0; }
-    .print-area { width: 80mm !important; margin: 0 !important; padding: 0 4mm; }
-    .tk-item + .tk-item{ border-top:1px dotted #000; } /* más visible en impresión */
-  }
-</style>

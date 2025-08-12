@@ -119,7 +119,8 @@ class VentaModel
     public function obtenerDetalleVenta($idVenta)
     {
         $sql = "SELECT vd.*, 
-                       p.descripcion AS producto
+                       p.descripcion AS producto,
+                       p.codigo AS codigo
                 FROM ventas_detalle vd
                 INNER JOIN productos p ON vd.id_producto = p.id_producto
                 WHERE vd.id_venta = :id";
