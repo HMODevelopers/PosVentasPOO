@@ -206,6 +206,51 @@ if (!isset($_SESSION['usuario'])) {
 
                 cargarVentas(paginaActual);
 
+                function getBadge(estatus) {
+                    
+                    switch (estatus) {
+                        case 'Activa':
+                            return '<span class="badge badge-light-success badge-pill">Activa</span>';
+                        case 'Cancelada':
+                            return '<span class="badge badge-light-danger badge-pill">Cancelada</span>';
+                        case 'Devuelta':
+                            return '<span class="badge badge-light-warning badge-pill">Devuelta</span>';
+                        case 'Guardada':
+                            return '<span class="badge badge-light-primary badge-pill">Guardada</span>';
+                        default:
+                            return `<span class="badge badge-light-secondary badge-pill">${estatus}</span>`;
+                    }
+                }
+
+                function getAcciones(v) {
+                    let acciones = `
+                        <a class="dropdown-item accion-ver-detalle" href="#" data-toggle="modal" data-target="#modalDetalle" data-id="${v.id_venta}">
+                            <i class="mdi mdi-eye mr-2 text-muted font-18 vertical-middle"></i>Ver Detalle
+                        </a>
+                    `;
+
+                    // Ticket solo si el estatus es Activa o Guardada
+                    if (v.estatus === 'Activa' || v.estatus === 'Guardada') {
+                        acciones += `
+                            <a class="dropdown-item" href="javascript:void(0);" onclick="abrirTicket(${v.id_venta});">
+                                <i class="mdi mdi-printer mr-2 text-muted font-18 vertical-middle"></i>Ticket / Imprimir
+                            </a>
+                        `;
+                    }
+
+                    // Cancelar solo si es Activa
+                    if (v.estatus === 'Activa') {
+                        acciones += `
+                            <a class="dropdown-item accion-eliminar" href="#" data-id="${v.id_venta}" data-folio="${v.folio}">
+                                <i class="mdi mdi-delete mr-2 text-muted font-18 vertical-middle"></i>Cancelar
+                            </a>
+                        `;
+                    }
+
+                    return acciones;
+                }
+
+
                 function cargarVentas(pagina) {
                     
                     const folio = $('#Folio').val();// obtiene el valor actual del input
@@ -256,7 +301,7 @@ if (!isset($_SESSION['usuario'])) {
                                     <td><center>${v.forma_pago}</center></td>
                                     <td><center>${v.tipo_precio}</center></td>
                                     <td><center><b>${parseFloat(v.total).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</b></center></td>
-                                    <td><center>${v.estatus}</center></td>
+                                    <td><center>${getBadge(v.estatus)}</center></td>
                                     <td><center>${v.cliente ? v.cliente : 'Público en general'}</center></td>
                                      <td><center>${new Date(v.fecha).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',  hour12: true })}</center></td>
                                     <td>
@@ -266,9 +311,7 @@ if (!isset($_SESSION['usuario'])) {
                                                     <i class="mdi mdi-dots-horizontal"></i>
                                                 </a>
                                                 <div class="dropdown-menu dropdown-menu-right">
-                                                    <a class="dropdown-item accion-ver-detalle" href="#" data-toggle="modal" data-target="#modalDetalle" data-id="${v.id_venta}"><i class="mdi mdi-eye mr-2 text-muted font-18 vertical-middle"></i>Ver Detalle</a>
-                                                    <a class="dropdown-item" href="javascript:void(0);" onclick="abrirTicket(${v.id_venta});"><i class="mdi mdi-printer mr-2 text-muted font-18 vertical-middle"></i>Ticket / Imprimir</a>
-                                                    <a class="dropdown-item accion-eliminar" href="#" data-id="${v.id_venta}" data-folio="${v.folio}"><i class="mdi mdi-delete mr-2 text-muted font-18 vertical-middle"></i>Cancelar</a>
+                                                     ${getAcciones(v)}
                                                 </div>
                                             </div>
                                         </center>
@@ -436,7 +479,7 @@ if (!isset($_SESSION['usuario'])) {
                         // Encabezado
                         $('#det-folio').text(v.folio || '—');
                         $('#det-fecha').text(fechaMx(v.fecha));
-                        $('#det-estatus').text(v.estatus || '—');
+                        $('#det-estatus').html(getBadge(v.estatus || '—'));
                         $('#det-cliente').text(v.cliente || 'Público en general');
                         $('#det-usuario').text(v.usuario || '—');
                         $('#det-caja').text(v.caja || '—');
@@ -447,7 +490,7 @@ if (!isset($_SESSION['usuario'])) {
                         let tbody = '';
                         let total = 0;
                         if (dets.length === 0) {
-                        tbody = `<tr><td colspan="4" class="text-center text-muted">Sin productos</td></tr>`;
+                        tbody = `<tr><td colspan="5" class="text-center text-muted">Sin productos</td></tr>`;
                         total = Number(v.total || 0);
                         } else {
                         dets.forEach(d => {
@@ -458,7 +501,8 @@ if (!isset($_SESSION['usuario'])) {
 
                             tbody += `
                             <tr>
-                                <td>${d.producto || ('#'+(d.id_producto||''))}</td>
+                                <td>${d.codigo || ('#' + (d.id_producto || ''))}</td>
+                                <td>${d.producto || ('#' + (d.id_producto || ''))}</td>
                                 <td class="text-center">${cant}</td>
                                 <td class="text-right">${mxn(precio)}</td>
                                 <td class="text-right">${mxn(subt)}</td>
@@ -480,9 +524,9 @@ if (!isset($_SESSION['usuario'])) {
                 });
                 
 
-                //Tiket
+                //------------------------------------------- Tiket----------------------------------------------------------//
 
-               // --- Renglón de ticket con layout en grid ---
+                // --- Renglón de ticket con layout en grid ---
                 function renderItem({ cantidad, articulo, precio_unitario, subtotal, descripcion }) {
                     const cant = (Number(cantidad || 0)).toFixed(2);
                     const art  = (articulo || '').toString(); // ya no cortamos, dejamos que haga word-wrap
@@ -573,7 +617,8 @@ if (!isset($_SESSION['usuario'])) {
                         });
                });
 
-                //Eliminar Venta
+                //------------------------------------Eliminar Ventas ------------------------------------------------------//
+
                 // Abrir modal de eliminar (desde el dropdown)
                 $(document).on('click', 'a.accion-eliminar', function (e) {
                 e.preventDefault();

@@ -58,6 +58,7 @@
             <table class="table table-sm table-striped mb-0">
             <thead>
             <tr>
+                  <th class="text-center">Codigo</th>
                   <th>Producto</th>
                   <th class="text-center">Cant.</th>
                   <th class="text-right">Precio</th>
@@ -67,7 +68,7 @@
             <tbody id="det-tbody"></tbody>
             <tfoot>
             <tr>
-                  <th colspan="3" class="text-right">Total</th>
+                  <th colspan="4" class="text-right">Total</th>
                   <th class="text-right h5 mb-0" id="det-total">$0.00</th>
             </tr>
             </tfoot>
