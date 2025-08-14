@@ -303,7 +303,7 @@ if (!isset($_SESSION['usuario'])) {
                                     <td><center><b>${parseFloat(v.total).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</b></center></td>
                                     <td><center>${getBadge(v.estatus)}</center></td>
                                     <td><center>${v.cliente ? v.cliente : 'Público en general'}</center></td>
-                                     <td><center>${new Date(v.fecha).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',  hour12: true })}</center></td>
+                                    <td><center>${new Date(v.fecha).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',  hour12: true })}</center></td>
                                     <td>
                                         <center>
                                             <div class="btn-group dropdown">
@@ -445,6 +445,7 @@ if (!isset($_SESSION['usuario'])) {
 
                 // Delegación: click en Ver Detalle
                 $(document).on('click', 'a.accion-ver-detalle', function (e) {
+                    
                     e.preventDefault();
 
                     const id = $(this).data('id');
@@ -523,8 +524,7 @@ if (!isset($_SESSION['usuario'])) {
                     });
                 });
                 
-
-                //------------------------------------------- Tiket----------------------------------------------------------//
+                //------------------------------------------- Tiket ----------------------------------------------------------//
 
                 // --- Renglón de ticket con layout en grid ---
                 function renderItem({ cantidad, articulo, precio_unitario, subtotal, descripcion }) {

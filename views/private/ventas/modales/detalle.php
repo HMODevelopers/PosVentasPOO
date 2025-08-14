@@ -1,4 +1,5 @@
-<div class="modal fade" id="modalDetalle" tabindex="-1" role="dialog" aria-hidden="true">  <div class="modal-dialog modal-lg modal-dialog-centered">
+<div class="modal fade" id="modalDetalle" tabindex="-1" role="dialog" aria-hidden="true">  
+   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h4 class="modal-title fw-bold" id="myLargeModalLabel">Detalle de venta</h4>

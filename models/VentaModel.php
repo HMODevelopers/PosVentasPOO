@@ -46,8 +46,7 @@ class VentaModel
             $params[':fecha'] = $fecha;
         }
 
-        $sql .= " ORDER BY v.id_venta DESC
-                LIMIT :limite OFFSET :offset";
+        $sql .= " ORDER BY v.id_venta DESC LIMIT :limite OFFSET :offset";
 
         $stmt = $this->conn->prepare($sql);
 

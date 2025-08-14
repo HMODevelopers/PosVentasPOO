@@ -4,7 +4,7 @@
     <div class="modal-content border-0">
       <div class="modal-header py-2">
         <h5 class="modal-title mb-0">
-          <i class="mdi mdi-alert-octagon-outline mr-1"></i> Eliminar venta
+          <i class="mdi mdi-alert-octagon-outline mr-1"></i> Cancelar venta
         </h5>
         <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar">
           <span aria-hidden="true">×</span>
@@ -18,7 +18,7 @@
           </div>
           <div>
             <p class="mb-2">
-            <b>¿Seguro que deseas eliminar la venta con folio <span id="el-folio">—</span>?</b>
+            <b>¿Seguro que deseas cancelar la venta con folio <span id="el-folio">—</span>?</b>
             <br>
             Esta acción no se puede deshacer.
             </p>
@@ -32,7 +32,7 @@
       <div class="modal-footer py-2">
         <button type="button" class="btn btn-light btn-sm" data-dismiss="modal">Cancelar</button>
         <button type="button" class="btn btn-danger btn-sm" id="btnConfirmarEliminar">
-          <i class="mdi mdi-delete-forever"></i> Eliminar
+          <i class="mdi mdi-delete-forever"></i> Cancelar Venta
         </button>
       </div>
     </div>
