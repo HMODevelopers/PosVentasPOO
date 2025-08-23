@@ -42,11 +42,16 @@ switch ($accion) {
 
         // Asegura id_usuario desde sesión si no viene en payload
         if (empty($compra['id_usuario'])) {
-            $compra['id_usuario'] = $_SESSION['usuario']['id_usuario'] ?? $_SESSION['id_usuario'] ?? null;
+            $compra['id_usuario'] = $_SESSION['usuario']['id_usuario']
+                                ?? $_SESSION['usuario']['id']      // <- añadido
+                                ?? $_SESSION['id_usuario']
+                                ?? null;
         }
+
         // Asegura id_sucursal si manejas multi-sucursal
         if (!isset($compra['id_sucursal'])) {
-            $compra['id_sucursal'] = $_SESSION['id_sucursal'] ?? ($_SESSION['usuario']['id_sucursal'] ?? null);
+            $compra['id_sucursal'] = $_SESSION['id_sucursal']
+                                ?? ($_SESSION['usuario']['id_sucursal'] ?? null);
         }
 
         if (empty($compra['id_usuario'])) {

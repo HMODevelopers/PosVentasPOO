@@ -539,14 +539,14 @@ if (!isset($_SESSION['usuario'])) {
 
                 // Eliminar/Cancelar
                 $(document).on('click', 'a.accion-eliminar', function(e){
-                e.preventDefault();
-                const id    = $(this).data('id');
-                const folio = $(this).data('folio');
-                if (!id) return;
+                    e.preventDefault();
+                    const id    = $(this).data('id');
+                    const folio = $(this).data('folio');
+                    if (!id) return;
 
-                $('#el-id-compra').val(id);
-                $('#el-folio').text(folio || ('COMP-' + id));
-                $('#modalEliminar').modal('show');
+                    $('#el-id-compra').val(id);
+                    $('#el-folio').text(folio || ('COMP-' + id));
+                    $('#modalEliminar').modal('show');
                 });
 
                 $(document).off('click','#btnConfirmarEliminarCompra')
@@ -582,23 +582,21 @@ if (!isset($_SESSION['usuario'])) {
                 });
                 
                // =================== Helpers ===================
-                function debounce(fn, delay=250){
-                let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); };
-                }
+                function debounce(fn, delay=250){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); };}
                 function mxn(n){ return Number(n||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'}); } // si no lo tienes ya
                 function todayYMDLocal(){ const d=new Date(); const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
 
                 // =================== Proveedores activos en <select> ===================
                 function cargarProveedoresSelectModal(selected = ''){
-                const $sel = $('#ac-proveedor');
-                $sel.prop('disabled', true).html('<option value="">-- Selecciona --</option>');
-                $.getJSON('<?= BASE_URL ?>/controllers/ProveedoresController.php', {accion:'listar-min', limite:200}, function(resp){
-                    const arr = resp?.data || [];
-                    let html = '<option value="">-- Selecciona --</option>';
-                    arr.forEach(p => { html += `<option value="${p.id_proveedor}">${p.nombre}</option>`; });
-                    $sel.html(html).prop('disabled', false);
-                    if (selected) $sel.val(String(selected));
-                }).fail(()=> $sel.prop('disabled', false));
+                    const $sel = $('#ac-proveedor');
+                    $sel.prop('disabled', true).html('<option value="">-- Selecciona --</option>');
+                    $.getJSON('<?= BASE_URL ?>/controllers/ProveedoresController.php', {accion:'listar-min', limite:200}, function(resp){
+                        const arr = resp?.data || [];
+                        let html = '<option value="">-- Selecciona --</option>';
+                        arr.forEach(p => { html += `<option value="${p.id_proveedor}">${p.nombre}</option>`; });
+                        $sel.html(html).prop('disabled', false);
+                        if (selected) $sel.val(String(selected));
+                    }).fail(()=> $sel.prop('disabled', false));
                 }
 
                 // =================== Buscar productos (autocomplete) ===================

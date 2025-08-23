@@ -1,6 +1,6 @@
 <!-- Modal: Agregar Compra -->
 <div class="modal fade" id="modalAgregarCompra" tabindex="-1" role="dialog" aria-labelledby="agregarCompraLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
+  <div class="modal-dialog modal-full modal-dialog-centered" role="document">
     <div class="modal-content">
 
       <div class="modal-header">
@@ -84,8 +84,9 @@
             </tfoot>
         </table>
         </div>
-
+        <br>
         <div id="ac-error" class="alert alert-danger mb-0" style="display:none;"></div>
+        <br>
       </div>
 
       <div class="modal-footer">

@@ -149,11 +149,11 @@ class CompraModel
         try {
             $this->conn->beginTransaction();
 
-            // Suma total
+            // Suma total y normalización de subtotales
             $total = 0.0;
             foreach ($detalles as &$d) {
-                $cant = (float)$d['cantidad'];
-                $prec = (float)$d['precio_unitario'];
+                $cant = (float)($d['cantidad'] ?? 0);
+                $prec = (float)($d['precio_unitario'] ?? 0);
                 if (!isset($d['subtotal'])) {
                     $d['subtotal'] = round($cant * $prec, 2);
                 }
@@ -163,10 +163,10 @@ class CompraModel
 
             // Insert encabezado
             $sqlCab = "INSERT INTO compras
-                       (id_usuario, id_proveedor, id_sucursal, folio_factura, fecha_factura,
+                    (id_usuario, id_proveedor, id_sucursal, folio_factura, fecha_factura,
                         total, estatus, activo, fecha_creacion)
-                       VALUES
-                       (:usr, :prov, :suc, :folio, :ffac, :tot, :est, 1, NOW())";
+                    VALUES
+                    (:usr, :prov, :suc, :folio, :ffac, :tot, :est, 1, NOW())";
             $stCab = $this->conn->prepare($sqlCab);
             $stCab->execute([
                 ':usr'   => (int)$datosCompra['id_usuario'],
@@ -178,62 +178,136 @@ class CompraModel
                 ':est'   => $datosCompra['estatus'] ?? 'Pendiente',
             ]);
 
-            $idCompra = (int)$this->conn->lastInsertId();
+            $idCompra  = (int)$this->conn->lastInsertId();
+            $ref       = $datosCompra['folio_factura'] ?? ('COMP-' . $idCompra);
+            $idSucursal= !empty($datosCompra['id_sucursal']) ? (int)$datosCompra['id_sucursal'] : 1;
+            $idUsuario = (int)$datosCompra['id_usuario'];
+
+            // Tipos permitidos (enum)
+            $tiposPermitidos = ['Entrada','Salida','Ajuste','Devolucion Venta','Devolucion Compra'];
+
+            // Tipo por compra: por defecto Entrada (compras/adiciones)
+            $tipoPorCompra = $datosCompra['tipo_movimiento'] ?? 'Entrada';
+            if (!in_array($tipoPorCompra, $tiposPermitidos, true)) {
+                $tipoPorCompra = 'Entrada';
+            }
 
             // Insert detalle
             $sqlDet = "INSERT INTO compras_detalle
-                       (id_compra, id_producto, cantidad, precio_unitario, subtotal, activo, fecha_creacion)
-                       VALUES
-                       (:idc, :idp, :cant, :prec, :subt, 1, NOW())";
+                    (id_compra, id_producto, cantidad, precio_unitario, subtotal, activo, fecha_creacion)
+                    VALUES
+                    (:idc, :idp, :cant, :prec, :subt, 1, NOW())";
             $stDet = $this->conn->prepare($sqlDet);
 
-            // Prep statements inventario
+            // Update de stock (se usará delta positivo/negativo)
             $stUpdProd = $this->conn->prepare(
-                "UPDATE productos SET stock_actual = stock_actual + :cant WHERE id_producto = :idp"
+                "UPDATE productos SET stock_actual = stock_actual + :delta WHERE id_producto = :idp"
             );
+
+            // Movimiento de inventario (tipo parametrizado)
             $stMov = $this->conn->prepare(
                 "INSERT INTO inventario_movimientos
-                 (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
-                 VALUES (:idp, 'Compra', :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+                (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
+                VALUES (:idp, :tipo, :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
             );
 
-            $ref = $datosCompra['folio_factura'] ?? ('COMP-' . $idCompra);
-
             foreach ($detalles as $d) {
+                $idProducto = (int)$d['id_producto'];
+                $cantidad   = (float)$d['cantidad'];
+                $precio     = number_format((float)$d['precio_unitario'], 2, '.', '');
+                $subtotal   = number_format((float)$d['subtotal'], 2, '.', '');
+
+                // 1) Insertar detalle
                 $stDet->execute([
                     ':idc'  => $idCompra,
-                    ':idp'  => (int)$d['id_producto'],
-                    ':cant' => (float)$d['cantidad'],
-                    ':prec' => number_format((float)$d['precio_unitario'], 2, '.', ''),
-                    ':subt' => number_format((float)$d['subtotal'], 2, '.', ''),
+                    ':idp'  => $idProducto,
+                    ':cant' => $cantidad,
+                    ':prec' => $precio,
+                    ':subt' => $subtotal,
                 ]);
 
-                // Actualizar stock
-                $stUpdProd->execute([
-                    ':cant' => (float)$d['cantidad'],
-                    ':idp'  => (int)$d['id_producto'],
-                ]);
+                // 2) Determinar tipo del movimiento (renglón > compra)
+                $tipoMov = $d['tipo_movimiento'] ?? $tipoPorCompra;
+                if (!in_array($tipoMov, $tiposPermitidos, true)) {
+                    $tipoMov = 'Entrada';
+                }
 
-                // Movimiento de inventario
+                // 3) Calcular delta de stock según tipo
+                //    - Entrada y Devolucion Venta => +cantidad
+                //    - Salida y Devolucion Compra => -cantidad
+                //    - Ajuste => respeta signo de la cantidad (puede venir negativa)
+                $delta = 0.0;
+                switch ($tipoMov) {
+                    case 'Entrada':
+                    case 'Devolucion Venta':
+                        $delta = +abs($cantidad);
+                        break;
+                    case 'Salida':
+                    case 'Devolucion Compra':
+                        $delta = -abs($cantidad);
+                        break;
+                    case 'Ajuste':
+                        // para ajuste toma la cantidad como viene (positiva o negativa)
+                        $delta = $cantidad;
+                        break;
+                }
+
+                // 4) Actualizar stock
+                if ($delta != 0.0) {
+                    $stUpdProd->execute([
+                        ':delta' => $delta,
+                        ':idp'   => $idProducto,
+                    ]);
+                }
+
+                // 5) Motivo legible
+                switch ($tipoMov) {
+                    case 'Entrada':
+                        $motivo = isset($d['tipo_movimiento']) && $d['tipo_movimiento'] === 'Entrada'
+                            ? 'Entrada por adición de stock'
+                            : 'Entrada por compra';
+                        break;
+                    case 'Salida':
+                        $motivo = 'Salida de stock';
+                        break;
+                    case 'Ajuste':
+                        $motivo = 'Ajuste de inventario';
+                        break;
+                    case 'Devolucion Venta':
+                        $motivo = 'Entrada por devolución de venta';
+                        break;
+                    case 'Devolucion Compra':
+                        $motivo = 'Salida por devolución a proveedor';
+                        break;
+                    default:
+                        $motivo = 'Movimiento de inventario';
+                }
+
+                // 6) Registrar movimiento
                 $stMov->execute([
-                    ':idp'   => (int)$d['id_producto'],
-                    ':cant'  => (float)$d['cantidad'],
-                    ':idsuc' => !empty($datosCompra['id_sucursal']) ? (int)$datosCompra['id_sucursal'] : 1,
-                    ':idusr' => (int)$datosCompra['id_usuario'],
+                    ':idp'   => $idProducto,
+                    ':tipo'  => $tipoMov,
+                    ':cant'  => abs($cantidad), // cantidad física movida (positiva)
+                    ':idsuc' => $idSucursal,
+                    ':idusr' => $idUsuario,
                     ':ref'   => $ref,
-                    ':mot'   => 'Entrada por compra',
+                    ':mot'   => $motivo,
                 ]);
             }
 
             // Bitácora
             $this->registrarBitacora(
-                (int)$datosCompra['id_usuario'],
+                $idUsuario,
                 'compras',
                 'INSERT',
                 $idCompra,
                 'Alta de compra con detalle',
                 null,
-                json_encode(['total' => $total, 'folio' => $ref], JSON_UNESCAPED_UNICODE)
+                json_encode([
+                    'total'           => $total,
+                    'folio'           => $ref,
+                    'tipo_movimiento' => $tipoPorCompra
+                ], JSON_UNESCAPED_UNICODE)
             );
 
             $this->conn->commit();
@@ -247,6 +321,8 @@ class CompraModel
             return ['ok' => false, 'msg' => $e->getMessage()];
         }
     }
+
+
 
     // =========================
     // CANCELAR COMPRA (reversa)
