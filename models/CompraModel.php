@@ -35,7 +35,6 @@ class CompraModel
             $params[':folio'] = "%{$folio}%";
         }
         if (!empty($fecha)) {
-            // Filtra por fecha de factura; si prefieres fecha_creacion, cambia aquí
             $sql .= " AND DATE(c.fecha_factura) = :fecha";
             $params[':fecha'] = $fecha;
         }
@@ -132,16 +131,18 @@ class CompraModel
     }
 
     // =========================
-    // CREAR COMPRA + INVENTARIO
+    // CREAR COMPRA + INVENTARIO + PRECIOS PRODUCTO (ACTUALIZADO)
     // =========================
     /**
      * $datosCompra = [
      *   'id_usuario', 'id_proveedor', 'id_sucursal' (nullable),
      *   'folio_factura' (nullable), 'fecha_factura' (Y-m-d nullable),
-     *   'estatus' => 'Pendiente'|'Pagada'|'Parcial'|'Cancelada' (default 'Pendiente')
+     *   'estatus' => 'Pendiente'|'Pagada'|'Parcial'|'Cancelada' (default 'Pendiente'),
+     *   'tipo_movimiento' => 'Entrada'|'Salida'|'Ajuste'|'Devolucion Venta'|'Devolucion Compra' (opcional)
      * ]
      * $detalles = [
-     *   ['id_producto'=>X, 'cantidad'=>N, 'precio_unitario'=>P, 'subtotal'=>opc] // subtotal opcional, se calcula N*P
+     *   ['id_producto'=>X, 'cantidad'=>N, 'precio_unitario'=>PPV, 'subtotal'=>opc, 'tipo_movimiento'=>opc]
+     *   // precio_unitario = PPV (precio de factura/proveedor)
      * ]
      */
     public function crearCompra(array $datosCompra, array $detalles)
@@ -149,13 +150,13 @@ class CompraModel
         try {
             $this->conn->beginTransaction();
 
-            // Suma total y normalización de subtotales
+            // Suma total y normalización de subtotales (PPV * cantidad)
             $total = 0.0;
             foreach ($detalles as &$d) {
                 $cant = (float)($d['cantidad'] ?? 0);
-                $prec = (float)($d['precio_unitario'] ?? 0);
+                $ppv  = (float)($d['precio_unitario'] ?? 0); // PPV de factura
                 if (!isset($d['subtotal'])) {
-                    $d['subtotal'] = round($cant * $prec, 2);
+                    $d['subtotal'] = round($cant * $ppv, 2);
                 }
                 $total += (float)$d['subtotal'];
             }
@@ -178,43 +179,62 @@ class CompraModel
                 ':est'   => $datosCompra['estatus'] ?? 'Pendiente',
             ]);
 
-            $idCompra  = (int)$this->conn->lastInsertId();
-            $ref       = $datosCompra['folio_factura'] ?? ('COMP-' . $idCompra);
-            $idSucursal= !empty($datosCompra['id_sucursal']) ? (int)$datosCompra['id_sucursal'] : 1;
-            $idUsuario = (int)$datosCompra['id_usuario'];
+            $idCompra   = (int)$this->conn->lastInsertId();
+            $ref        = $datosCompra['folio_factura'] ?? ('COMP-' . $idCompra);
+            $idSucursal = !empty($datosCompra['id_sucursal']) ? (int)$datosCompra['id_sucursal'] : 1;
+            $idUsuario  = (int)$datosCompra['id_usuario'];
+
+            // Nombre del proveedor (para reglas)
+            $stProvNom = $this->conn->prepare("SELECT LOWER(TRIM(nombre)) FROM proveedores WHERE id_proveedor = :id LIMIT 1");
+            $stProvNom->execute([':id' => (int)$datosCompra['id_proveedor']]);
+            $provNombre = (string)$stProvNom->fetchColumn();
 
             // Tipos permitidos (enum)
             $tiposPermitidos = ['Entrada','Salida','Ajuste','Devolucion Venta','Devolucion Compra'];
-
-            // Tipo por compra: por defecto Entrada (compras/adiciones)
-            $tipoPorCompra = $datosCompra['tipo_movimiento'] ?? 'Entrada';
+            $tipoPorCompra   = $datosCompra['tipo_movimiento'] ?? 'Entrada';
             if (!in_array($tipoPorCompra, $tiposPermitidos, true)) {
                 $tipoPorCompra = 'Entrada';
             }
 
             // Insert detalle
-            $sqlDet = "INSERT INTO compras_detalle
-                    (id_compra, id_producto, cantidad, precio_unitario, subtotal, activo, fecha_creacion)
-                    VALUES
-                    (:idc, :idp, :cant, :prec, :subt, 1, NOW())";
-            $stDet = $this->conn->prepare($sqlDet);
+            $stDet = $this->conn->prepare(
+                "INSERT INTO compras_detalle
+                 (id_compra, id_producto, cantidad, precio_unitario, subtotal, activo, fecha_creacion)
+                 VALUES
+                 (:idc, :idp, :cant, :prec, :subt, 1, NOW())"
+            );
 
-            // Update de stock (se usará delta positivo/negativo)
-            $stUpdProd = $this->conn->prepare(
+            // Update de stock
+            $stUpdStock = $this->conn->prepare(
                 "UPDATE productos SET stock_actual = stock_actual + :delta WHERE id_producto = :idp"
             );
 
-            // Movimiento de inventario (tipo parametrizado)
+            // ==== ACTUALIZAR PRECIOS DE PRODUCTO (según tu esquema actual)
+            // PPV -> productos.precio_lista
+            // PB  -> productos.precio_venta
+            // PT  -> productos.precio_taller
+            // CN  -> productos.costo_neto
+            $stUpdPrecios = $this->conn->prepare(
+                "UPDATE productos
+                 SET precio_proveedor = :ppv,
+                     costo_neto       = :cn,
+                     precio_publico   = :pb,
+                     precio_taller    = :pt
+                 WHERE id_producto    = :idp"
+            );
+
+            // Movimiento de inventario
             $stMov = $this->conn->prepare(
                 "INSERT INTO inventario_movimientos
-                (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
-                VALUES (:idp, :tipo, :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+                 (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
+                 VALUES (:idp, :tipo, :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
             );
 
             foreach ($detalles as $d) {
                 $idProducto = (int)$d['id_producto'];
                 $cantidad   = (float)$d['cantidad'];
-                $precio     = number_format((float)$d['precio_unitario'], 2, '.', '');
+                $ppv        = (float)$d['precio_unitario']; // PPV de factura
+                $precio     = number_format($ppv, 2, '.', '');
                 $subtotal   = number_format((float)$d['subtotal'], 2, '.', '');
 
                 // 1) Insertar detalle
@@ -226,16 +246,13 @@ class CompraModel
                     ':subt' => $subtotal,
                 ]);
 
-                // 2) Determinar tipo del movimiento (renglón > compra)
+                // 2) Tipo de movimiento (renglón o compra)
                 $tipoMov = $d['tipo_movimiento'] ?? $tipoPorCompra;
                 if (!in_array($tipoMov, $tiposPermitidos, true)) {
                     $tipoMov = 'Entrada';
                 }
 
-                // 3) Calcular delta de stock según tipo
-                //    - Entrada y Devolucion Venta => +cantidad
-                //    - Salida y Devolucion Compra => -cantidad
-                //    - Ajuste => respeta signo de la cantidad (puede venir negativa)
+                // 3) Delta stock
                 $delta = 0.0;
                 switch ($tipoMov) {
                     case 'Entrada':
@@ -247,47 +264,46 @@ class CompraModel
                         $delta = -abs($cantidad);
                         break;
                     case 'Ajuste':
-                        // para ajuste toma la cantidad como viene (positiva o negativa)
-                        $delta = $cantidad;
+                        $delta = $cantidad; // puede ser negativo o positivo
                         break;
                 }
 
                 // 4) Actualizar stock
                 if ($delta != 0.0) {
-                    $stUpdProd->execute([
+                    $stUpdStock->execute([
                         ':delta' => $delta,
                         ':idp'   => $idProducto,
                     ]);
                 }
 
-                // 5) Motivo legible
+                // 5) Calcular y actualizar precios del producto
+                [$cn, $pb, $pt] = $this->calcularPreciosPorProveedor($ppv, $provNombre);
+                $stUpdPrecios->execute([
+                    ':ppv' => number_format($ppv, 2, '.', ''),
+                    ':cn'  => number_format($cn,  2, '.', ''),
+                    ':pb'  => number_format($pb,  2, '.', ''),
+                    ':pt'  => number_format($pt,  2, '.', ''),
+                    ':idp' => $idProducto
+                ]);
+
+                // 6) Movimiento de inventario
                 switch ($tipoMov) {
                     case 'Entrada':
-                        $motivo = isset($d['tipo_movimiento']) && $d['tipo_movimiento'] === 'Entrada'
-                            ? 'Entrada por adición de stock'
-                            : 'Entrada por compra';
+                        $motivo = (isset($d['tipo_movimiento']) && $d['tipo_movimiento'] === 'Entrada')
+                                  ? 'Entrada por adición de stock'
+                                  : 'Entrada por compra';
                         break;
-                    case 'Salida':
-                        $motivo = 'Salida de stock';
-                        break;
-                    case 'Ajuste':
-                        $motivo = 'Ajuste de inventario';
-                        break;
-                    case 'Devolucion Venta':
-                        $motivo = 'Entrada por devolución de venta';
-                        break;
-                    case 'Devolucion Compra':
-                        $motivo = 'Salida por devolución a proveedor';
-                        break;
-                    default:
-                        $motivo = 'Movimiento de inventario';
+                    case 'Salida':            $motivo = 'Salida de stock'; break;
+                    case 'Ajuste':            $motivo = 'Ajuste de inventario'; break;
+                    case 'Devolucion Venta':  $motivo = 'Entrada por devolución de venta'; break;
+                    case 'Devolucion Compra': $motivo = 'Salida por devolución a proveedor'; break;
+                    default:                  $motivo = 'Movimiento de inventario';
                 }
 
-                // 6) Registrar movimiento
                 $stMov->execute([
                     ':idp'   => $idProducto,
                     ':tipo'  => $tipoMov,
-                    ':cant'  => abs($cantidad), // cantidad física movida (positiva)
+                    ':cant'  => abs($cantidad),
                     ':idsuc' => $idSucursal,
                     ':idusr' => $idUsuario,
                     ':ref'   => $ref,
@@ -301,11 +317,12 @@ class CompraModel
                 'compras',
                 'INSERT',
                 $idCompra,
-                'Alta de compra con detalle',
+                'Alta de compra con detalle (actualiza precios y stock)',
                 null,
                 json_encode([
                     'total'           => $total,
                     'folio'           => $ref,
+                    'proveedor'       => $provNombre,
                     'tipo_movimiento' => $tipoPorCompra
                 ], JSON_UNESCAPED_UNICODE)
             );
@@ -321,8 +338,6 @@ class CompraModel
             return ['ok' => false, 'msg' => $e->getMessage()];
         }
     }
-
-
 
     // =========================
     // CANCELAR COMPRA (reversa)
@@ -359,7 +374,7 @@ class CompraModel
             $stMov = $this->conn->prepare(
                 "INSERT INTO inventario_movimientos
                  (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
-                 VALUES (:idp, 'Dev_Compra', :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+                 VALUES (:idp, 'Devolucion Compra', :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
             );
 
             $ref = $c['folio_factura'] ?? ('COMP-' . $idCompra);
@@ -458,5 +473,65 @@ class CompraModel
             ':desc'    => $descripcion,
             ':ip'      => $ip
         ]);
+    }
+
+    // =========================
+    // Reglas por proveedor (en código, como indicaste)
+    // =========================
+    /**
+     * Calcula [costo_neto (CN), precio_venta (PB), precio_taller (PT)]
+     * a partir del precio_proveedor (PPV) y el nombre del proveedor.
+     * Defaults: CN = ppv*IVA, PB = (ppv*1.8)*IVA, PT = PB*0.8
+     */
+    private function calcularPreciosPorProveedor(float $ppv, string $provNombre): array
+    {
+        $ppv = max(0.0, $ppv);
+        $nom = strtolower(trim($provNombre));
+        $IVA = 1.16;
+
+        // Defaults
+        $CN = $ppv * $IVA;
+        $PB = ($ppv * 1.8) * $IVA;
+        $PT = $PB * 0.8;
+
+        switch ($nom) {
+            case 'permor':
+                $CN = $ppv * 0.64 * $IVA * 0.89 * 0.95;
+                $PB = $ppv * 1.024;
+                $PT = $PB / 1.25;
+                break;
+
+            case 'apymsa':
+                $CN = $ppv * 1.044;
+                $PB = $ppv * 1.70694;
+                $PT = $ppv * 1.365552; // (= PB / 1.25)
+                break;
+
+            case 'bdh':
+                $CN = $ppv;
+                $PB = $ppv * $IVA;
+                $PT = $ppv;
+                break;
+
+            case 'switchero':
+                $CN = $ppv;
+                $PB = $ppv * 1.8125;
+                $PT = $ppv * 1.45;
+                break;
+
+            case 'serva':
+            case 'dirco':
+            case 'ciosa':
+            case 'diriego':
+            case 'delatsa':
+            case 'calderon':
+            case 'visa':
+                $CN = $ppv * $IVA;
+                $PB = ($ppv * 1.8) * $IVA;
+                $PT = $PB * 0.8;
+                break;
+        }
+
+        return [round($CN, 2), round($PB, 2), round($PT, 2)];
     }
 }

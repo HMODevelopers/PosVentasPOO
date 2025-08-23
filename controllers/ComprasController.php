@@ -50,18 +50,19 @@ switch ($accion) {
 
         // Asegura id_sucursal si manejas multi-sucursal
         if (!isset($compra['id_sucursal'])) {
-            $compra['id_sucursal'] = $_SESSION['id_sucursal']
-                                ?? ($_SESSION['usuario']['id_sucursal'] ?? null);
+            $compra['id_sucursal'] = $_SESSION['id_sucursal'] ?? ($_SESSION['usuario']['id_sucursal'] ?? null);
         }
 
         if (empty($compra['id_usuario'])) {
             echo json_encode(['ok' => false, 'msg' => 'Falta id_usuario (sesión).']);
             break;
         }
+
         if (empty($compra['id_proveedor'])) {
             echo json_encode(['ok' => false, 'msg' => 'Falta id_proveedor.']);
             break;
         }
+
         if (empty($detalles) || !is_array($detalles)) {
             echo json_encode(['ok' => false, 'msg' => 'Debes enviar al menos un renglón en "detalles".']);
             break;

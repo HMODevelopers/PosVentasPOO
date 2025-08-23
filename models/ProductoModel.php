@@ -18,8 +18,8 @@ class ProductoModel
         $offset = ($pagina - 1) * $limite;
 
         $sql = "SELECT p.*,
-                       pr.nombre    AS proveedor,
-                       u.nombre     AS unidad_sat
+                       pr.nombre        AS proveedor,
+                       u.descripcion    AS unidad_sat
                 FROM productos p
                 LEFT JOIN proveedores  pr ON p.id_proveedor = pr.id_proveedor
                 LEFT JOIN unidades_sat u  ON p.id_unidad_sat = u.id_unidad_sat
@@ -90,33 +90,37 @@ class ProductoModel
     {
         $sql = "INSERT INTO productos
                 (id_proveedor, id_unidad_sat, clave_prod_serv_sat, codigo, descripcion,
-                 precio_compra, precio_venta, precio_taller, precio_base,
-                 stock_actual, stock_minimo,
-                 piso, pasillo, estante, peldaño,
+                 costo_neto, precio_publico, precio_taller, precio_proveedor,
+                 stock_actual, stock_maximo, stock_minimo,
+                 piso, pasillo, estante, `peldaño`,
                  activo, fecha_creacion)
                 VALUES
                 (:idprov, :iduni, :clave, :cod, :des,
-                 :pc, :pv, :pt, :pb,
-                 :stk, :stkmin,
+                 :cn, :ppub, :pt, :ppv,
+                 :stk, :stkmax, :stkmin,
                  :piso, :pas, :est, :pel,
                  1, NOW())";
         $st = $this->conn->prepare($sql);
         $ok = $st->execute([
-            ':idprov' => $d['id_proveedor']   ?? null,
-            ':iduni'  => $d['id_unidad_sat']  ?? null,
-            ':clave'  => $d['clave_prod_serv_sat'] ?? null,
-            ':cod'    => $d['codigo'] ?? null,
+            ':idprov' => $d['id_proveedor']            ?? null,
+            ':iduni'  => $d['id_unidad_sat']           ?? null,
+            ':clave'  => $d['clave_prod_serv_sat']     ?? '01010101',  // NOT NULL
+            ':cod'    => $d['codigo']                  ?? null,
             ':des'    => trim($d['descripcion'] ?? ''),
-            ':pc'     => $d['precio_compra'] ?? null,
-            ':pv'     => $d['precio_venta']  ?? null,
-            ':pt'     => $d['precio_taller'] ?? null,
-            ':pb'     => $d['precio_base']   ?? null,
-            ':stk'    => $d['stock_actual']  ?? 0,
-            ':stkmin' => $d['stock_minimo']  ?? 0,
-            ':piso'   => $d['piso']          ?? 0,
-            ':pas'    => $d['pasillo']       ?? 0,
-            ':est'    => $d['estante']       ?? 0,
-            ':pel'    => $d['peldaño']       ?? 0,
+
+            ':cn'     => isset($d['costo_neto'])       ? $d['costo_neto']       : 0,
+            ':ppub'   => isset($d['precio_publico'])   ? $d['precio_publico']   : 0,
+            ':pt'     => isset($d['precio_taller'])    ? $d['precio_taller']    : 0,
+            ':ppv'    => $d['precio_proveedor']        ?? null,
+
+            ':stk'    => $d['stock_actual']            ?? 0,
+            ':stkmax' => $d['stock_maximo']            ?? 0,
+            ':stkmin' => $d['stock_minimo']            ?? 0,
+
+            ':piso'   => $d['piso']                    ?? 0,
+            ':pas'    => $d['pasillo']                 ?? 0,
+            ':est'    => $d['estante']                 ?? 0,
+            ':pel'    => $d['peldaño']                 ?? 0,
         ]);
         return $ok ? (int)$this->conn->lastInsertId() : 0;
     }
@@ -129,34 +133,39 @@ class ProductoModel
                     clave_prod_serv_sat = :clave,
                     codigo = :cod,
                     descripcion = :des,
-                    precio_compra = :pc,
-                    precio_venta = :pv,
+                    costo_neto = :cn,
+                    precio_publico = :ppub,
                     precio_taller = :pt,
-                    precio_base = :pb,
+                    precio_proveedor = :ppv,
                     stock_actual = :stk,
+                    stock_maximo = :stkmax,
                     stock_minimo = :stkmin,
                     piso = :piso,
                     pasillo = :pas,
                     estante = :est,
-                    peldaño = :pel
+                    `peldaño` = :pel
                 WHERE id_producto = :id";
         $st = $this->conn->prepare($sql);
         return $st->execute([
-            ':idprov' => $d['id_proveedor']   ?? null,
-            ':iduni'  => $d['id_unidad_sat']  ?? null,
-            ':clave'  => $d['clave_prod_serv_sat'] ?? null,
-            ':cod'    => $d['codigo'] ?? null,
+            ':idprov' => $d['id_proveedor']            ?? null,
+            ':iduni'  => $d['id_unidad_sat']           ?? null,
+            ':clave'  => $d['clave_prod_serv_sat']     ?? '01010101',
+            ':cod'    => $d['codigo']                  ?? null,
             ':des'    => trim($d['descripcion'] ?? ''),
-            ':pc'     => $d['precio_compra'] ?? null,
-            ':pv'     => $d['precio_venta']  ?? null,
-            ':pt'     => $d['precio_taller'] ?? null,
-            ':pb'     => $d['precio_base']   ?? null,
-            ':stk'    => $d['stock_actual']  ?? 0,
-            ':stkmin' => $d['stock_minimo']  ?? 0,
-            ':piso'   => $d['piso']          ?? 0,
-            ':pas'    => $d['pasillo']       ?? 0,
-            ':est'    => $d['estante']       ?? 0,
-            ':pel'    => $d['peldaño']       ?? 0,
+
+            ':cn'     => isset($d['costo_neto'])       ? $d['costo_neto']       : 0,
+            ':ppub'   => isset($d['precio_publico'])   ? $d['precio_publico']   : 0,
+            ':pt'     => isset($d['precio_taller'])    ? $d['precio_taller']    : 0,
+            ':ppv'    => $d['precio_proveedor']        ?? null,
+
+            ':stk'    => $d['stock_actual']            ?? 0,
+            ':stkmax' => $d['stock_maximo']            ?? 0,
+            ':stkmin' => $d['stock_minimo']            ?? 0,
+
+            ':piso'   => $d['piso']                    ?? 0,
+            ':pas'    => $d['pasillo']                 ?? 0,
+            ':est'    => $d['estante']                 ?? 0,
+            ':pel'    => $d['peldaño']                 ?? 0,
             ':id'     => $id
         ]);
     }
@@ -167,24 +176,25 @@ class ProductoModel
         return $st->execute([':id' => $id]);
     }
 
+   
     // ================== PARA SELECTS/AUTOCOMPLETE ==================
-    // Devuelve lista breve para compras/ventas (costo sugerido incluido)
+    // Devuelve lista breve para compras (sólo sugiere PPV = precio_proveedor)
     public function buscarMin(string $q = '', int $limite = 50)
     {
-        // sanea límite
         $lim = max(1, (int)$limite);
 
-        $sql = "SELECT id_producto, codigo, descripcion, precio_compra AS costo_sugerido
+        $sql = "SELECT id_producto,
+                    codigo,
+                    descripcion,
+                    precio_proveedor
                 FROM productos
                 WHERE activo = 1";
 
         $useQ = ($q !== '');
         if ($useQ) {
-            // usa placeholders distintos para evitar problemas con drivers
             $sql .= " AND (codigo LIKE :q1 OR descripcion LIKE :q2)";
         }
 
-        // IMPORTANTE: no bindear LIMIT; inyectar entero saneado
         $sql .= " ORDER BY descripcion ASC LIMIT {$lim}";
 
         $st = $this->conn->prepare($sql);
@@ -198,5 +208,4 @@ class ProductoModel
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
-
 }

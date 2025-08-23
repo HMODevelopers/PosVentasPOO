@@ -61,33 +61,33 @@
         </div>
 
          <!-- Detalle -->
-        <div class="table-responsive mt-2" style="max-height: 250px; overflow-y: auto;">
-        <table class="table table-bordered table-hover table-sm mb-2" id="ac-tabla">
-           <thead class="thead-light">
-                <tr>
-                    <th style="min-width: 260px;">Producto*</th>
-                    <th>Cantidad*</th>
-                    <th>Costo Unitario*</th>
-                    <th>Importe</th>
-                    <th style="width:60px;">&nbsp;</th>
-                </tr>
-            </thead>
-            <tbody id="ac-tbody">
-            <!-- filas dinámicas -->
-            </tbody>
-            <tfoot>
-            <tr>
-                <th colspan="3" class="text-right">Total:</th>
-                <th class="text-right" id="ac-total">$0.00</th>
-                <th></th>
-            </tr>
-            </tfoot>
-        </table>
-        </div>
-        <br>
-        <div id="ac-error" class="alert alert-danger mb-0" style="display:none;"></div>
-        <br>
-      </div>
+        <div class="table-responsive mt-2" style="max-height: 400px; overflow-y: auto;">
+          <table class="table table-bordered table-hover table-sm mb-2" id="ac-tabla">
+            <thead class="thead-light">
+                  <tr>
+                      <th style="min-width: 260px;">Producto*</th>
+                      <th>Cantidad*</th>
+                      <th>Costo Unitario*</th>
+                      <th>Importe</th>
+                      <th style="width:60px;">&nbsp;</th>
+                  </tr>
+              </thead>
+              <tbody id="ac-tbody">
+              <!-- filas dinámicas -->
+              </tbody>
+              <tfoot>
+              <tr>
+                  <th colspan="3" class="text-right">Total:</th>
+                  <th class="text-right" id="ac-total">$0.00</th>
+                  <th></th>
+              </tr>
+              </tfoot>
+          </table>
+          </div>
+          <br>
+          <div id="ac-error" class="alert alert-danger mb-0" style="display:none;"></div>
+          <br>
+       </div>
 
       <div class="modal-footer">
         <button type="button" class="btn btn-light" data-dismiss="modal">Cancelar</button>
