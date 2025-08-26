@@ -10,14 +10,19 @@ switch ($accion) {
 
     // ===== LISTAR PAGINADO =====
     case 'listar':
-        $pagina      = (int)($_GET['pagina'] ?? $_POST['pagina'] ?? 1);
-        $limite      = (int)($_GET['limite'] ?? $_POST['limite'] ?? 10);
-        $q           = trim($_GET['q'] ?? $_POST['q'] ?? '');
-        $idProveedor = !empty($_REQUEST['id_proveedor']) ? (int)$_REQUEST['id_proveedor'] : null;
-        $idUnidad    = !empty($_REQUEST['id_unidad_sat']) ? (int)$_REQUEST['id_unidad_sat'] : null;
+        $pagina = max(1, (int)($_GET['pagina'] ?? $_POST['pagina'] ?? 1));
+        $limite = max(1, (int)($_GET['limite'] ?? $_POST['limite'] ?? 10));
 
-        $data  = $productoModel->listar($pagina, $limite, $q, $idProveedor, $idUnidad);
-        $total = $productoModel->contar($q, $idProveedor, $idUnidad);
+        // Nuevos filtros
+        $codigo      = trim($_GET['codigo']      ?? $_POST['codigo']      ?? '');
+        $descripcion = trim($_GET['descripcion'] ?? $_POST['descripcion'] ?? '');
+        $idProveedor = (isset($_REQUEST['id_proveedor']) && $_REQUEST['id_proveedor'] !== '')
+                    ? (int)$_REQUEST['id_proveedor']
+                    : null;
+
+        // OJO: el modelo debe aceptar (codigo, descripcion, idProveedor)
+        $data  = $productoModel->listar($pagina, $limite, $codigo, $descripcion, $idProveedor);
+        $total = $productoModel->contar($codigo, $descripcion, $idProveedor);
 
         echo json_encode(['data' => $data, 'total' => $total]);
     break;

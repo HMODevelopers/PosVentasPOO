@@ -13,37 +13,38 @@ class ProductoModel
     }
 
     // ================== LISTADO + CONTAR ==================
-    public function listar(int $pagina = 1, int $limite = 10, string $q = '', ?int $idProveedor = null, ?int $idUnidad = null)
-    {
+    public function listar(int $pagina = 1,int $limite = 10,string $codigo = '', string $descripcion = '', ?int $idProveedor = null) {
         $offset = ($pagina - 1) * $limite;
-
-        $sql = "SELECT p.*,
-                       pr.nombre        AS proveedor,
-                       u.descripcion    AS unidad_sat
+        $sql = "SELECT
+                    p.*,
+                    pr.nombre     AS proveedor,
+                    u.descripcion AS unidad_sat
                 FROM productos p
-                LEFT JOIN proveedores  pr ON p.id_proveedor = pr.id_proveedor
-                LEFT JOIN unidades_sat u  ON p.id_unidad_sat = u.id_unidad_sat
+                LEFT JOIN proveedores  pr ON p.id_proveedor   = pr.id_proveedor
+                LEFT JOIN unidades_sat u  ON p.id_unidad_sat  = u.id_unidad_sat
                 WHERE p.activo = 1";
         $params = [];
 
-        if ($q !== '') {
-            $sql .= " AND (p.descripcion LIKE :q OR p.codigo LIKE :q)";
-            $params[':q'] = "%{$q}%";
+        if ($codigo !== '') {
+            $sql .= " AND p.codigo LIKE :codigo";
+            $params[':codigo'] = "%{$codigo}%";
+        }
+        if ($descripcion !== '') {
+            $sql .= " AND p.descripcion LIKE :descripcion";
+            $params[':descripcion'] = "%{$descripcion}%";
         }
         if (!empty($idProveedor)) {
             $sql .= " AND p.id_proveedor = :idprov";
             $params[':idprov'] = (int)$idProveedor;
         }
-        if (!empty($idUnidad)) {
-            $sql .= " AND p.id_unidad_sat = :iduni";
-            $params[':iduni'] = (int)$idUnidad;
-        }
 
         $sql .= " ORDER BY p.id_producto DESC
-                  LIMIT :limite OFFSET :offset";
+                LIMIT :limite OFFSET :offset";
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k => $v) $st->bindValue($k, $v);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
         $st->bindValue(':limite', $limite, PDO::PARAM_INT);
         $st->bindValue(':offset', $offset, PDO::PARAM_INT);
         $st->execute();
@@ -51,39 +52,50 @@ class ProductoModel
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function contar(string $q = '', ?int $idProveedor = null, ?int $idUnidad = null)
-    {
+    public function contar( string $codigo = '', string $descripcion = '',  ?int $idProveedor = null) {
         $sql = "SELECT COUNT(*) AS total
                 FROM productos p
                 WHERE p.activo = 1";
         $params = [];
 
-        if ($q !== '') {
-            $sql .= " AND (p.descripcion LIKE :q OR p.codigo LIKE :q)";
-            $params[':q'] = "%{$q}%";
+        if ($codigo !== '') {
+            $sql .= " AND p.codigo LIKE :codigo";
+            $params[':codigo'] = "%{$codigo}%";
         }
-        if (!empty($idProveedor)) {
+        if ($descripcion !== '') {
+            $sql .= " AND p.descripcion LIKE :descripcion";
+            $params[':descripcion'] = "%{$descripcion}%";
+        }
+        if (!is_null($idProveedor)) {
             $sql .= " AND p.id_proveedor = :idprov";
             $params[':idprov'] = (int)$idProveedor;
         }
-        if (!empty($idUnidad)) {
-            $sql .= " AND p.id_unidad_sat = :iduni";
-            $params[':iduni'] = (int)$idUnidad;
-        }
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k => $v) $st->bindValue($k, $v);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v, $k === ':idprov' ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
         $st->execute();
+
         return (int)($st->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
     }
 
     // ================== CRUD ==================
     public function obtenerPorId(int $id)
     {
-        $st = $this->conn->prepare("SELECT * FROM productos WHERE id_producto = :id LIMIT 1");
+        $sql = "SELECT
+                    p.*,
+                    pr.nombre     AS proveedor,
+                    u.descripcion AS unidad_sat
+                FROM productos p
+                LEFT JOIN proveedores  pr ON pr.id_proveedor = p.id_proveedor
+                LEFT JOIN unidades_sat u  ON u.id_unidad_sat = p.id_unidad_sat
+                WHERE p.id_producto = :id
+                LIMIT 1";
+        $st = $this->conn->prepare($sql);
         $st->bindValue(':id', $id, PDO::PARAM_INT);
         $st->execute();
-        return $st->fetch(PDO::FETCH_ASSOC);
+        return $st->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
     public function crear(array $d)
