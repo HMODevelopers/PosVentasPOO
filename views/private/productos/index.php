@@ -39,6 +39,16 @@ if (!isset($_SESSION['usuario'])) {
     <style>
       .clean-filter .input-group-text{ cursor:pointer; }
       .badge-pill{ border-radius: 50rem; }
+      /* Evita que la .table-responsive "corte" el dropdown vertical */
+      .table-responsive {
+        overflow-y: visible !important; /* mantiene el scroll horizontal */
+      }
+
+      /* Asegura que el menú quede por encima de otros elementos si es necesario */
+      .table-responsive .dropdown-menu {
+        z-index: 2000;
+      }
+
     </style>
   </head>
 
@@ -107,34 +117,44 @@ if (!isset($_SESSION['usuario'])) {
         <!-- =================== /Filtros =================== -->
 
         <!-- =================== Tabla Productos =================== -->
-        <div class="row">
-          <div class="col-12">
-            <div class="card-box">
-              <div class="d-flex justify-content-between align-items-center mb-2">
-                <h4 class="header-title">Listado de Productos</h4>
-              </div>
+       <div class="row">
+        <div class="col-12">
+          <div class="card-box">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h4 class="header-title">Listado de Productos</h4>
 
-              <div class="table-responsive">
-                <table id="tablaProductos" class="table table-bordered table-hover table-striped">
-                  <thead>
-                    <tr>
-                      <th class="text-center" style="width:120px;">Código</th>
-                      <th>Descripción</th>
-                      <th class="text-center" style="width:220px;">Proveedor</th>
-                      <th class="text-center" style="width:120px;">Stock</th>
-                      <th class="text-center" style="width:140px;">Precio Público</th>
-                      <th class="text-center" style="width:140px;">Precio Taller</th>
-                      <th class="text-center" style="width:140px;">Precio Proveedor</th>
-                      <th class="text-center" style="width:140px;">Costo Neto</th>
-                      <th class="text-center" style="width:90px;">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
+              <!-- Botón Agregar producto -->
+              <button id="btnAgregarProducto"
+                      type="button"
+                      class="btn btn-primary btn-sm waves-effect waves-light"
+                      data-toggle="modal"
+                      data-target="#modalProducto">
+                <i class="mdi mdi-plus"></i> Agregar producto
+              </button>
 
-              <!-- Paginador -->
-              <div class="row align-items-center justify-content-between mt-2">
+            </div>
+
+            <div class="table-responsive">
+              <table id="tablaProductos" class="table table-bordered table-hover table-striped">
+                <thead>
+                  <tr>
+                    <th class="text-center" style="width:120px;">Código</th>
+                    <th>Descripción</th>
+                    <th class="text-center" style="width:220px;">Proveedor</th>
+                    <th class="text-center" style="width:120px;">Stock</th>
+                    <th class="text-center" style="width:140px;">Precio Público</th>
+                    <th class="text-center" style="width:140px;">Precio Taller</th>
+                    <th class="text-center" style="width:140px;">Precio Proveedor</th>
+                    <th class="text-center" style="width:140px;">Costo Neto</th>
+                    <th class="text-center" style="width:90px;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <!-- Paginador -->
+            <div class="row align-items-center justify-content-between mt-2">
                 <div class="col-md-6">
                   <div id="infoProductos" class="dataTables_info" role="status" aria-live="polite"></div>
                 </div>
@@ -143,15 +163,28 @@ if (!isset($_SESSION['usuario'])) {
                     <ul id="pagination" class="pagination justify-content-end mb-0"></ul>
                   </nav>
                 </div>
-              </div>
             </div>
           </div>
         </div>
+      </div>
+
         <!-- =================== /Tabla Productos =================== -->
 
         <!-- =================== Modal Detalle =================== -->
         <?php include_once __DIR__ . '/../productos/modales/detalles.php'; ?>  
         <!-- =================== /Modal Detalle =================== -->
+
+        <!-- =================== Modal Agregar =================== -->
+        <?php include_once __DIR__ . '/../productos/modales/agregar.php'; ?>  
+        <!-- =================== /Modal Agregar =================== -->
+
+         <!-- =================== Modal Editar =================== -->
+        <?php include_once __DIR__ . '/../productos/modales/editar.php'; ?>  
+        <!-- =================== /Modal Editar =================== -->
+
+        <!-- =================== Modal Eliminar =================== -->
+        <?php include_once __DIR__ . '/../productos/modales/eliminar.php'; ?>  
+        <!-- =================== /Modal Eliminar =================== -->
 
       </div>
     </div>
@@ -164,8 +197,10 @@ if (!isset($_SESSION['usuario'])) {
     <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-
     <script>
+    /* =====================================================================================
+    LISTADO DE PRODUCTOS + FILTROS + DETALLE
+    ===================================================================================== */
       $(function(){
         let paginaActual = 1;
         const limitePorPagina = 10;
@@ -177,7 +212,8 @@ if (!isset($_SESSION['usuario'])) {
         function mxn(v){ return Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'}); }
         function ymdToEs(ymd){ if(!ymd) return '—'; const [y,m,d]=String(ymd).split('-'); return `${d}/${m}/${y}`; }
 
-        function cargarProveedoresSelect(opts={}){
+        function cargarProveedoresSelect(opts={})
+        {
           const { selectId='Proveedor', selected='', incluirTodos=true, limite=200, q='' } = opts;
           const $sel = $('#'+selectId);
           if ($sel.length === 0) return;
@@ -202,13 +238,13 @@ if (!isset($_SESSION['usuario'])) {
           .fail(function(){ $sel.prop('disabled', false); });
         }
 
-        function cargarUnidadesSelect(opts={}){
+        function cargarUnidadesSelect(opts={})
+        {
           const { selectId='Unidad', selected='', incluirTodos=true, limite=500, q='' } = opts;
           const $sel = $('#'+selectId);
           if ($sel.length === 0) return;
           $sel.prop('disabled', true).html(incluirTodos? '<option value="">-- Todas --</option>' : '');
 
-          // Ajusta a tu controlador real si difiere el nombre
           $.ajax({
             url: '<?= BASE_URL ?>/controllers/UnidadesSatController.php',
             method: 'GET', dataType: 'json',
@@ -230,39 +266,43 @@ if (!isset($_SESSION['usuario'])) {
           .fail(function(){ $sel.prop('disabled', false); });
         }
 
-        function cargarProductos(pagina){
-            const codigo      = $('#Codigo').val();        // <input id="Codigo">
-            const descripcion = $('#Descripcion').val();   // <input id="Descripcion">
-            const idProv      = $('#Proveedor').val();     // <select id="Proveedor">
+        function cargarProductos(pagina)
+        {
+          const codigo      = $('#Codigo').val();
+          const descripcion = $('#Descripcion').val();
+          const idProv      = $('#Proveedor').val();
 
-            $.ajax({
-                url: '<?= BASE_URL ?>/controllers/ProductosController.php',
-                method: 'POST',
-                dataType: 'json',
-                data: {
-                accion: 'listar',
-                pagina: pagina,
-                limite: limitePorPagina,
-                codigo: codigo,
-                descripcion: descripcion,
-                id_proveedor: idProv || ''
-                }
-            })
-            .done(function(resp){
-                const productos = resp?.data || [];
-                const total     = parseInt(resp?.total || 0, 10);
-                renderizarTabla(productos);
+          $.ajax({
+            url: '<?= BASE_URL ?>/controllers/ProductosController.php',
+            method: 'POST',
+            dataType: 'json',
+            data: {
+              accion: 'listar',
+              pagina: pagina,
+              limite: limitePorPagina,
+              codigo: codigo,
+              descripcion: descripcion,
+              id_proveedor: idProv || ''
+            }
+          })
+          .done(function(resp){
+            const productos = resp?.data || [];
+            const total     = parseInt(resp?.total || 0, 10);
+            renderizarTabla(productos);
 
-                const desde = (pagina - 1) * limitePorPagina + 1;
-                const hasta = Math.min(pagina * limitePorPagina, total);
-                $('#infoProductos').text(`Mostrando ${total === 0 ? 0 : desde} a ${hasta} de ${total} productos`);
+            const desde = (pagina - 1) * limitePorPagina + 1;
+            const hasta = Math.min(pagina * limitePorPagina, total);
+            $('#infoProductos').text(`Mostrando ${total === 0 ? 0 : desde} a ${hasta} de ${total} productos`);
 
-                configurarPaginacion(pagina, total, limitePorPagina);
-            })
-            .fail(function(){
-                toastr.error('Error al cargar los productos.');
-            });
+            configurarPaginacion(pagina, total, limitePorPagina);
+          })
+          .fail(function(){
+            toastr.error('Error al cargar los productos.');
+          });
         }
+
+        // Exponer para que otros bloques puedan llamar cargarProductos
+        window.cargarProductos = cargarProductos;
 
         function renderizarTabla(productos){
           let tbody='';
@@ -298,6 +338,12 @@ if (!isset($_SESSION['usuario'])) {
                         <a class="dropdown-item accion-ver-detalle" href="#" data-id="${p.id_producto}">
                           <i class="mdi mdi-eye mr-2 text-muted font-18 vertical-middle"></i>Ver Detalle
                         </a>
+                        <a class="dropdown-item accion-editar" href="#" data-id="${p.id_producto}">
+                          <i class="mdi mdi-pencil mr-2 text-muted font-18 vertical-middle"></i>Editar
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <a class="dropdown-item text-danger accion-eliminar" href="#" data-id="${p.id_producto}" data-cod="${cod}"><i class="mdi mdi-trash-can-outline mr-2 text-danger font-18 vertical-middle"></i>
+                          Eliminar</a>
                       </div>
                     </div>
                   </td>
@@ -307,7 +353,8 @@ if (!isset($_SESSION['usuario'])) {
           $('#tablaProductos tbody').html(tbody);
         }
 
-        function configurarPaginacion(currentPage, totalItems, itemsPerPage=10){
+        function configurarPaginacion(currentPage, totalItems, itemsPerPage=10)
+        {
           const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
           const $ul = $('#pagination');
           const maxVisiblePages = 5;
@@ -338,7 +385,7 @@ if (!isset($_SESSION['usuario'])) {
           });
         }
 
-        // Filtros (igual patrón que Compras)
+        // Filtros
         $(".filtrar")
           .change(function(){
             const $el = $(this);
@@ -361,8 +408,9 @@ if (!isset($_SESSION['usuario'])) {
           cargarProductos(1);
         });
 
-        // =================== Detalle ===================
-        $(document).on('click', 'a.accion-ver-detalle', function(e){
+        // Modal Detalle
+        $(document).on('click', 'a.accion-ver-detalle', function(e)
+        {
           e.preventDefault();
           const id = $(this).data('id');
           if (!id) return;
@@ -378,7 +426,7 @@ if (!isset($_SESSION['usuario'])) {
             data: { accion: 'detalle', id_producto: id }
           })
           .done(function(resp){
-            const p = resp?.data || null; // <== TU CONTROLADOR responde { data: row }
+            const p = resp?.data || null;
             if (!p){
               $('#det-loader').hide();
               $('#det-error').show().text('No se encontró el producto.');
@@ -387,8 +435,6 @@ if (!isset($_SESSION['usuario'])) {
 
             $('#det-codigo').text(p.codigo || ('#'+(p.id_producto||'')));
             $('#det-descripcion').text(p.descripcion || '—');
-
-            // nombre proveedor/unidad si los traes en el detalle; si no, se muestra el id
             $('#det-proveedor').text(p.proveedor || p.nombre_proveedor || (p.id_proveedor ? `#${p.id_proveedor}` : '—'));
             $('#det-unidad').text(p.unidad_sat || p.descripcion_unidad || (p.id_unidad_sat ? `#${p.id_unidad_sat}` : '—'));
             $('#det-clave').text(p.clave_prod_serv_sat || '—');
@@ -416,7 +462,558 @@ if (!isset($_SESSION['usuario'])) {
         });
         });
 
-      function clearField(id){ const el = document.getElementById(id); if (!el) return; if(el.type==='checkbox'){ el.checked=false; } else { el.value=''; } el.dispatchEvent(new Event('change')); }
-    </script>
+        // util para filtros
+        function clearField(id)
+        {
+          const el = document.getElementById(id);
+          if (!el) return;
+          if(el.type==='checkbox'){ el.checked=false; } else { el.value=''; }
+          el.dispatchEvent(new Event('change'));
+        }
+
+
+        /* =====================================================================================
+          MODAL AGREGAR PRODUCTO (validación + cálculo en tiempo real + recarga)
+          ===================================================================================== */
+
+        // Bandera global: recargar listado al cerrar si guardó OK
+        let _reloadOnClose = false;
+
+        // Resetear modal y cargar catálogos al abrir
+        $('#modalProducto').on('show.bs.modal', function () {
+          $('#formProducto')[0].reset();
+          $('#p_activo').prop('checked', true);
+          $('#modalProductoLabel').text('Agregar producto');
+
+          // Limpiar marcas de error previas
+          $('#formProducto .is-invalid').removeClass('is-invalid');
+
+          // Cargar proveedores
+          $.post('<?= BASE_URL ?>/controllers/ProveedoresController.php', { accion: 'listar-min' })
+            .done(resp => {
+              const $sel = $('#p_id_proveedor').empty().append('<option value="">— Selecciona —</option>');
+              (resp?.data || []).forEach(p => $sel.append(`<option value="${p.id_proveedor}">${p.nombre}</option>`));
+            });
+
+          // Cargar unidades SAT + fallback
+          $.post('<?= BASE_URL ?>/controllers/UnidadesSatController.php', { accion: 'listar_min' })
+            .done(resp => {
+              const $sel = $('#p_id_unidad_sat').empty().append('<option value="">— Selecciona —</option>');
+              (resp?.data || []).forEach(u => $sel.append(`<option value="${u.id_unidad_sat}">${u.clave} - ${u.descripcion}</option>`));
+            })
+            .always(() => {
+              const $sel = $('#p_id_unidad_sat');
+              if ($sel.find('option').length <= 1) {
+                $.post('<?= BASE_URL ?>/controllers/UnidadesSatController.php', { accion: 'listar-min' })
+                  .done(resp => {
+                    $sel.empty().append('<option value="">— Selecciona —</option>');
+                    (resp?.data || []).forEach(u => $sel.append(
+                      `<option value="${u.id_unidad_sat}">${u.clave} - ${u.descripcion}</option>`
+                    ));
+                  });
+              }
+            });
+        })
+        .on('shown.bs.modal', function(){
+          // Reiniciar flags y, si ya hay PPV, calcular al mostrar
+          _manual.cn = _manual.pt = _manual.pb = false;
+          if (parseFloat($('#p_precio_proveedor').val() || 0) > 0) debouncedCalc();
+        })
+        .on('hidden.bs.modal', function(){
+          // Recargar listado solo si guardamos con éxito
+          if (_reloadOnClose) {
+            _reloadOnClose = false;
+            reloadProductos();
+          }
+        });
+
+        // Helper para recargar listado
+        function reloadProductos(){
+          // DataTables
+          if ($.fn.DataTable && $.fn.dataTable.isDataTable('#tablaProductos')) {
+            $('#tablaProductos').DataTable().ajax.reload(null, false);
+            return;
+          }
+          // Paginador propio
+          const $active = $('#pagination .page-item.active a');
+          const page = parseInt($active?.data('page') || $active?.text() || 1, 10) || 1;
+
+          if (typeof window.cargarProductos === 'function') {
+            window.cargarProductos(page);  // usar la función expuesta
+          } else {
+            location.reload();             // último recurso
+          }
+        }
+
+        // Enviar a backend con validaciones
+        $('#formProducto').on('submit', function (e) {
+          e.preventDefault();
+
+          const errores = [];
+          let firstInvalid = null;
+
+          const setInvalid = (sel) => { $(sel).addClass('is-invalid'); if (!firstInvalid) firstInvalid = sel; };
+          const clearInvalids = () => $('#formProducto .is-invalid').removeClass('is-invalid');
+          clearInvalids();
+
+          const valTrim = sel => ($(sel).val() || '').toString().trim();
+          const num2 = v => {
+            const x = parseFloat((v||'').toString().replace(',', '.'));
+            return isNaN(x) ? NaN : x;
+          };
+          const int0 = v => {
+            const n = parseInt((v||'0'), 10);
+            return isNaN(n) ? NaN : n;
+          };
+
+          // Requeridos básicos
+          const idProv = valTrim('#p_id_proveedor');
+          if (!idProv) { errores.push('Proveedor es requerido.'); setInvalid('#p_id_proveedor'); }
+
+          const idUnidad = valTrim('#p_id_unidad_sat');
+          if (!idUnidad) { errores.push('Unidad SAT es requerida.'); setInvalid('#p_id_unidad_sat'); }
+
+          const codigo = valTrim('#p_codigo');
+          if (!codigo) {
+            errores.push('Código es requerido.');
+            setInvalid('#p_codigo');
+          } else {
+            const reCod = /^[A-Za-z0-9._\-\/]{1,50}$/;
+            if (!reCod.test(codigo)) {
+              errores.push('Código inválido. Permitidos A-Z, 0-9, ".", "-", "_", "/". Máx. 50.');
+              setInvalid('#p_codigo');
+            }
+          }
+
+          const descripcion = valTrim('#p_descripcion');
+          if (!descripcion) { errores.push('Descripción es requerida.'); setInvalid('#p_descripcion'); }
+
+          // Numéricos requeridos (> 0 en precios)
+          const ppv = num2($('#p_precio_proveedor').val());
+          if (isNaN(ppv) || ppv <= 0) { errores.push('Precio proveedor es requerido y debe ser > 0.'); setInvalid('#p_precio_proveedor'); }
+
+          const cn = num2($('#p_costo_neto').val());
+          if (isNaN(cn) || cn <= 0) { errores.push('Costo neto es requerido y debe ser > 0.'); setInvalid('#p_costo_neto'); }
+
+          const pt = num2($('#p_precio_taller').val());
+          if (isNaN(pt) || pt <= 0) { errores.push('Precio taller es requerido y debe ser > 0.'); setInvalid('#p_precio_taller'); }
+
+          const pb = num2($('#p_precio_publico').val());
+          if (isNaN(pb) || pb <= 0) { errores.push('Precio público es requerido y debe ser > 0.'); setInvalid('#p_precio_publico'); }
+
+          // Relación de precios
+          if (!isNaN(pb) && !isNaN(pt) && pb < pt) {
+            errores.push('Precio Público no debe ser menor que Precio Taller.');
+            setInvalid('#p_precio_publico');
+          }
+
+          // Stocks
+          const sa = int0($('#p_stock_actual').val());
+          const smax = int0($('#p_stock_maximo').val());
+          const smin = int0($('#p_stock_minimo').val());
+
+          if (isNaN(sa) || sa < 0)   { errores.push('Stock actual es requerido y debe ser entero ≥ 0.'); setInvalid('#p_stock_actual'); }
+          if (isNaN(smax) || smax < 0){ errores.push('Stock máximo es requerido y debe ser entero ≥ 0.'); setInvalid('#p_stock_maximo'); }
+          if (isNaN(smin) || smin < 0){ errores.push('Stock mínimo es requerido y debe ser entero ≥ 0.'); setInvalid('#p_stock_minimo'); }
+
+          if (!isNaN(smin) && !isNaN(smax) && smin > smax) {
+            errores.push('Stock mínimo no puede ser mayor que Stock máximo.');
+            setInvalid('#p_stock_minimo');
+          }
+
+          if (errores.length) {
+            toastr.warning(errores.join('<br>'));
+            if (firstInvalid) { try { $(firstInvalid).focus(); } catch(e){} }
+            return;
+          }
+
+          const payload = {
+            accion: 'crear',
+            id_producto: $('#p_id_producto').val() || null,
+            id_proveedor: $('#p_id_proveedor').val() || '',
+            id_unidad_sat: $('#p_id_unidad_sat').val() || '',
+            clave_prod_serv_sat: $('#p_clave_prod_serv_sat').val().trim() || '',
+            codigo: $('#p_codigo').val().trim(),
+            descripcion: $('#p_descripcion').val().trim(),
+            costo_neto: cn,
+            precio_publico: pb,
+            precio_taller: pt,
+            precio_proveedor: ppv,
+            stock_actual: isNaN(sa) ? 0 : sa,
+            stock_maximo: isNaN(smax) ? 0 : smax,
+            stock_minimo: isNaN(smin) ? 0 : smin,
+            piso: $('#p_piso').val() || 0,
+            pasillo: $('#p_pasillo').val() || 0,
+            estante: $('#p_estante').val() || 0,
+            peldano: $('#p_peldano').val() || 0,
+            activo: $('#p_activo').is(':checked') ? 1 : 0
+          };
+
+          $.ajax({
+            url: '<?= BASE_URL ?>/controllers/ProductosController.php',
+            method: 'POST',
+            dataType: 'json',
+            data: payload
+          })
+          .done(resp => {
+            if (resp?.ok) {
+              _reloadOnClose = true;              // marcar que hay que recargar al cerrar
+              $('#modalProducto').modal('hide');  // cerrar modal
+              toastr.success('Producto guardado correctamente');
+            } else {
+              toastr.error(resp?.msg || 'No se pudo guardar el producto');
+            }
+          })
+          .fail(() => toastr.error('Error de comunicación al guardar'));
+        });
+
+        // ============ CÁLCULO EN TIEMPO REAL (usa backend simular-precios) ============
+        const _manual = { cn:false, pt:false, pb:false }; // flags: no pisar si usuario edita
+        $('#p_costo_neto').on('input',     () => _manual.cn = true);
+        $('#p_precio_taller').on('input',  () => _manual.pt = true);
+        $('#p_precio_publico').on('input', () => _manual.pb = true);
+
+        function debounce(fn, ms=250){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+
+        let _calcXHR = null;
+        function calcAutoPreciosServer(){
+          const id_proveedor = $('#p_id_proveedor').val() || 0;
+          const ppvRaw = ($('#p_precio_proveedor').val() || '').toString().replace(',', '.');
+          const ppv = parseFloat(ppvRaw);
+          if (!(ppv > 0)) return;
+
+          if (_calcXHR && _calcXHR.readyState !== 4) { try { _calcXHR.abort(); } catch(e){} }
+
+          _calcXHR = $.post('<?= BASE_URL ?>/controllers/ProductosController.php', {
+            accion: 'simular-precios',
+            id_proveedor,
+            precio_proveedor: ppv
+          })
+          .done(resp => {
+            const d = resp?.data || {};
+            if (!_manual.cn && d.costo_neto != null)     $('#p_costo_neto').val(Number(d.costo_neto).toFixed(2));
+            if (!_manual.pt && d.precio_taller != null)  $('#p_precio_taller').val(Number(d.precio_taller).toFixed(2));
+            if (!_manual.pb && d.precio_publico != null) $('#p_precio_publico').val(Number(d.precio_publico).toFixed(2));
+          });
+        }
+        const debouncedCalc = debounce(calcAutoPreciosServer, 250);
+
+      // Disparadores: al teclear PPV y al cambiar proveedor
+      $('#p_precio_proveedor').on('input', debouncedCalc);
+      $('#p_id_proveedor').on('change', debouncedCalc);
+
+
+      // ======================= ABRIR MODAL EDITAR =======================
+      $(document).off('click', '.accion-editar').on('click', '.accion-editar', function(e){
+        e.preventDefault();
+        const id = $(this).data('id');
+        if (!id) { toastr.warning('ID de producto inválido'); return; }
+        abrirModalEditarProducto(id);
+      });
+
+      function abrirModalEditarProducto(idProducto){
+        const $m = $('#modalProductoEdit');
+        if ($m.length === 0){
+          toastr.error('No existe el modal de edición (#modalProductoEdit).');
+          return;
+        }
+
+        // Reset básico
+        const $f = $('#formProductoEdit')[0];
+        if ($f) $f.reset();
+        $('#e_id_producto').val(idProducto);
+        $('#modalProductoEditLabel').text('Editar producto');
+        $('#e_activo').prop('checked', true);
+        $('#formProductoEdit .is-invalid').removeClass('is-invalid');
+
+        // Abrir modal
+        $m.modal('show');
+
+        // 1) Traer detalle
+        $.ajax({
+          url: '<?= BASE_URL ?>/controllers/ProductosController.php',
+          method: 'GET', dataType: 'json',
+          data: { accion: 'detalle', id_producto: idProducto }
+        })
+        .done(async function(resp){
+          const p = resp?.data;
+          if (!p){ toastr.error('No se encontró el producto.'); return; }
+
+          // 2) Cargar catálogos con selección actual
+          await Promise.all([
+            cargarProveedoresEn('#e_id_proveedor', p.id_proveedor),
+            cargarUnidadesEn('#e_id_unidad_sat', p.id_unidad_sat)
+          ]);
+
+          // 3) Rellenar campos
+          $('#e_clave_prod_serv_sat').val(p.clave_prod_serv_sat || '');
+          $('#e_codigo').val(p.codigo || '');
+          $('#e_descripcion').val(p.descripcion || '');
+
+          $('#e_precio_proveedor').val(Number(p.precio_proveedor ?? 0).toFixed(2));
+          $('#e_costo_neto').val(Number(p.costo_neto ?? 0).toFixed(2));
+          $('#e_precio_taller').val(Number(p.precio_taller ?? 0).toFixed(2));
+          $('#e_precio_publico').val(Number(p.precio_publico ?? 0).toFixed(2));
+
+          $('#e_stock_actual').val(parseInt(p.stock_actual ?? 0, 10));
+          $('#e_stock_maximo').val(parseInt(p.stock_maximo ?? 0, 10));
+          $('#e_stock_minimo').val(parseInt(p.stock_minimo ?? 0, 10));
+
+          $('#e_piso').val(parseInt(p.piso ?? 0, 10));
+          $('#e_pasillo').val(parseInt(p.pasillo ?? 0, 10));
+          $('#e_estante').val(parseInt(p.estante ?? 0, 10));
+          $('#e_peldano').val(parseInt(p['peldaño'] ?? p.peldano ?? 0, 10));
+
+          $('#e_activo').prop('checked', String(p.activo) === '1');
+
+          // Primer cálculo si ya hay PPV
+          _manualEdit.cn = _manualEdit.pt = _manualEdit.pb = false;
+          const ppv = parseFloat(String($('#e_precio_proveedor').val()||'').replace(',', '.'));
+          if (ppv > 0) debouncedCalcEdit();
+        })
+        .fail(function(){ toastr.error('Error al cargar el detalle.'); });
+      }
+
+      // ======================= HELPERS DE CATÁLOGOS (EDITAR) =======================
+      function cargarProveedoresEn(selector, selectedId){
+        return new Promise((resolve) => {
+          $.ajax({
+            url: '<?= BASE_URL ?>/controllers/ProveedoresController.php',
+            method: 'GET', dataType: 'json',
+            data: { accion: 'listar-min', limite: 500 }
+          })
+          .done(function(resp){
+            const arr = resp?.data || [];
+            const $sel = $(selector).empty().append('<option value="">— Selecciona —</option>');
+            arr.forEach(p => {
+              if (p.id_proveedor && p.nombre){
+                const sel = (String(p.id_proveedor) === String(selectedId)) ? ' selected' : '';
+                $sel.append(`<option value="${p.id_proveedor}"${sel}>${p.nombre}</option>`);
+              }
+            });
+            resolve();
+          })
+          .fail(function(){ resolve(); });
+        });
+      }
+
+      function cargarUnidadesEn(selector, selectedId){
+        return new Promise((resolve) => {
+          $.ajax({
+            url: '<?= BASE_URL ?>/controllers/UnidadesSatController.php',
+            method: 'GET', dataType: 'json',
+            data: { accion: 'listar_min', limite: 1000 }
+          })
+          .done(function(resp){
+            const arr = resp?.data || [];
+            const $sel = $(selector).empty().append('<option value="">— Selecciona —</option>');
+            arr.forEach(u => {
+              const id  = u.id_unidad_sat;
+              const nom = (u.clave ? u.clave+' - ' : '') + (u.descripcion || '');
+              if (id){
+                const sel = (String(id) === String(selectedId)) ? ' selected' : '';
+                $sel.append(`<option value="${id}"${sel}>${nom}</option>`);
+              }
+            });
+            resolve();
+          })
+          .fail(function(){
+            // fallback a 'listar-min' si aplica
+            $.ajax({
+              url: '<?= BASE_URL ?>/controllers/UnidadesSatController.php',
+              method: 'GET', dataType: 'json',
+              data: { accion: 'listar-min', limite: 1000 }
+            })
+            .done(function(resp){
+              const arr = resp?.data || [];
+              const $sel = $(selector).empty().append('<option value="">— Selecciona —</option>');
+              arr.forEach(u => {
+                const id  = u.id_unidad_sat || u.id;
+                const nom = (u.clave ? u.clave+' - ' : '') + (u.descripcion || u.nombre || '');
+                if (id){
+                  const sel = (String(id) === String(selectedId)) ? ' selected' : '';
+                  $sel.append(`<option value="${id}"${sel}>${nom}</option>`);
+                }
+              });
+              resolve();
+            })
+            .fail(() => resolve());
+          });
+        });
+      }
+
+      // ======================= CÁLCULO EN TIEMPO REAL (EDITAR) =======================
+      // Misma idea que en “Agregar”, pero con campos #e_*
+      const _manualEdit = { cn:false, pt:false, pb:false };
+      $('#e_costo_neto').on('input',     () => _manualEdit.cn = true);
+      $('#e_precio_taller').on('input',  () => _manualEdit.pt = true);
+      $('#e_precio_publico').on('input', () => _manualEdit.pb = true);
+
+      function debounceEdit(fn, ms=250){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+      let _calcXHREdit = null;
+
+      function calcAutoPreciosServerEdit(){
+        const id_proveedor = $('#e_id_proveedor').val() || 0;
+        const ppvRaw = ($('#e_precio_proveedor').val() || '').toString().replace(',', '.');
+        const ppv = parseFloat(ppvRaw);
+        if (!(ppv > 0)) return;
+
+        if (_calcXHREdit && _calcXHREdit.readyState !== 4) { try { _calcXHREdit.abort(); } catch(e){} }
+
+        _calcXHREdit = $.post('<?= BASE_URL ?>/controllers/ProductosController.php', {
+          accion: 'simular-precios',
+          id_proveedor,
+          precio_proveedor: ppv
+        })
+        .done(resp => {
+          const d = resp?.data || {};
+          if (!_manualEdit.cn && d.costo_neto     != null) $('#e_costo_neto').val(Number(d.costo_neto).toFixed(2));
+          if (!_manualEdit.pt && d.precio_taller  != null) $('#e_precio_taller').val(Number(d.precio_taller).toFixed(2));
+          if (!_manualEdit.pb && d.precio_publico != null) $('#e_precio_publico').val(Number(d.precio_publico).toFixed(2));
+        });
+      }
+      const debouncedCalcEdit = debounceEdit(calcAutoPreciosServerEdit, 250);
+
+      // Disparadores de cálculo en EDITAR
+      $(document)
+        .off('input',  '#e_precio_proveedor').on('input',  '#e_precio_proveedor', debouncedCalcEdit)
+        .off('change', '#e_id_proveedor').on('change',     '#e_id_proveedor',     debouncedCalcEdit);
+
+      // ======================= SUBMIT ACTUALIZAR =======================
+      $(document).off('submit', '#formProductoEdit').on('submit', '#formProductoEdit', function(e){
+        e.preventDefault();
+
+        // Normaliza números (igual que en Agregar)
+        const num2 = v => {
+          const x = parseFloat((v||'').toString().replace(',', '.'));
+          return isNaN(x) ? 0 : x;
+        };
+        const int0 = v => {
+          const n = parseInt((v||'0'), 10);
+          return isNaN(n) ? 0 : n;
+        };
+
+        const id = $('#e_id_producto').val();
+        if (!id){ toastr.warning('ID de producto requerido'); return; }
+
+        const payload = {
+          accion: 'actualizar',
+          id_producto: id,
+          id_proveedor: $('#e_id_proveedor').val() || '',
+          id_unidad_sat: $('#e_id_unidad_sat').val() || '',
+          clave_prod_serv_sat: ($('#e_clave_prod_serv_sat').val() || '').trim(),
+          codigo: ($('#e_codigo').val() || '').trim(),
+          descripcion: ($('#e_descripcion').val() || '').trim(),
+          precio_proveedor: num2($('#e_precio_proveedor').val()),
+          costo_neto:      num2($('#e_costo_neto').val()),
+          precio_taller:   num2($('#e_precio_taller').val()),
+          precio_publico:  num2($('#e_precio_publico').val()),
+          stock_actual: int0($('#e_stock_actual').val()),
+          stock_maximo: int0($('#e_stock_maximo').val()),
+          stock_minimo: int0($('#e_stock_minimo').val()),
+          piso:    int0($('#e_piso').val()),
+          pasillo: int0($('#e_pasillo').val()),
+          estante: int0($('#e_estante').val()),
+          peldano: int0($('#e_peldano').val()),
+          activo: $('#e_activo').is(':checked') ? 1 : 0
+        };
+
+        $.ajax({
+          url: '<?= BASE_URL ?>/controllers/ProductosController.php',
+          method: 'POST', dataType: 'json',
+          data: payload
+        })
+        .done(resp => {
+          if (resp?.ok){
+            toastr.success('Producto actualizado correctamente');
+            $('#modalProductoEdit').modal('hide');
+            // Recargar listado manteniendo la página actual (usa tu cargarProductos existente)
+            if (typeof window.cargarProductos === 'function'){
+              const $active = $('#pagination .page-item.active a');
+              const page = parseInt($active?.data('page') || $active?.text() || 1, 10) || 1;
+              window.cargarProductos(page);
+            } else {
+              location.reload();
+            }
+          } else {
+            toastr.error(resp?.msg || 'No se pudo actualizar el producto');
+          }
+        })
+        .fail(() => toastr.error('Error de comunicación al actualizar'));
+      });
+
+
+      // Eliminar producto
+      function parseJSONSafe(txt){ try { return JSON.parse(txt); } catch(e){ return null; } }
+
+      // Abrir modal desde el dropdown de acciones (delegado, porque las filas se crean dinámicamente)
+      $(document).off('click', 'a.accion-eliminar').on('click', 'a.accion-eliminar', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const id  = $(this).data('id');
+        const cod = $(this).data('cod');
+
+        if (!id) { toastr.warning('ID de producto inválido'); return; }
+
+        $('#el-id-producto').val(id);
+        $('#el-codigo-prod').text(cod || '—');
+
+        // Si usas motivo:
+        // $('#el-motivo-baja').val('');
+
+        $('#modalEliminarProducto').modal('show');
+      });
+
+      // Confirmar eliminación
+      document.addEventListener('DOMContentLoaded', function(){
+        const btn = document.getElementById('btnConfirmarEliminarProducto');
+        if (!btn) return;
+
+        btn.addEventListener('click', function(){
+          const id = document.getElementById('el-id-producto').value;
+          if (!id) return;
+
+          const original = btn.innerHTML;
+          const mot = document.getElementById('el-motivo-baja') ? document.getElementById('el-motivo-baja').value.trim() : '';
+
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm mr-1"></span> Eliminando...';
+
+          fetch('<?= BASE_URL ?>/controllers/ProductosController.php?accion=eliminar', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: new URLSearchParams({ id_producto: id, ...(mot ? {motivo: mot} : {}) })
+          })
+          .then(async r => {
+            const text = await r.text();
+            const json = parseJSONSafe(text);
+            if (!r.ok) throw new Error('HTTP '+r.status+' '+(json?.msg || text || 'Error'));
+            return json;
+          })
+          .then(resp => {
+            if (resp && resp.ok) {
+              $('#modalEliminarProducto').modal('hide');
+              if (typeof reloadProductos === 'function') reloadProductos();
+              else if (typeof window.cargarProductos === 'function') window.cargarProductos(1);
+              if (window.toastr) toastr.success(resp.msg || 'Producto desactivado y stock ajustado.');
+            } else {
+              const msg = (resp && resp.msg) || 'No se pudo desactivar el producto.';
+              if (window.toastr) toastr.error(msg); else alert(msg);
+            }
+          })
+          .catch(err => {
+            if (window.toastr) toastr.error(err.message || 'Error de conexión.');
+            else alert(err.message || 'Error de conexión.');
+          })
+          .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = original;
+          });
+        });
+      });
+  </script>
+
   </body>
 </html>

@@ -427,8 +427,7 @@ class CompraModel
     // =========================
     // UTILITARIOS
     // =========================
-    public function actualizarTotal($idCompra)
-    {
+    public function actualizarTotal($idCompra) {
         $sql = "UPDATE compras c
                 JOIN (
                     SELECT id_compra, COALESCE(SUM(subtotal),0) AS tot
@@ -442,16 +441,7 @@ class CompraModel
         return $st->execute();
     }
 
-    private function registrarBitacora(
-        $idUsuario,
-        string $tabla,
-        string $accion,
-        int $registroId,
-        string $descripcion = '',
-        ?string $valorAnterior = null,
-        ?string $valorNuevo = null,
-        ?string $campoModificado = null
-    ) {
+    private function registrarBitacora($idUsuario, string $tabla, string $accion,int $registroId,string $descripcion = '',?string $valorAnterior = null, ?string $valorNuevo = null, ?string $campoModificado = null) {
         $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? null;
         if (is_string($ip) && strpos($ip, ',') !== false) {
             $ip = trim(explode(',', $ip)[0]);
