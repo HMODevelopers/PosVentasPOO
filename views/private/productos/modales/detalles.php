@@ -34,6 +34,11 @@
                       <small class="text-primary font-weight-bold">Unidad SAT</small>
                       <div id="det-unidad">—</div>
                     </div>
+                    <!-- NUEVO: Grupo -->
+                     <div class="col-md-3 mb-3">
+                        <small class="text-primary font-weight-bold">Grupo</small>
+                        <div id="det-grupo">—</div>
+                    </div> 
                     <div class="col-md-3 mb-3">
                       <small class="text-primary font-weight-bold">Clave Prod/Serv SAT</small>
                       <div id="det-clave">—</div>

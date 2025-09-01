@@ -42,6 +42,16 @@
                 </div>
               </div>
 
+              <!-- Línea 1.1: Grupo (cat_grupos) -->
+              <div class="form-row">
+                <div class="form-group col-md-12">
+                  <label for="p_id_grupo">Grupo <span class="text-danger">*</span></label>
+                  <select id="p_id_grupo" name="id_grupo" class="form-control" required>
+                    <option value="">— Selecciona —</option>
+                  </select>
+                </div>
+              </div>
+
               <!-- Línea 2: Código / Descripción -->
               <div class="form-row">
                 <div class="form-group col-md-4">

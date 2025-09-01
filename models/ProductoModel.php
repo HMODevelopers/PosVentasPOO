@@ -13,15 +13,25 @@ class ProductoModel
     }
 
     // ================== LISTADO + CONTAR ==================
-    public function listar(int $pagina = 1,int $limite = 10,string $codigo = '', string $descripcion = '', ?int $idProveedor = null) {
+    public function listar(
+        int $pagina = 1,
+        int $limite = 10,
+        string $codigo = '',
+        string $descripcion = '',
+        ?int $idProveedor = null,
+        ?int $idGrupo = null   // <-- NUEVO
+    ) {
         $offset = ($pagina - 1) * $limite;
+
         $sql = "SELECT
                     p.*,
-                    pr.nombre     AS proveedor,
-                    u.descripcion AS unidad_sat
+                    pr.nombre       AS proveedor,
+                    u.descripcion   AS unidad_sat,
+                    g.nombre_grupo  AS grupo       -- NUEVO (expuesto si lo necesitas en front)
                 FROM productos p
                 LEFT JOIN proveedores  pr ON p.id_proveedor   = pr.id_proveedor
                 LEFT JOIN unidades_sat u  ON p.id_unidad_sat  = u.id_unidad_sat
+                LEFT JOIN cat_grupos   g  ON g.id_grupo       = p.id_grupo   -- NUEVO
                 WHERE p.activo = 1";
         $params = [];
 
@@ -36,6 +46,10 @@ class ProductoModel
         if (!empty($idProveedor)) {
             $sql .= " AND p.id_proveedor = :idprov";
             $params[':idprov'] = (int)$idProveedor;
+        }
+        if (!empty($idGrupo)) {                        // NUEVO
+            $sql .= " AND p.id_grupo = :idg";
+            $params[':idg'] = (int)$idGrupo;
         }
 
         $sql .= " ORDER BY p.id_producto DESC
@@ -52,7 +66,12 @@ class ProductoModel
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function contar( string $codigo = '', string $descripcion = '',  ?int $idProveedor = null) {
+    public function contar(
+        string $codigo = '',
+        string $descripcion = '',
+        ?int $idProveedor = null,
+        ?int $idGrupo = null    // <-- NUEVO
+    ) {
         $sql = "SELECT COUNT(*) AS total
                 FROM productos p
                 WHERE p.activo = 1";
@@ -70,10 +89,14 @@ class ProductoModel
             $sql .= " AND p.id_proveedor = :idprov";
             $params[':idprov'] = (int)$idProveedor;
         }
+        if (!is_null($idGrupo)) {                      // NUEVO
+            $sql .= " AND p.id_grupo = :idg";
+            $params[':idg'] = (int)$idGrupo;
+        }
 
         $st = $this->conn->prepare($sql);
         foreach ($params as $k => $v) {
-            $st->bindValue($k, $v, $k === ':idprov' ? PDO::PARAM_INT : PDO::PARAM_STR);
+            $st->bindValue($k, $v, ($k === ':idprov' || $k === ':idg') ? PDO::PARAM_INT : PDO::PARAM_STR);
         }
         $st->execute();
 
@@ -85,11 +108,13 @@ class ProductoModel
     {
         $sql = "SELECT
                     p.*,
-                    pr.nombre     AS proveedor,
-                    u.descripcion AS unidad_sat
+                    pr.nombre       AS proveedor,
+                    u.descripcion   AS unidad_sat,
+                    g.nombre_grupo  AS grupo      -- NUEVO: nombre del grupo para detalle
                 FROM productos p
                 LEFT JOIN proveedores  pr ON pr.id_proveedor = p.id_proveedor
                 LEFT JOIN unidades_sat u  ON u.id_unidad_sat = p.id_unidad_sat
+                LEFT JOIN cat_grupos   g  ON g.id_grupo      = p.id_grupo     -- NUEVO
                 WHERE p.id_producto = :id
                 LIMIT 1";
         $st = $this->conn->prepare($sql);
@@ -105,17 +130,22 @@ class ProductoModel
      */
     public function crear(array $d)
     {
+        // Compatibilidad: mapear peldano -> peldaño si viene así desde el front
+        if (!array_key_exists('peldaño', $d) && array_key_exists('peldano', $d)) {
+            $d['peldaño'] = $d['peldano'];
+        }
+
         try {
             $this->conn->beginTransaction();
 
             $sql = "INSERT INTO productos
-                    (id_proveedor, id_unidad_sat, clave_prod_serv_sat, codigo, descripcion,
+                    (id_proveedor, id_unidad_sat, id_grupo, clave_prod_serv_sat, codigo, descripcion,
                      costo_neto, precio_publico, precio_taller, precio_proveedor,
                      stock_actual, stock_maximo, stock_minimo,
                      piso, pasillo, estante, `peldaño`,
                      activo, fecha_creacion)
                     VALUES
-                    (:idprov, :iduni, :clave, :cod, :des,
+                    (:idprov, :iduni, :idg, :clave, :cod, :des,
                      :cn, :ppub, :pt, :ppv,
                      :stk, :stkmax, :stkmin,
                      :piso, :pas, :est, :pel,
@@ -124,6 +154,7 @@ class ProductoModel
             $st->execute([
                 ':idprov' => $d['id_proveedor']            ?? null,
                 ':iduni'  => $d['id_unidad_sat']           ?? null,
+                ':idg'    => $d['id_grupo']                ?? null,     // NUEVO
                 ':clave'  => $d['clave_prod_serv_sat']     ?? '01010101',  // NOT NULL
                 ':cod'    => $d['codigo']                  ?? null,
                 ':des'    => trim($d['descripcion'] ?? ''),
@@ -198,6 +229,11 @@ class ProductoModel
      */
     public function actualizar(int $id, array $d)
     {
+        // Compatibilidad: mapear peldano -> peldaño si viene así desde el front
+        if (!array_key_exists('peldaño', $d) && array_key_exists('peldano', $d)) {
+            $d['peldaño'] = $d['peldano'];
+        }
+
         try {
             $this->conn->beginTransaction();
 
@@ -214,17 +250,19 @@ class ProductoModel
                 'costo_neto','precio_publico','precio_taller','precio_proveedor',
                 'stock_actual','stock_maximo','stock_minimo','piso','pasillo','estante','peldaño'
             ];
-            $textFields = [
-                'id_proveedor','id_unidad_sat','clave_prod_serv_sat','codigo','descripcion'
-            ];
+            // Incluimos id_grupo aquí como "campo llave/entero" (no numérico para delta)
+            $keyFields = ['id_proveedor','id_unidad_sat','id_grupo']; // NUEVO id_grupo
+            $textFields = ['clave_prod_serv_sat','codigo','descripcion'];
 
             $new = [];
-            // texto / llaves
-            $new['id_proveedor']        = array_key_exists('id_proveedor',$d)        ? $d['id_proveedor']        : $prev['id_proveedor'];
-            $new['id_unidad_sat']       = array_key_exists('id_unidad_sat',$d)       ? $d['id_unidad_sat']       : $prev['id_unidad_sat'];
-            $new['clave_prod_serv_sat'] = array_key_exists('clave_prod_serv_sat',$d) ? $d['clave_prod_serv_sat'] : $prev['clave_prod_serv_sat'];
-            $new['codigo']              = array_key_exists('codigo',$d)              ? $d['codigo']              : $prev['codigo'];
-            $new['descripcion']         = array_key_exists('descripcion',$d)         ? trim($d['descripcion'])   : $prev['descripcion'];
+            // llaves (enteros)
+            foreach ($keyFields as $f) {
+                $new[$f] = array_key_exists($f, $d) ? $d[$f] : $prev[$f];
+            }
+            // texto
+            foreach ($textFields as $f) {
+                $new[$f] = array_key_exists($f, $d) ? ( ($f==='descripcion') ? trim($d[$f]) : $d[$f] ) : $prev[$f];
+            }
             // numéricos
             foreach ($numericFields as $f) {
                 $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f];
@@ -237,7 +275,7 @@ class ProductoModel
                 return (string)$old !== (string)$new;
             };
 
-            foreach ($textFields as $f) {
+            foreach (array_merge($keyFields, $textFields) as $f) {
                 if ($isDiff($prev[$f], $new[$f], false)) {
                     $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
                 }
@@ -248,10 +286,11 @@ class ProductoModel
                 }
             }
 
-            // 4) Ejecuta UPDATE principal
+            // 4) Ejecuta UPDATE principal (agregado id_grupo)
             $sql = "UPDATE productos
                     SET id_proveedor = :idprov,
                         id_unidad_sat = :iduni,
+                        id_grupo      = :idg,       -- NUEVO
                         clave_prod_serv_sat = :clave,
                         codigo = :cod,
                         descripcion = :des,
@@ -271,6 +310,7 @@ class ProductoModel
             $st->execute([
                 ':idprov' => $new['id_proveedor'],
                 ':iduni'  => $new['id_unidad_sat'],
+                ':idg'    => $new['id_grupo'],        // NUEVO
                 ':clave'  => $new['clave_prod_serv_sat'],
                 ':cod'    => $new['codigo'],
                 ':des'    => $new['descripcion'],
@@ -348,6 +388,21 @@ class ProductoModel
                     ':ref'   => $ref,
                     ':mot'   => 'Cambio de proveedor (sin movimiento de cantidad)',
                 ]);
+            }
+
+            // (Opcional) Registrar ajuste informativo si cambia el grupo
+            if (isset($changes['id_grupo'])) {
+                $this->registrarBitacora(
+                    $idUsuario,
+                    'productos',
+                    'UPDATE',
+                    $id,
+                    'Cambio de grupo de producto',
+                    (string)$changes['id_grupo']['old'],
+                    (string)$changes['id_grupo']['new'],
+                    'id_grupo'
+                );
+                unset($changes['id_grupo']); // ya quedó registrado
             }
 
             // 6) Bitácora: un registro POR CAMPO modificado
@@ -557,7 +612,16 @@ class ProductoModel
     }
 
     // ================== BITÁCORA ==================
-    private function registrarBitacora($idUsuario, string $tabla, string $accion,int $registroId,string $descripcion = '',?string $valorAnterior = null, ?string $valorNuevo = null, ?string $campoModificado = null) {
+    private function registrarBitacora(
+        $idUsuario,
+        string $tabla,
+        string $accion,
+        int $registroId,
+        string $descripcion = '',
+        ?string $valorAnterior = null,
+        ?string $valorNuevo = null,
+        ?string $campoModificado = null
+    ) {
         $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? null;
         if (is_string($ip) && strpos($ip, ',') !== false) {
             $ip = trim(explode(',', $ip)[0]);

@@ -13,15 +13,20 @@ switch ($accion) {
         $pagina = max(1, (int)($_GET['pagina'] ?? $_POST['pagina'] ?? 1));
         $limite = max(1, (int)($_GET['limite'] ?? $_POST['limite'] ?? 10));
 
-        // Nuevos filtros
+        // Filtros
         $codigo      = trim($_GET['codigo']      ?? $_POST['codigo']      ?? '');
         $descripcion = trim($_GET['descripcion'] ?? $_POST['descripcion'] ?? '');
         $idProveedor = (isset($_REQUEST['id_proveedor']) && $_REQUEST['id_proveedor'] !== '')
-                    ? (int)$_REQUEST['id_proveedor']
-                    : null;
+                        ? (int)$_REQUEST['id_proveedor']
+                        : null;
+        // NUEVO: filtro por grupo
+        $idGrupo     = (isset($_REQUEST['id_grupo']) && $_REQUEST['id_grupo'] !== '')
+                        ? (int)$_REQUEST['id_grupo']
+                        : null;
 
-        $data  = $productoModel->listar($pagina, $limite, $codigo, $descripcion, $idProveedor);
-        $total = $productoModel->contar($codigo, $descripcion, $idProveedor);
+        // Asegúrate de que tu ProductoModel::listar/contar acepten $idGrupo como último parámetro
+        $data  = $productoModel->listar($pagina, $limite, $codigo, $descripcion, $idProveedor, $idGrupo);
+        $total = $productoModel->contar($codigo, $descripcion, $idProveedor, $idGrupo);
 
         echo json_encode(['data' => $data, 'total' => $total], JSON_UNESCAPED_UNICODE);
     break;
@@ -30,6 +35,7 @@ switch ($accion) {
     case 'detalle':
         $id = (int)($_GET['id_producto'] ?? $_POST['id_producto'] ?? 0);
         if ($id <= 0) { echo json_encode(['error'=>'id_producto inválido'], JSON_UNESCAPED_UNICODE); break; }
+        // Sugerido en el modelo: JOIN con cat_grupos y alias g.nombre_grupo AS grupo
         $row = $productoModel->obtenerPorId($id);
         echo json_encode(['data' => $row], JSON_UNESCAPED_UNICODE);
     break;
@@ -56,6 +62,13 @@ switch ($accion) {
         if (empty($payload['id_usuario'])) {
             echo json_encode(['ok' => false, 'msg' => 'Falta id_usuario (sesión).'], JSON_UNESCAPED_UNICODE);
             break;
+        }
+
+        // NUEVO: normaliza id_grupo (null si no viene)
+        if (!array_key_exists('id_grupo', $payload) || $payload['id_grupo'] === '' || $payload['id_grupo'] === null) {
+            $payload['id_grupo'] = null;
+        } else {
+            $payload['id_grupo'] = (int)$payload['id_grupo'];
         }
 
         // Llama al modelo y devuelve la respuesta tal cual (sin envolver)
@@ -88,6 +101,13 @@ switch ($accion) {
         if (empty($payload['id_usuario'])) {
             echo json_encode(['ok' => false, 'msg' => 'Falta id_usuario (sesión).'], JSON_UNESCAPED_UNICODE);
             break;
+        }
+
+        // NUEVO: normaliza id_grupo (null si no viene)
+        if (!array_key_exists('id_grupo', $payload) || $payload['id_grupo'] === '' || $payload['id_grupo'] === null) {
+            $payload['id_grupo'] = null;
+        } else {
+            $payload['id_grupo'] = (int)$payload['id_grupo'];
         }
 
         // Devuelve lo que regrese el modelo (consistente con Compras)

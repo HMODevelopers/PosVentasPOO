@@ -77,7 +77,7 @@ if (!isset($_SESSION['usuario'])) {
                 <div class="row">
 
                 <!-- Código -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                 <div class="form-group">
                 <label for="Codigo" class="control-label">Código</label>
                 <div class="input-group">
@@ -88,7 +88,7 @@ if (!isset($_SESSION['usuario'])) {
                 </div>
 
                 <!-- Descripción -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                 <div class="form-group">
                 <label for="Descripcion" class="control-label">Descripción</label>
                 <div class="input-group">
@@ -98,8 +98,25 @@ if (!isset($_SESSION['usuario'])) {
                 </div>
                 </div>
 
+                  <!-- Grupo (NUEVO) -->
+                <div class="col-md-3">
+                <div class="form-group">
+                <label for="Grupo" class="control-label">Grupo</label>
+                <div class="input-group">
+                <select id="Grupo" name="Grupo" class="form-control filtrar" disabled>
+                <option value="">-- Todos --</option>
+                </select>
+                <div class="input-group-append clean-filter">
+                <span class="input-group-text">
+                <i class="mdi mdi-close-circle text-danger" onclick="clearField('Grupo')"></i>
+                </span>
+                </div>
+                </div>
+                </div>
+                </div>
+
                 <!-- Proveedor -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                 <div class="form-group">
                 <label for="Proveedor" class="control-label">Proveedor</label>
                 <div class="input-group">
@@ -110,6 +127,9 @@ if (!isset($_SESSION['usuario'])) {
                 </div>
                 </div>
                 </div>
+
+              
+
                 </div>
                 </div>
             </div>
@@ -207,6 +227,7 @@ if (!isset($_SESSION['usuario'])) {
 
         cargarProveedoresSelect();
         cargarUnidadesSelect();
+        cargarGruposSelectFiltro(); // NUEVO
         cargarProductos(paginaActual);
 
         function mxn(v){ return Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'}); }
@@ -266,11 +287,39 @@ if (!isset($_SESSION['usuario'])) {
           .fail(function(){ $sel.prop('disabled', false); });
         }
 
+        // ===== NUEVO: cargar grupos para el filtro =====
+        function cargarGruposSelectFiltro(opts={})
+        {
+          const { selectId='Grupo', selected='', incluirTodos=true, limite=500, q='' } = opts;
+          const $sel = $('#'+selectId);
+          if (!$sel.length) return;
+          $sel.prop('disabled', true).html(incluirTodos? '<option value="">-- Todos --</option>' : '');
+
+          $.ajax({
+            url: '<?= BASE_URL ?>/controllers/CatGruposController.php',
+            method: 'GET', dataType: 'json',
+            data: { accion:'listar-min', limite, q }
+          })
+          .done(function(resp){
+            const arr = resp?.data || [];
+            let html = incluirTodos? '<option value="">-- Todos --</option>': '';
+            arr.forEach(g => {
+              if (g.id_grupo && g.nombre_grupo){
+                const sel = (String(g.id_grupo) === String(selected)) ? ' selected' : '';
+                html += `<option value="${g.id_grupo}"${sel}>${g.nombre_grupo}</option>`;
+              }
+            });
+            $sel.html(html).prop('disabled', false);
+          })
+          .fail(function(){ $sel.prop('disabled', false); });
+        }
+
         function cargarProductos(pagina)
         {
           const codigo      = $('#Codigo').val();
           const descripcion = $('#Descripcion').val();
           const idProv      = $('#Proveedor').val();
+          const idGrupo     = $('#Grupo').val(); // NUEVO
 
           $.ajax({
             url: '<?= BASE_URL ?>/controllers/ProductosController.php',
@@ -282,7 +331,8 @@ if (!isset($_SESSION['usuario'])) {
               limite: limitePorPagina,
               codigo: codigo,
               descripcion: descripcion,
-              id_proveedor: idProv || ''
+              id_proveedor: idProv || '',
+              id_grupo: idGrupo || '' // NUEVO
             }
           })
           .done(function(resp){
@@ -439,6 +489,7 @@ if (!isset($_SESSION['usuario'])) {
             $('#det-unidad').text(p.unidad_sat || p.descripcion_unidad || (p.id_unidad_sat ? `#${p.id_unidad_sat}` : '—'));
             $('#det-clave').text(p.clave_prod_serv_sat || '—');
             $('#det-creado').text(p.fecha_creacion ? p.fecha_creacion : '—');
+            $('#det-grupo').text(p.grupo || '—'); // NUEVO (si existe el elemento en el modal)
 
             $('#det-stock').text(Number(p.stock_actual ?? 0).toLocaleString('es-MX'));
             $('#det-stock-min').text(p.stock_minimo ?? '—');
@@ -513,6 +564,24 @@ if (!isset($_SESSION['usuario'])) {
                   });
               }
             });
+
+          // Cargar grupos (NUEVO) y preseleccionar "SIN GRUPO" si existe
+          $.getJSON('<?= BASE_URL ?>/controllers/CatGruposController.php', { accion:'listar-min', limite: 1000 })
+           .done(function(resp){
+             const $sel = $('#p_id_grupo');
+             if (!$sel.length) return; // por si el modal aún no tiene el campo
+             $sel.empty().append('<option value="">— Selecciona —</option>');
+             const arr = resp?.data || [];
+             let idSin = '';
+             arr.forEach(g => {
+               if (g.id_grupo && g.nombre_grupo){
+                 if ((g.nombre_grupo||'').toUpperCase()==='SIN GRUPO') idSin = g.id_grupo;
+                 $sel.append(`<option value="${g.id_grupo}">${g.nombre_grupo}</option>`);
+               }
+             });
+             if (idSin) $sel.val(String(idSin));
+           });
+
         })
         .on('shown.bs.modal', function(){
           // Reiniciar flags y, si ya hay PPV, calcular al mostrar
@@ -573,6 +642,10 @@ if (!isset($_SESSION['usuario'])) {
           const idUnidad = valTrim('#p_id_unidad_sat');
           if (!idUnidad) { errores.push('Unidad SAT es requerida.'); setInvalid('#p_id_unidad_sat'); }
 
+          // Grupo requerido (NUEVO)
+          const idGrupo = valTrim('#p_id_grupo');
+          if (!idGrupo) { errores.push('Grupo es requerido.'); setInvalid('#p_id_grupo'); }
+
           const codigo = valTrim('#p_codigo');
           if (!codigo) {
             errores.push('Código es requerido.');
@@ -632,6 +705,7 @@ if (!isset($_SESSION['usuario'])) {
             id_producto: $('#p_id_producto').val() || null,
             id_proveedor: $('#p_id_proveedor').val() || '',
             id_unidad_sat: $('#p_id_unidad_sat').val() || '',
+            id_grupo: $('#p_id_grupo').val() || '', // NUEVO
             clave_prod_serv_sat: $('#p_clave_prod_serv_sat').val().trim() || '',
             codigo: $('#p_codigo').val().trim(),
             descripcion: $('#p_descripcion').val().trim(),
@@ -739,10 +813,11 @@ if (!isset($_SESSION['usuario'])) {
           const p = resp?.data;
           if (!p){ toastr.error('No se encontró el producto.'); return; }
 
-          // 2) Cargar catálogos con selección actual
+          // 2) Cargar catálogos con selección actual (incluye grupo NUEVO)
           await Promise.all([
             cargarProveedoresEn('#e_id_proveedor', p.id_proveedor),
-            cargarUnidadesEn('#e_id_unidad_sat', p.id_unidad_sat)
+            cargarUnidadesEn('#e_id_unidad_sat', p.id_unidad_sat),
+            cargarGruposEn('#e_id_grupo', p.id_grupo) // NUEVO
           ]);
 
           // 3) Rellenar campos
@@ -842,6 +917,31 @@ if (!isset($_SESSION['usuario'])) {
         });
       }
 
+      // NUEVO: cargar grupos en edición
+      function cargarGruposEn(selector, selectedId){
+        return new Promise((resolve) => {
+          $.ajax({
+            url: '<?= BASE_URL ?>/controllers/CatGruposController.php',
+            method: 'GET', dataType: 'json',
+            data: { accion: 'listar-min', limite: 1000 }
+          })
+          .done(function(resp){
+            const arr = resp?.data || [];
+            const $sel = $(selector);
+            if (!$sel.length) { resolve(); return; }
+            $sel.empty().append('<option value="">— Selecciona —</option>');
+            arr.forEach(g => {
+              if (g.id_grupo && g.nombre_grupo){
+                const sel = (String(g.id_grupo) === String(selectedId)) ? ' selected' : '';
+                $sel.append(`<option value="${g.id_grupo}"${sel}>${g.nombre_grupo}</option>`);
+              }
+            });
+            resolve();
+          })
+          .fail(function(){ resolve(); });
+        });
+      }
+
       // ======================= CÁLCULO EN TIEMPO REAL (EDITAR) =======================
       // Misma idea que en “Agregar”, pero con campos #e_*
       const _manualEdit = { cn:false, pt:false, pb:false };
@@ -901,6 +1001,7 @@ if (!isset($_SESSION['usuario'])) {
           id_producto: id,
           id_proveedor: $('#e_id_proveedor').val() || '',
           id_unidad_sat: $('#e_id_unidad_sat').val() || '',
+          id_grupo: $('#e_id_grupo').val() || '', // NUEVO
           clave_prod_serv_sat: ($('#e_clave_prod_serv_sat').val() || '').trim(),
           codigo: ($('#e_codigo').val() || '').trim(),
           descripcion: ($('#e_descripcion').val() || '').trim(),
