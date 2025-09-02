@@ -227,9 +227,9 @@ class ProductoModel
      * ACTUALIZAR producto + inventario (delta) + bitácora (estilo Compras)
      * $d puede incluir: 'stock_actual' (para calcular delta), 'id_usuario', 'id_sucursal'
      */
-    public function actualizar(int $id, array $d)
-    {
-        // Compatibilidad: mapear peldano -> peldaño si viene así desde el front
+   public function actualizar(int $id, array $d)
+   {
+        // Compat: peldano -> peldaño
         if (!array_key_exists('peldaño', $d) && array_key_exists('peldano', $d)) {
             $d['peldaño'] = $d['peldano'];
         }
@@ -245,37 +245,40 @@ class ProductoModel
                 throw new Exception('Producto no encontrado.');
             }
 
-            // 2) Normaliza valores nuevos tomando lo que venga en $d o lo previo
+            // 2) Definición de campos
             $numericFields = [
                 'costo_neto','precio_publico','precio_taller','precio_proveedor',
                 'stock_actual','stock_maximo','stock_minimo','piso','pasillo','estante','peldaño'
             ];
-            // Incluimos id_grupo aquí como "campo llave/entero" (no numérico para delta)
-            $keyFields = ['id_proveedor','id_unidad_sat','id_grupo']; // NUEVO id_grupo
+            $keyFields  = ['id_proveedor','id_unidad_sat','id_grupo','activo'];
             $textFields = ['clave_prod_serv_sat','codigo','descripcion'];
 
+            // 3) Normaliza nuevos valores tomando lo que venga en $d o lo previo
             $new = [];
-            // llaves (enteros)
+
             foreach ($keyFields as $f) {
-                $new[$f] = array_key_exists($f, $d) ? $d[$f] : $prev[$f];
+                $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f];
             }
-            // texto
             foreach ($textFields as $f) {
-                $new[$f] = array_key_exists($f, $d) ? ( ($f==='descripcion') ? trim($d[$f]) : $d[$f] ) : $prev[$f];
+                $new[$f] = array_key_exists($f,$d) ? (($f==='descripcion') ? trim($d[$f]) : $d[$f]) : $prev[$f];
             }
-            // numéricos
             foreach ($numericFields as $f) {
                 $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f];
             }
 
-            // 3) Detecta cambios campo a campo
-            $changes = []; // ['campo'=>['old'=>..., 'new'=>..., 'numeric'=>bool]]
+            // 4) Detectar cambios (comparación numérica vs. texto)
+            $changes = []; // campo => ['old'=>..., 'new'=>..., 'numeric'=>bool]
             $isDiff = function($old, $new, $numeric = false) {
-                if ($numeric) return (float)$old != (float)$new; // comparación numérica simple
+                if ($numeric) return (float)$old != (float)$new;
                 return (string)$old !== (string)$new;
             };
 
-            foreach (array_merge($keyFields, $textFields) as $f) {
+            foreach ($keyFields as $f) {
+                if ($isDiff($prev[$f], $new[$f], false)) {
+                    $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
+                }
+            }
+            foreach ($textFields as $f) {
                 if ($isDiff($prev[$f], $new[$f], false)) {
                     $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
                 }
@@ -286,67 +289,55 @@ class ProductoModel
                 }
             }
 
-            // 4) Ejecuta UPDATE principal (agregado id_grupo)
-            $sql = "UPDATE productos
-                    SET id_proveedor = :idprov,
-                        id_unidad_sat = :iduni,
-                        id_grupo      = :idg,       -- NUEVO
-                        clave_prod_serv_sat = :clave,
-                        codigo = :cod,
-                        descripcion = :des,
-                        costo_neto = :cn,
-                        precio_publico = :ppub,
-                        precio_taller = :pt,
-                        precio_proveedor = :ppv,
-                        stock_actual = :stk,
-                        stock_maximo = :stkmax,
-                        stock_minimo = :stkmin,
-                        piso = :piso,
-                        pasillo = :pas,
-                        estante = :est,
-                        `peldaño` = :pel
-                    WHERE id_producto = :id";
-            $st = $this->conn->prepare($sql);
-            $st->execute([
-                ':idprov' => $new['id_proveedor'],
-                ':iduni'  => $new['id_unidad_sat'],
-                ':idg'    => $new['id_grupo'],        // NUEVO
-                ':clave'  => $new['clave_prod_serv_sat'],
-                ':cod'    => $new['codigo'],
-                ':des'    => $new['descripcion'],
+            // 5) Sin cambios => salir limpio
+            if (empty($changes)) {
+                $this->conn->commit();
+                return ['ok' => true, 'id_producto' => $id, 'msg' => 'Sin cambios'];
+            }
 
-                ':cn'     => $new['costo_neto'],
-                ':ppub'   => $new['precio_publico'],
-                ':pt'     => $new['precio_taller'],
-                ':ppv'    => $new['precio_proveedor'],
+            // 6) UPDATE solo de campos cambiados
+            $setSql = [];
+            $params = [':id' => $id];
+            foreach ($changes as $field => $info) {
+                $col = ($field === 'peldaño') ? "`peldaño`" : $field;
+                $setSql[] = "$col = :$field";
+                $params[":$field"] = $info['new'];
+            }
+            $sqlUpd = "UPDATE productos SET ".implode(', ', $setSql)." WHERE id_producto = :id";
+            $this->conn->prepare($sqlUpd)->execute($params);
 
-                ':stk'    => $new['stock_actual'],
-                ':stkmax' => $new['stock_maximo'],
-                ':stkmin' => $new['stock_minimo'],
-
-                ':piso'   => $new['piso'],
-                ':pas'    => $new['pasillo'],
-                ':est'    => $new['estante'],
-                ':pel'    => $new['peldaño'],
-                ':id'     => $id
-            ]);
-
-            // 5) Movimientos de inventario según cambios
+            // 7) Movimientos de inventario
             $idUsuario = (int)($d['id_usuario']   ?? 0);
             $idSucursal= !empty($d['id_sucursal']) ? (int)$d['id_sucursal'] : 1;
             $ref       = $prev['codigo'] ? ('EDIT-' . $prev['codigo']) : ('PROD-' . $id);
 
-            // 5.1) Si cambió el stock => movimiento por delta
+            // Helper para registrar un "Ajuste" (cantidad 0) con motivo
+            $insertAjuste = function(string $motivo) use ($id, $idSucursal, $idUsuario, $ref) {
+                $stm = $this->conn->prepare(
+                    "INSERT INTO inventario_movimientos
+                    (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
+                    VALUES (:idp, 'Ajuste', 0, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+                );
+                $stm->execute([
+                    ':idp'   => $id,
+                    ':idsuc' => $idSucursal,
+                    ':idusr' => $idUsuario,
+                    ':ref'   => $ref,
+                    ':mot'   => $motivo,
+                ]);
+            };
+
+            // 7.1 Stock: Entrada/Salida por delta
             if (isset($changes['stock_actual'])) {
                 $delta = (float)$new['stock_actual'] - (float)$prev['stock_actual'];
                 if ($delta != 0.0) {
                     $tipo = $delta > 0 ? 'Entrada' : 'Salida';
-                    $stMov = $this->conn->prepare(
+                    $stm = $this->conn->prepare(
                         "INSERT INTO inventario_movimientos
                         (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
                         VALUES (:idp, :tipo, :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
                     );
-                    $stMov->execute([
+                    $stm->execute([
                         ':idp'   => $id,
                         ':tipo'  => $tipo,
                         ':cant'  => abs($delta),
@@ -358,75 +349,55 @@ class ProductoModel
                 }
             }
 
-            // 5.2) Si cambió el precio_proveedor => registrar ajuste (cantidad 0)
-            if (isset($changes['precio_proveedor'])) {
-                $stMov = $this->conn->prepare(
-                    "INSERT INTO inventario_movimientos
-                    (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
-                    VALUES (:idp, 'Ajuste', 0, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
-                );
-                $stMov->execute([
-                    ':idp'   => $id,
-                    ':idsuc' => $idSucursal,
-                    ':idusr' => $idUsuario,
-                    ':ref'   => $ref,
-                    ':mot'   => 'Cambio de precio del proveedor (sin movimiento de cantidad)',
-                ]);
-            }
-
-            // 5.3) Si cambió el proveedor => registrar ajuste (cantidad 0)
+            // 7.2 Ajustes por cambios de proveedor / precios
             if (isset($changes['id_proveedor'])) {
-                $stMov = $this->conn->prepare(
-                    "INSERT INTO inventario_movimientos
-                    (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
-                    VALUES (:idp, 'Ajuste', 0, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+                $insertAjuste(
+                    'Cambio de proveedor: '.
+                    (string)$changes['id_proveedor']['old'].' → '.(string)$changes['id_proveedor']['new']
                 );
-                $stMov->execute([
-                    ':idp'   => $id,
-                    ':idsuc' => $idSucursal,
-                    ':idusr' => $idUsuario,
-                    ':ref'   => $ref,
-                    ':mot'   => 'Cambio de proveedor (sin movimiento de cantidad)',
-                ]);
+            }
+            if (isset($changes['precio_proveedor'])) {
+                $insertAjuste(
+                    'Cambio de precio del proveedor: '.
+                    number_format((float)$changes['precio_proveedor']['old'], 2, '.', '').' → '.
+                    number_format((float)$changes['precio_proveedor']['new'], 2, '.', '')
+                );
             }
 
-            // (Opcional) Registrar ajuste informativo si cambia el grupo
-            if (isset($changes['id_grupo'])) {
+            // 7.3 Ajustes por cambios en costos/precios (provoquen o no por proveedor)
+            if (isset($changes['costo_neto'])) {
+                $insertAjuste(
+                    'Cambio de costo neto: '.
+                    number_format((float)$changes['costo_neto']['old'], 2, '.', '').' → '.
+                    number_format((float)$changes['costo_neto']['new'], 2, '.', '')
+                );
+            }
+            if (isset($changes['precio_publico'])) {
+                $insertAjuste(
+                    'Cambio de precio público: '.
+                    number_format((float)$changes['precio_publico']['old'], 2, '.', '').' → '.
+                    number_format((float)$changes['precio_publico']['new'], 2, '.', '')
+                );
+            }
+            if (isset($changes['precio_taller'])) {
+                $insertAjuste(
+                    'Cambio de precio taller: '.
+                    number_format((float)$changes['precio_taller']['old'], 2, '.', '').' → '.
+                    number_format((float)$changes['precio_taller']['new'], 2, '.', '')
+                );
+            }
+
+            // 8) Bitácora: una línea por cada campo cambiado (TODOS)
+            foreach ($changes as $campo => $info) {
                 $this->registrarBitacora(
                     $idUsuario,
                     'productos',
                     'UPDATE',
                     $id,
-                    'Cambio de grupo de producto',
-                    (string)$changes['id_grupo']['old'],
-                    (string)$changes['id_grupo']['new'],
-                    'id_grupo'
-                );
-                unset($changes['id_grupo']); // ya quedó registrado
-            }
-
-            // 6) Bitácora: un registro POR CAMPO modificado
-            if (!empty($changes)) {
-                foreach ($changes as $campo => $info) {
-                    $this->registrarBitacora(
-                        $idUsuario,
-                        'productos',
-                        'UPDATE',
-                        $id,
-                        'Actualización de campo',
-                        (string)$info['old'],
-                        (string)$info['new'],
-                        $campo
-                    );
-                }
-            } else {
-                // Nada cambió realmente; aún así registra intento de edición sin cambios
-                $this->registrarBitacora(
-                    $idUsuario,
-                    'productos',
-                    'UPDATE',
-                    $id,
-                    'Edición sin cambios efectivos'
+                    'Actualización de campo',
+                    is_null($info['old']) ? null : (string)$info['old'],
+                    is_null($info['new']) ? null : (string)$info['new'],
+                    $campo
                 );
             }
 
@@ -439,6 +410,44 @@ class ProductoModel
                 $this->registrarBitacora((int)($d['id_usuario'] ?? 0), 'productos', 'ERROR', $id, $e->getMessage());
             } catch (\Throwable $th) {}
             return ['ok' => false, 'msg' => $e->getMessage()];
+        }
+    }
+
+    /* ==== Helpers (déjalos si aún no los tienes en la clase) ==== */
+    private function normalizeIncoming(string $field, $value) {
+        if ($value === null) return null;
+        switch ($field) {
+            case 'id_proveedor':
+            case 'id_unidad_sat':
+            case 'id_grupo':
+            case 'stock_actual':
+            case 'stock_maximo':
+            case 'stock_minimo':
+            case 'piso':
+            case 'pasillo':
+            case 'estante':
+            case 'peldaño':
+            case 'activo':
+                return ($value === '' ? null : (int)$value);
+            case 'costo_neto':
+            case 'precio_publico':
+            case 'precio_taller':
+            case 'precio_proveedor':
+                $v = is_string($value) ? str_replace(',', '.', $value) : $value;
+                return ($v === '' ? null : (float)$v);
+            default:
+                return trim((string)$value);
+        }
+    }
+
+    private function valuesEqual($a, $b, string $type): bool {
+        if ($a === null && $b === null) return true;
+        if ($a === null || $b === null) return false;
+        switch ($type) {
+            case 'int':   return (int)$a === (int)$b;
+            case 'float': return (float)$a == (float)$b;
+            case 'bool':  return (bool)$a === (bool)$b;
+            default:      return (string)trim((string)$a) === (string)trim((string)$b);
         }
     }
 
