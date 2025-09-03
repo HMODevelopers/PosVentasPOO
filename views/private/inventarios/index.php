@@ -152,7 +152,7 @@ if (!isset($_SESSION['usuario'])) {
                   <th class="text-center" style="width:90px;">Acciones</th>
                 </tr>
                 </thead>
-                <tbody></tbody>
+                <tbody id="tbodyMovimientos"></tbody>
               </table>
             </div>
 
@@ -172,81 +172,7 @@ if (!isset($_SESSION['usuario'])) {
       <!-- =================== /Tabla Movimientos =================== -->
 
       <!-- =================== Modal Detalle =================== -->
-      <div class="modal fade" id="modalDetalleMovimiento" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-dialog modal-lg" role="document">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title"><i class="mdi mdi-eye mr-1"></i> Detalle de Movimiento</h5>
-              <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                <span aria-hidden="true">×</span>
-              </button>
-            </div>
-            <div class="modal-body">
-              <div id="det-loader" class="my-3 text-center">
-                <div class="spinner-border" role="status"></div>
-                <p class="mt-2">Cargando…</p>
-              </div>
-              <div id="det-error" class="alert alert-danger" style="display:none;"></div>
-
-              <div id="det-contenido" style="display:none;">
-                <div class="row">
-                  <div class="col-md-4 mb-2">
-                    <small class="text-primary font-weight-bold">Fecha</small>
-                    <div id="det-fecha" class="h5 mb-0">—</div>
-                  </div>
-                  <div class="col-md-4 mb-2">
-                    <small class="text-primary font-weight-bold">Tipo</small>
-                    <div id="det-tipo" class="h5 mb-0">—</div>
-                  </div>
-                  <div class="col-md-4 mb-2">
-                    <small class="text-primary font-weight-bold">Cantidad</small>
-                    <div id="det-cantidad" class="h5 mb-0">—</div>
-                  </div>
-
-                  <div class="col-md-6 mb-2">
-                    <small class="text-primary font-weight-bold">Código</small>
-                    <div id="det-codigo" class="h5 mb-0">—</div>
-                  </div>
-                  <div class="col-md-6 mb-2">
-                    <small class="text-primary font-weight-bold">Producto</small>
-                    <div id="det-producto" class="h5 mb-0">—</div>
-                  </div>
-
-                  <div class="col-md-6 mb-2">
-                    <small class="text-primary font-weight-bold">Sucursal</small>
-                    <div id="det-sucursal" class="h5 mb-0">—</div>
-                  </div>
-                  <div class="col-md-6 mb-2">
-                    <small class="text-primary font-weight-bold">Usuario</small>
-                    <div id="det-usuario" class="h5 mb-0">—</div>
-                  </div>
-
-                  <div class="col-md-6 mb-2">
-                    <small class="text-primary font-weight-bold">Referencia</small>
-                    <div id="det-referencia" class="h5 mb-0">—</div>
-                  </div>
-                  <div class="col-md-6 mb-2">
-                    <small class="text-primary font-weight-bold">Motivo</small>
-                    <div id="det-motivo" class="h5 mb-0">—</div>
-                  </div>
-
-                  <div class="col-md-6 mb-2">
-                    <small class="text-primary font-weight-bold">Estatus</small>
-                    <div id="det-estatus" class="h5 mb-0">—</div>
-                  </div>
-                  <div class="col-md-6 mb-2">
-                    <small class="text-primary font-weight-bold">Creado</small>
-                    <div id="det-creado" class="h5 mb-0">—</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button class="btn btn-light" data-dismiss="modal">Cerrar</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <?php include_once __DIR__ . '/../inventarios/modales/detalles.php'; ?>  
       <!-- =================== /Modal Detalle =================== -->
 
     </div><!--/container-->
@@ -276,12 +202,49 @@ if (!isset($_SESSION['usuario'])) {
         return d.toLocaleString('es-MX');
       }
 
-      function badgeTipo(tipo){
-        let cls = 'secondary';
-        if (tipo === 'Entrada' || tipo === 'Devolucion Compra') cls = 'success';
-        else if (tipo === 'Salida' || tipo === 'Devolucion Venta') cls = 'danger';
-        else if (tipo === 'Ajuste') cls = 'warning';
-        return `<span class="badge badge-${cls} badge-pill">${tipo||'—'}</span>`;
+      // === Normalizador y reglas (con sinónimos) ===
+      const normalizaTipo = (s) => String(s||'').trim()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+        .replace(/\s+/g,' ').toLowerCase();
+
+      const DEV_COMPRA_SIN = new Set([
+        'devolucion compra','devolución compra','devol compra','devol. compra',
+        'devolucion de compra','devolución de compra'
+      ]);
+      const DEV_VENTA_SIN = new Set([
+        'devolucion venta','devolución venta','devol venta','devol. venta'
+      ]);
+
+      function signoPorTipo(tipo){
+        const t = normalizaTipo(tipo);
+        if (DEV_VENTA_SIN.has(t) || t === 'entrada') return +1; // sube stock
+        if (DEV_COMPRA_SIN.has(t) || t === 'salida') return -1; // baja stock
+        if (t === 'ajuste') return 0; // neutro
+        return 0; // desconocido -> neutro
+      }
+
+      // === Badge del tipo (con sinónimos) ===
+      function badgeTipo(tipo) {
+        const t = normalizaTipo(tipo);
+        const map = {
+          'entrada':                { cls: 'success',  label: 'Entrada',             hint: 'Aumenta inventario' },
+          'salida':                 { cls: 'danger',   label: 'Salida',              hint: 'Disminuye inventario' },
+          'ajuste':                 { cls: 'warning',  label: 'Ajuste',              hint: 'Ajuste de inventario' },
+
+          'devolucion venta':       { cls: 'success',  label: 'Devolución Venta',    hint: 'Aumenta inventario' },
+          'devolución venta':       { cls: 'success',  label: 'Devolución Venta',    hint: 'Aumenta inventario' },
+          'devol venta':            { cls: 'success',  label: 'Devolución Venta',    hint: 'Aumenta inventario' },
+          'devol. venta':           { cls: 'success',  label: 'Devolución Venta',    hint: 'Aumenta inventario' },
+
+          'devolucion compra':      { cls: 'danger',   label: 'Devolución Compra',   hint: 'Disminuye inventario' },
+          'devolución compra':      { cls: 'danger',   label: 'Devolución Compra',   hint: 'Disminuye inventario' },
+          'devol compra':           { cls: 'danger',   label: 'Devolución Compra',   hint: 'Disminuye inventario' },
+          'devol. compra':          { cls: 'danger',   label: 'Devolución Compra',   hint: 'Disminuye inventario' },
+          'devolucion de compra':   { cls: 'danger',   label: 'Devolución Compra',   hint: 'Disminuye inventario' },
+          'devolución de compra':   { cls: 'danger',   label: 'Devolución Compra',   hint: 'Disminuye inventario' },
+        };
+        const m = map[t] || { cls: 'secondary', label: (tipo || '—'), hint: 'Tipo no reconocido' };
+        return `<span class="badge badge-${m.cls} badge-pill" title="${m.hint}">${m.label}</span>`;
       }
 
       // =========== Cargar usuarios para el filtro ===========
@@ -313,7 +276,7 @@ if (!isset($_SESSION['usuario'])) {
           accion: 'listar',
           pagina: pagina,
           limite: limitePorPagina,
-          q: $('#Buscar').val(),
+          q: $('#Buscar').val(), // si no lo usas, puedes quitar este campo
           codigo: $('#Codigo').val(),
           descripcion: $('#Descripcion').val(),
           id_usuario:  $('#Usuario').val() || '',
@@ -353,8 +316,29 @@ if (!isset($_SESSION['usuario'])) {
             const tipo  = v.tipo || '—';
             const cod   = v.codigo || ('#'+(v.id_producto||''));
             const prod  = v.descripcion || v.producto || '—';
-            const cant  = (v.signo ? v.signo * Number(v.cantidad||0) : Number(v.cantidad||0));
-            const cantFmt = (cant>0? '+' : '') + fmtInt(cant);
+
+            const tnorm = normalizaTipo(tipo);
+            const esDevCompra = DEV_COMPRA_SIN.has(tnorm);
+            const esDevVenta  = DEV_VENTA_SIN.has(tnorm);
+
+            // Signo final: fuerza en devoluciones; si no es devolución, respeta v.signo o deduce por tipo
+            const cantidadBase = Number(v.cantidad || 0);
+            const sign = esDevCompra ? -1
+                       : esDevVenta  ? +1
+                       : ([-1,0,1].includes(Number(v.signo)) ? Number(v.signo) : signoPorTipo(tipo));
+
+            const cantFmt = esDevCompra ? `-${fmtInt(cantidadBase)}`
+                         : esDevVenta  ? `+${fmtInt(cantidadBase)}`
+                         : sign > 0    ? `+${fmtInt(cantidadBase)}`
+                         : sign < 0    ? `-${fmtInt(cantidadBase)}`
+                         : `±${fmtInt(cantidadBase)}`;
+
+            const cantCls = esDevCompra ? 'text-danger'
+                         : esDevVenta  ? 'text-success'
+                         : sign > 0    ? 'text-success'
+                         : sign < 0    ? 'text-danger'
+                         : 'text-warning';
+
             const suc   = v.sucursal || (v.id_sucursal ? ('#'+v.id_sucursal) : '—');
             const usr   = v.usuario || (v.id_usuario  ? ('#'+v.id_usuario ) : '—');
             const ref   = v.referencia || '—';
@@ -366,7 +350,7 @@ if (!isset($_SESSION['usuario'])) {
                 <td class="text-center">${badgeTipo(tipo)}</td>
                 <td class="text-center"><b>${cod}</b></td>
                 <td>${prod}</td>
-                <td class="text-center"><b>${cantFmt}</b></td>
+                <td class="text-center"><b class="${cantCls}">${cantFmt}</b></td>
                 <td class="text-center">${suc}</td>
                 <td class="text-center">${usr}</td>
                 <td class="text-center">${ref}</td>
@@ -386,7 +370,7 @@ if (!isset($_SESSION['usuario'])) {
               </tr>`;
           });
         }
-        $('#tablaMovimientos tbody').html(tbody);
+        $('#tbodyMovimientos').html(tbody);
       }
 
       function configurarPaginacion(currentPage, totalItems, itemsPerPage=10){
@@ -468,10 +452,31 @@ if (!isset($_SESSION['usuario'])) {
             return;
           }
 
+          const tipo  = v.tipo || '—';
+          const tnorm = normalizaTipo(tipo);
+          const esDevCompra = DEV_COMPRA_SIN.has(tnorm);
+          const esDevVenta  = DEV_VENTA_SIN.has(tnorm);
+
+          const base = Number(v.cantidad || 0);
+          const sign = esDevCompra ? -1
+                     : esDevVenta  ? +1
+                     : ([-1,0,1].includes(Number(v.signo)) ? Number(v.signo) : signoPorTipo(tipo));
+
+          const detFmt = esDevCompra ? `-${fmtInt(base)}`
+                      : esDevVenta  ? `+${fmtInt(base)}`
+                      : sign > 0    ? `+${fmtInt(base)}`
+                      : sign < 0    ? `-${fmtInt(base)}`
+                      : `±${fmtInt(base)}`;
+
+          const detCls = esDevCompra ? 'text-danger'
+                      : esDevVenta  ? 'text-success'
+                      : sign > 0    ? 'text-success'
+                      : sign < 0    ? 'text-danger'
+                      : 'text-warning';
+
           $('#det-fecha').text(ymdHisToEs(v.fecha || v.fecha_creacion));
-          $('#det-tipo').html(badgeTipo(v.tipo));
-          const cant = (v.signo ? v.signo * Number(v.cantidad||0) : Number(v.cantidad||0));
-          $('#det-cantidad').text((cant>0? '+' : '') + fmtInt(cant));
+          $('#det-tipo').html(badgeTipo(tipo));
+          $('#det-cantidad').html(`<b class="${detCls}">${detFmt}</b>`);
           $('#det-codigo').text(v.codigo || ('#'+(v.id_producto||'')));
           $('#det-producto').text(v.descripcion || v.producto || '—');
           $('#det-sucursal').text(v.sucursal || (v.id_sucursal? '#'+v.id_sucursal : '—'));
@@ -490,7 +495,7 @@ if (!isset($_SESSION['usuario'])) {
         });
       });
 
-    }); // ready
+       }); // ready
 
     // util: limpiar filtros
     function clearField(id){

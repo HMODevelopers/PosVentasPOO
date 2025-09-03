@@ -18,7 +18,7 @@ class InventarioMovimientoModel
                 s.nombre AS sucursal,
                 s.descripcion AS sucursal,
                 De lo contrario, dejamos NULL y en el front ya tienes fallback al id_sucursal. */
-                NULL AS sucursal,
+                s.nombre AS sucursal,
                 u.nombre AS usuario,
                 CASE
                     WHEN m.tipo IN ('Entrada','Devolucion Compra') THEN  1
