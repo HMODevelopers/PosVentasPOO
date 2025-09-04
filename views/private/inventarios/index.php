@@ -106,22 +106,35 @@ if (!isset($_SESSION['usuario'])) {
                 </div>
               </div>
 
-              <!-- Desde -->
-              <div class="col-md-2">
-                <div class="form-group">
-                  <label for="Desde" class="control-label">Desde</label>
+            <!-- Desde -->
+            <div class="col-md-2">
+              <div class="form-group">
+                <label for="Desde" class="control-label">Desde</label>
+                <div class="input-group">
                   <input type="date" id="Desde" class="form-control filtrar">
+                  <div class="input-group-append clean-filter" style="display:none;">
+                    <span class="input-group-text">
+                      <i class="mdi mdi-close-circle text-danger" onclick="clearField('Desde')"></i>
+                    </span>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <!-- Hasta -->
-              <div class="col-md-2">
-                <div class="form-group">
-                  <label for="Hasta" class="control-label">Hasta</label>
+            <!-- Hasta -->
+            <div class="col-md-2">
+              <div class="form-group">
+                <label for="Hasta" class="control-label">Hasta</label>
+                <div class="input-group">
                   <input type="date" id="Hasta" class="form-control filtrar">
+                  <div class="input-group-append clean-filter" style="display:none;">
+                    <span class="input-group-text">
+                      <i class="mdi mdi-close-circle text-danger" onclick="clearField('Hasta')"></i>
+                    </span>
+                  </div>
                 </div>
               </div>
-
+            </div>
             </div><!--/row-->
           </div>
         </div>

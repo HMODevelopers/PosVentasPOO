@@ -22,10 +22,12 @@ class UsuarioModel
         $limite = max(1, (int)$limite);
         $offset = ($pagina - 1) * $limite;
 
-        $sql = "SELECT u.id_usuario, u.nombre, u.usuario, u.correo, u.telefono,
-                       u.id_rol, u.activo, u.fecha_creacion
-                FROM usuarios u
-                WHERE 1=1";
+       $sql = "SELECT u.id_usuario, u.nombre, u.usuario, u.correo, u.telefono,
+               u.id_rol, r.nombre AS nombre_rol, 
+               u.activo, u.fecha_creacion
+        FROM usuarios u
+        LEFT JOIN roles r ON u.id_rol = r.id_rol
+        WHERE 1=1";
         $params = [];
 
         $q        = trim($filtros['q']        ?? '');

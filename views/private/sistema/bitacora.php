@@ -130,20 +130,36 @@ if (!isset($_SESSION['usuario'])) {
                 </div>
 
 
-              <!-- Desde / Hasta -->
-              <div class="col-md-3">
-                <div class="form-group">
-                  <label for="FiltroDesde" class="control-label">Desde</label>
-                  <input type="date" id="FiltroDesde" class="form-control filtrar">
+              <!-- Desde -->
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label for="FiltroDesde" class="control-label">Desde</label>
+                    <div class="input-group">
+                      <input type="date" id="FiltroDesde" class="form-control filtrar">
+                      <div class="input-group-append clean-filter" style="display:none;">
+                        <span class="input-group-text">
+                          <i class="mdi mdi-close-circle text-danger" onclick="clearField('FiltroDesde')"></i>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div class="col-md-3">
-                <div class="form-group">
-                  <label for="FiltroHasta" class="control-label">Hasta</label>
-                  <input type="date" id="FiltroHasta" class="form-control filtrar">
+                <!-- Hasta -->
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label for="FiltroHasta" class="control-label">Hasta</label>
+                    <div class="input-group">
+                      <input type="date" id="FiltroHasta" class="form-control filtrar">
+                      <div class="input-group-append clean-filter" style="display:none;">
+                        <span class="input-group-text">
+                          <i class="mdi mdi-close-circle text-danger" onclick="clearField('FiltroHasta')"></i>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+
 
             </div><!--/row-->
           </div>

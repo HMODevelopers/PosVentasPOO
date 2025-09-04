@@ -78,7 +78,7 @@ if (!isset($_SESSION['usuario'])) {
                   <label for="FiltroNombre" class="control-label">Nombre</label>
                   <div class="input-group">
                     <input type="text" id="FiltroNombre" class="form-control filtrar" placeholder="Juan Pérez">
-                    <div class="input-group-append clean-filter">
+                    <div class="input-group-append clean-filter" style="display:none;">
                       <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" onclick="clearField('FiltroNombre')"></i></span>
                     </div>
                   </div>
@@ -91,24 +91,25 @@ if (!isset($_SESSION['usuario'])) {
                   <label for="FiltroUsuarioLogin" class="control-label">Usuario</label>
                   <div class="input-group">
                     <input type="text" id="FiltroUsuarioLogin" class="form-control filtrar" placeholder="j.perez">
-                    <div class="input-group-append clean-filter">
+                    <div class="input-group-append clean-filter" style="display:none;">
                       <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" onclick="clearField('FiltroUsuarioLogin')"></i></span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Rol (ID) -->
+              <!-- Rol (select dinámico) -->
               <div class="col-md-3">
                 <div class="form-group">
-                  <label for="FiltroRolId" class="control-label">Rol (ID)</label>
+                  <label for="FiltroRolId" class="control-label">Rol</label>
                   <div class="input-group">
-                    <input type="number" min="0" id="FiltroRolId" class="form-control filtrar" placeholder="Ej. 1">
-                    <div class="input-group-append clean-filter">
+                    <select id="FiltroRolId" class="form-control filtrar">
+                      <option value="">Todos</option>
+                    </select>
+                    <div class="input-group-append clean-filter" style="display:none;">
                       <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" onclick="clearField('FiltroRolId')"></i></span>
                     </div>
                   </div>
-                  <small class="form-text text-muted">Si tienes un catálogo de roles, luego lo cambiamos a select.</small>
                 </div>
               </div>
 
@@ -122,7 +123,7 @@ if (!isset($_SESSION['usuario'])) {
                       <option value="0">Inactivos</option>
                       <option value="">Todos</option>
                     </select>
-                    <div class="input-group-append clean-filter">
+                    <div class="input-group-append clean-filter" style="display:none;">
                       <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" onclick="clearField('FiltroActivo')"></i></span>
                     </div>
                   </div>
@@ -142,11 +143,6 @@ if (!isset($_SESSION['usuario'])) {
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h4 class="header-title">Listado de Usuarios</h4>
               <button id="btnNuevo" class="btn btn-primary"><i class="mdi mdi-plus"></i> Nuevo usuario</button>
-            </div>
-
-            <!-- Empty state -->
-            <div id="emptyState" class="alert alert-warning d-none mb-2">
-              No hay registros que coincidan con los filtros.
             </div>
 
             <div class="table-responsive">
@@ -198,10 +194,14 @@ if (!isset($_SESSION['usuario'])) {
             <span aria-hidden="true">&times;</span>
           </button>
         </div>
+
         <form id="formUsuario" autocomplete="off">
           <input type="hidden" id="id_usuario" name="id_usuario" />
+
           <div class="modal-body">
-            <div class="row g-3">
+
+            <!-- fila 1 -->
+            <div class="form-row mb-3">
               <div class="col-md-6">
                 <label class="form-label required" for="nombre">Nombre Completo</label>
                 <input type="text" class="form-control" id="nombre" name="nombre" required maxlength="200" />
@@ -210,6 +210,10 @@ if (!isset($_SESSION['usuario'])) {
                 <label class="form-label required" for="usuario">Usuario</label>
                 <input type="text" class="form-control" id="usuario" name="usuario" required maxlength="100" />
               </div>
+            </div>
+
+            <!-- fila 2 -->
+            <div class="form-row mb-3">
               <div class="col-md-6">
                 <label class="form-label" for="correo">Correo</label>
                 <input type="email" class="form-control" id="correo" name="correo" maxlength="150" />
@@ -218,13 +222,20 @@ if (!isset($_SESSION['usuario'])) {
                 <label class="form-label" for="telefono">Teléfono</label>
                 <input type="text" class="form-control" id="telefono" name="telefono" maxlength="20" />
               </div>
-              <div class="col-md-4">
-                <label class="form-label" for="id_rol">Rol (ID)</label>
-                <input type="number" class="form-control" id="id_rol" name="id_rol" min="0" />
-                <small class="form-text text-muted">Más adelante lo cambiamos por un select de roles.</small>
+            </div>
+
+            <!-- fila 3 -->
+            <div class="form-row mb-3">
+              <div class="col-md-12">
+                <label class="form-label required" for="id_rol">Rol</label>
+                <select class="form-control" id="id_rol" name="id_rol" required>
+                  <option value="">Seleccione un rol...</option>
+                </select>
               </div>
             </div>
+
           </div>
+
           <div class="modal-footer">
             <button type="button" class="btn btn-light" data-dismiss="modal">Cancelar</button>
             <button type="submit" class="btn btn-primary" id="btnGuardar">
@@ -278,10 +289,16 @@ if (!isset($_SESSION['usuario'])) {
     $(function(){
       let paginaActual = 1;
       const limitePorPagina = 10;
-      const URL_CTRL = '<?= BASE_URL ?>/controllers/UsuariosController.php';
+      const URL_CTRL  = '<?= BASE_URL ?>/controllers/UsuariosController.php';
+      const URL_ROLES = '<?= BASE_URL ?>/controllers/RolesController.php';
 
       // Inicial
       cargarUsuarios(paginaActual);
+      // Cargar opciones de roles en el filtro (con opción "Todos")
+      cargarRolesEnSelect('FiltroRolId', '', true).then(() => {
+        const $f = $('#FiltroRolId');
+        if ($f.val()) $f.closest('.input-group, .form-group').find(".clean-filter").css({display:'flex'});
+      });
 
       // ===== Utils =====
       const escapeHtml = (s) => (s==null? '' : String(s)
@@ -296,6 +313,44 @@ if (!isset($_SESSION['usuario'])) {
         const on = String(v) === '1';
         return `<span class="badge badge-${on?'success':'secondary'} badge-pill">${on?'Activo':'Inactivo'}</span>`;
       };
+
+      // ===== Función: Cargar roles en cualquier select (usa listar-min) =====
+      function cargarRolesEnSelect(selectId, selectedId = '', incluirTodos = false) {
+        return $.ajax({
+          url: URL_ROLES,
+          method: 'POST',
+          dataType: 'json',
+          data: { accion: 'listar-min', limite: 200 } // <- usa tu acción para selects
+        })
+        .done(function(resp){
+          const $sel = $('#' + selectId);
+          $sel.empty();
+
+          if (incluirTodos) {
+            $sel.append('<option value="">Todos</option>');
+          } else {
+            $sel.append('<option value="">Seleccione un rol...</option>');
+          }
+
+          // Tu controller devuelve { data: [ { id_rol, nombre, nombre_mostrar? } ] }
+          const arr = Array.isArray(resp?.data) ? resp.data : [];
+          arr.forEach(r => {
+            const text = r.nombre_mostrar || r.nombre || ('Rol ' + r.id_rol);
+            const opt  = $('<option/>', { value: r.id_rol, text });
+            $sel.append(opt);
+          });
+
+          if (selectedId !== '' && selectedId != null) {
+            $sel.val(String(selectedId));
+          }
+        })
+        .fail(function(xhr){
+          console.error('Error cargando roles', xhr);
+          (typeof toastr !== 'undefined' && toastr.error)
+            ? toastr.error('No se pudieron cargar los roles')
+            : alert('No se pudieron cargar los roles');
+        });
+      }
 
       // ===== Filtros =====
       $(".filtrar")
@@ -375,7 +430,7 @@ if (!isset($_SESSION['usuario'])) {
             const usr  = v.usuario || '—';
             const cor  = v.correo || '—';
             const tel  = v.telefono || '—';
-            const rol  = (v.id_rol != null) ? v.id_rol : '—';
+            const rol  = (v.nombre_rol != null) ? v.nombre_rol : '—';
             const est  = badgeActivo(v.activo);
             const fcre = ymdHisToEs(v.fecha_creacion);
 
@@ -456,17 +511,18 @@ if (!isset($_SESSION['usuario'])) {
           const v = resp?.data || null;
           if (!v){ toastr.error('No se encontró el usuario.'); return; }
 
-          // Reutilizamos el modal de edición como “detalle rápido”
           $('#id_usuario').val(v.id_usuario ?? '');
           $('#nombre').val(v.nombre || '');
           $('#usuario').val(v.usuario || '');
           $('#correo').val(v.correo || '');
           $('#telefono').val(v.telefono || '');
-          $('#id_rol').val(v.id_rol != null ? v.id_rol : '');
 
           $('#tituloModal').text('Detalle de usuario');
-          $('#btnGuardar').hide(); // ocultamos guardar en modo “detalle”
-          $('#modalUsuario').modal('show');
+          $('#btnGuardar').hide();
+
+          cargarRolesEnSelect('id_rol', v.id_rol).then(() => {
+            $('#modalUsuario').modal('show');
+          });
         })
         .fail(function(){ toastr.error('Error al cargar el detalle.'); });
       });
@@ -477,7 +533,11 @@ if (!isset($_SESSION['usuario'])) {
         $('#id_usuario').val('');
         $('#tituloModal').text('Nuevo usuario');
         $('#btnGuardar').show();
-        $('#modalUsuario').modal('show');
+
+        // Cargar roles y luego abrir modal
+        cargarRolesEnSelect('id_rol').then(() => {
+          $('#modalUsuario').modal('show');
+        });
       });
 
       // ===== Editar =====
@@ -498,10 +558,14 @@ if (!isset($_SESSION['usuario'])) {
           $('#usuario').val(r.usuario || '');
           $('#correo').val(r.correo || '');
           $('#telefono').val(r.telefono || '');
-          $('#id_rol').val(r.id_rol != null ? r.id_rol : '');
+
           $('#tituloModal').text('Editar usuario');
           $('#btnGuardar').show();
-          $('#modalUsuario').modal('show');
+
+          // Cargar roles y preseleccionar
+          cargarRolesEnSelect('id_rol', r.id_rol).then(() => {
+            $('#modalUsuario').modal('show');
+          });
         })
         .fail(function(){ toastr.error('Error al obtener el detalle.'); });
       });
