@@ -44,7 +44,7 @@ if (!isset($_SESSION['usuario'])) {
       .ed-sug-panel .list-group-item.disabled * { cursor:not-allowed!important; opacity:1; }
 
       /* Tabla carrito del editor (mismo estilo que caja) */
-       #ed-tabla .table td, #ed-tabla .table th { vertical-align: middle; }
+      #ed-tabla .table td, #ed-tabla .table th { vertical-align: middle; }
       .badge-stock { font-weight: 600; }
       .w-70px { width: 70px; }
 
@@ -156,6 +156,41 @@ if (!isset($_SESSION['usuario'])) {
         <?php include_once __DIR__ . '/../ventas/modales/eliminar.php'; ?>
         <?php include_once __DIR__ . '/../ventas/modales/editar.php'; ?>
 
+        <!-- Modal Activar Venta Guardada -->
+        <div class="modal fade" id="modalActivarVenta" tabindex="-1" role="dialog" aria-labelledby="lblActivarVenta" aria-hidden="true">
+          <div class="modal-dialog modal-md modal-dialog-scrollable" role="document">
+            <div class="modal-content">
+              <div class="modal-header py-2">
+                <h5 class="modal-title">Activar venta <span class="text-muted">Folio</span> <b id="ac-folio">—</b></h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+              </div>
+              <div class="modal-body">
+                <input type="hidden" id="ac-id-venta" value="">
+                <div class="form-group">
+                  <label for="ac-selFormaPago">Forma de pago</label>
+                  <select id="ac-selFormaPago" class="form-control">
+                    <option value="">Cargando…</option>
+                  </select>
+                  <small class="text-muted">Se requiere una forma de pago para contabilizarla en el corte.</small>
+                </div>
+                <div class="form-group form-check mt-2">
+                  <input class="form-check-input" type="checkbox" id="ac-fechaAhora" checked>
+                  <label class="form-check-label" for="ac-fechaAhora">
+                    Usar fecha y hora actual al activar
+                  </label>
+                </div>
+                <div id="ac-error" class="alert alert-danger d-none mt-2"></div>
+              </div>
+              <div class="modal-footer py-2">
+                <button type="button" class="btn btn-outline-secondary" data-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-success" id="btnConfirmarActivar">
+                  <i class="mdi mdi-check-circle-outline"></i> Activar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /Modal Activar -->
 
       </div> <!-- /container-fluid -->
     </div> <!-- /wrapper -->
@@ -172,6 +207,9 @@ if (!isset($_SESSION['usuario'])) {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
 
     <script>
+    // helper para íconos "limpiar"
+    function clearField(id){ try { $('#'+id).val('').trigger('change'); } catch(e){} }
+
     $(function(){
       const BASE = BASE_URL;
       const VENTAS_URL     = `${BASE}/controllers/VentasController.php`;
@@ -209,6 +247,13 @@ if (!isset($_SESSION['usuario'])) {
             </a>
             <a class="dropdown-item" href="javascript:void(0);" onclick="abrirEditarVenta(${v.id_venta});">
               <i class="mdi mdi-pencil mr-2 text-muted font-18 vertical-middle"></i>Editar
+            </a>`;
+        }
+        // Botón Activar SOLO si está Guardada
+        if (v.estatus==='Guardada'){
+          out += `
+            <a class="dropdown-item accion-activar" href="#" data-id="${v.id_venta}" data-folio="${v.folio}">
+              <i class="mdi mdi-check-circle mr-2 text-muted font-18 vertical-middle"></i>Activar (contabilizar)
             </a>`;
         }
         if (v.estatus==='Activa'){
@@ -396,18 +441,78 @@ if (!isset($_SESSION['usuario'])) {
         .always(()=>{ $('#modalEliminar').modal('hide'); $b.prop('disabled',false).html(txt); });
       });
 
-      // Inicial
-      cargarVentas(paginaActual);
+      // =================== ACTIVAR (Guardada → Activa) ===================
+      // abrir modal
+      $(document).on('click','a.accion-activar', function(e){
+        e.preventDefault();
+        const id = $(this).data('id');
+        const folio = $(this).data('folio') || '—';
+        if (!id) return;
 
-      // =========================================================================
-      // =========================== EDITAR (estilo CAJA) ========================
-      // =========================================================================
+        $('#ac-id-venta').val(id);
+        $('#ac-folio').text(folio);
+        $('#ac-error').addClass('d-none').empty();
+        $('#ac-fechaAhora').prop('checked', true);
+
+        // cargar formas de pago
+        $.get(FORMASPAGO_URL, {accion:'listar_select'}).done(r=>{
+          const arr = r?.data || (Array.isArray(r)?r:[]);
+          const $sel = $('#ac-selFormaPago').empty();
+          if (!arr.length){
+            $sel.append(`<option value="">(sin formas de pago)</option>`);
+          } else {
+            arr.forEach(fp => $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`));
+            // seleccionar efectivo si existe
+            const $ef = $sel.find('option').filter(function(){ return $(this).text().toLowerCase().includes('efectivo'); });
+            if ($ef.length) $ef.prop('selected', true);
+          }
+          $('#modalActivarVenta').modal('show');
+        }).fail(()=>{
+          const $sel = $('#ac-selFormaPago').empty();
+          $sel.append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option>');
+          $('#modalActivarVenta').modal('show');
+        });
+      });
+
+      // confirmar activar
+      $(document).off('click','#btnConfirmarActivar').on('click','#btnConfirmarActivar', function(){
+        const idVenta = Number($('#ac-id-venta').val());
+        const idForma = $('#ac-selFormaPago').val() ? Number($('#ac-selFormaPago').val()) : null;
+        const fechaAhora = $('#ac-fechaAhora').is(':checked') ? 1 : 0;
+
+        if (!idVenta){ return; }
+        if (!idForma){
+          $('#ac-error').removeClass('d-none').text('Selecciona una forma de pago.');
+          return;
+        }
+
+        const $btn = $(this);
+        const html = $btn.html();
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Activando...');
+
+        $.post(VENTAS_URL, { accion:'activar-guardada', id_venta:idVenta, id_forma_pago:idForma, actualizar_fecha:fechaAhora }, function(r){
+          if (r && r.ok){
+            toastr.success(r.msg || 'Venta activada.');
+            $('#modalActivarVenta').modal('hide');
+            cargarVentas(paginaActual);
+          } else {
+            $('#ac-error').removeClass('d-none').text(r?.msg || 'No se pudo activar la venta.');
+          }
+        }, 'json').fail(()=>{
+          $('#ac-error').removeClass('d-none').text('Error de comunicación con el servidor.');
+        }).always(()=>{
+          $btn.prop('disabled', false).html(html);
+        });
+      });
+
+      // =================== EDITAR (estilo CAJA) ===================
       const $modalEd = $('#modalEditarVenta');
       const $edFolio = $('#ed-folio');
       const $edEst   = $('#ed-estatus');
       const $edFechaInfo = $('#ed-fecha');
       const $edUsrCaja   = $('#ed-usr-caja');
 
+      // NOTA: estos inputs deben existir en tu editar.php
       const $selCliente = $('#ed-selCliente');
       const $selForma   = $('#ed-selFormaPago');
       const $tpPrecio   = $('#ed-tpPrecio');        // slugs: publico, taller, proveedor
@@ -428,7 +533,6 @@ if (!isset($_SESSION['usuario'])) {
       const detalleCache = new Map();
       let debTimer = null;
 
-      // ===== helpers del editor (idénticos a caja) =====
       function vendibleDe(det){ return Math.max(0, num(det.stock_actual ?? det.existencia) - num(det.stock_minimo)); }
       function maxVendible(it){ return Math.max(0, num(it.stock_actual) - num(it.stock_minimo)); }
       function mapTipoPrecioId(slug){ const m={publico:1, taller:2, proveedor:3}; return m[slug]||1; }
@@ -580,7 +684,6 @@ if (!isset($_SESSION['usuario'])) {
           const next= Math.min(max, Number(carrito[idx].cantidad)+1);
           carrito[idx].cantidad = next;
         } else {
-          // unidad se calcula al pintar (según tipo precio) salvo override
           carrito.push({...itemBase, cantidad: Math.max(1, itemBase.original || 1)});
         }
         pintarCarrito();
@@ -748,7 +851,6 @@ if (!isset($_SESSION['usuario'])) {
             return $.post(PRODUCTOS_URL,{accion:'detalle', id_producto:idp})
               .then(rr=>{
                 const p=rr?.data||{};
-                // base item
                 const item = {
                   id_producto:idp,
                   codigo: p.codigo || d.codigo || '',
@@ -762,7 +864,6 @@ if (!isset($_SESSION['usuario'])) {
                   original:Number(d.cantidad||0),
                   cantidad:Number(d.cantidad||0)
                 };
-                // si el precio unitario de la venta difiere del precio por tipo, lo respetamos como override
                 const unitVenta = Number(d.precio_unitario||0);
                 const unitTipo  = (function(){
                   const t=slug;
@@ -784,7 +885,7 @@ if (!isset($_SESSION['usuario'])) {
       };
 
       // ============== INICIO ==============
-      // (cargar listado ya llamado arriba)
+      cargarVentas(paginaActual);
     });
     </script>
   </body>

@@ -41,7 +41,7 @@ if (isset($_SESSION['usuario'])) {
 
                             <div class="text-center w-75 m-auto">
                                 <a href="#">
-                                    <img src="<?= BASE_URL ?>/assets/images/logo-dark.png" alt="Logo" height="18">
+                                    <img src="<?= BASE_URL ?>/assets/images/rr1_black.png" alt="Logo" height="100">
                                 </a>
                                 <p class="text-muted mb-4 mt-3">Introduce tu usuario y contraseña para acceder.</p>
                             </div>

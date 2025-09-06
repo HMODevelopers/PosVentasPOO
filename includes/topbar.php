@@ -83,12 +83,12 @@
                     <div class="logo-box">
                         <a href="" class="logo text-center">
                             <span class="logo-lg">
-                                <img src="<?= BASE_URL ?>/assets/images/logo-dark.png" alt="" height="16">
+                                <img src="<?= BASE_URL ?>/assets/images/rr1_black.png" alt="" height="50">
                                 <!-- <span class="logo-lg-text-dark">Xeria</span> -->
                             </span>
                             <span class="logo-sm">
                                 <!-- <span class="logo-sm-text-dark">X</span> -->
-                                <img src="<?= BASE_URL ?>/assets/images/logo-sm.png" alt="" height="18">
+                                <img src="<?= BASE_URL ?>/assets/images/rr1_black.png" alt="" height="50">
                             </span>
                         </a>
                     </div>

@@ -206,6 +206,21 @@ try {
             break;
         }
 
+        case 'activar-guardada': {
+            $id_venta       = (int)($_POST['id_venta'] ?? $_GET['id_venta'] ?? $RAW['id_venta'] ?? 0);
+            $id_forma_pago  = isset($_POST['id_forma_pago']) ? (int)$_POST['id_forma_pago']
+                            : (isset($_GET['id_forma_pago']) ? (int)$_GET['id_forma_pago']
+                            : (isset($RAW['id_forma_pago']) ? (int)$RAW['id_forma_pago'] : null));
+            $actualizar_fecha = false;
+            $af = ($_POST['actualizar_fecha'] ?? $_GET['actualizar_fecha'] ?? $RAW['actualizar_fecha'] ?? 0);
+            if ($af === '1' || $af === 1 || $af === true || $af === 'true') { $actualizar_fecha = true; }
+
+            if (!$id_venta) { echo json_encode(['ok'=>false,'msg'=>'id_venta requerido.']); break; }
+
+            $resp = $ventaModel->activarGuardada($id_venta, $id_forma_pago, $actualizar_fecha);
+            echo json_encode($resp);
+            break;
+        }
         /* ============================================================
          * Acción no soportada
          * ============================================================ */

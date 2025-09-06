@@ -608,6 +608,73 @@ class VentaModel
         }
     }
 
+    public function activarGuardada(int $idVenta, ?int $idFormaPago, bool $actualizarFecha = false): array
+    {
+        try {
+            $this->conn->beginTransaction();
+
+            // Bloquea la venta
+            $stV = $this->conn->prepare("SELECT * FROM ventas WHERE id_venta = :id FOR UPDATE");
+            $stV->execute([':id'=>$idVenta]);
+            $venta = $stV->fetch(\PDO::FETCH_ASSOC);
+            if (!$venta) { throw new \Exception('Venta no encontrada.'); }
+
+            $estatusPrev = $venta['estatus'];
+            if (strcasecmp($estatusPrev, 'Activa') === 0) {
+                // idempotente
+                $this->conn->commit();
+                return ['ok'=>true, 'msg'=>'La venta ya estaba activa.'];
+            }
+            if (strcasecmp($estatusPrev, 'Guardada') !== 0) {
+                throw new \Exception('Solo se pueden activar ventas con estatus "Guardada".');
+            }
+
+            // Reglas: NO mover inventario (ya se reservó al guardar)
+            // Solo actualizar estatus + forma de pago y opcionalmente fecha
+            $params = [ ':id'=>$idVenta, ':idfp'=>($idFormaPago ?: null) ];
+            $sql = "UPDATE ventas SET estatus='Activa', id_forma_pago = :idfp";
+            if ($actualizarFecha) {
+                $sql .= ", fecha = :f";
+                $params[':f'] = $this->ahoraHermStr(); // fecha y hora de activación
+            }
+            $sql .= " WHERE id_venta = :id";
+            $this->conn->prepare($sql)->execute($params);
+
+            // Bitácora
+            $idUsuario = (int)($venta['id_usuario'] ?? 0);
+            $this->registrarBitacora(
+                $idUsuario,
+                'ventas',
+                'UPDATE',
+                $idVenta,
+                'Activación de venta guardada (sin movimiento de inventario)',
+                json_encode([
+                    'estatus_prev'       => $estatusPrev,
+                    'id_forma_pago_prev' => $venta['id_forma_pago'],
+                    'fecha_prev'         => $venta['fecha'],
+                ]),
+                json_encode([
+                    'estatus_new'  => 'Activa',
+                    'id_forma_pago'=> $idFormaPago,
+                    'fecha_new'    => $actualizarFecha ? ($params[':f'] ?? $venta['fecha']) : $venta['fecha'],
+                ]),
+                null,
+                $this->ahoraHermStr()
+            );
+
+            $this->conn->commit();
+            return ['ok'=>true, 'msg'=>'Venta activada correctamente.'];
+
+        } catch (\Exception $e) {
+            if ($this->conn->inTransaction()) $this->conn->rollBack();
+            try {
+                $idU = (int)($_SESSION['usuario']['id_usuario'] ?? $_SESSION['id_usuario'] ?? 0);
+                $this->registrarBitacora($idU,'ventas','ERROR',(int)$idVenta,$e->getMessage(),null,null,null,$this->ahoraHermStr());
+            } catch (\Throwable $th) {}
+            return ['ok'=>false, 'msg'=>$e->getMessage()];
+        }
+    }
+
     /* ============================
        BITÁCORA
        ============================ */
