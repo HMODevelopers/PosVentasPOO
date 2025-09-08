@@ -95,8 +95,9 @@ class PrestamoModel
     }
 
     /* ========================= CRUD ========================= */
-    public function obtenerPorId(int $id)
+     public function obtenerPorId(int $id)
     {
+        // Préstamo
         $st = $this->conn->prepare("SELECT * FROM prestamos WHERE id_prestamo = :id LIMIT 1");
         $st->bindValue(':id', $id, PDO::PARAM_INT);
         $st->execute();
@@ -104,7 +105,14 @@ class PrestamoModel
 
         if (!$prestamo) return null;
 
-        $ab = $this->conn->prepare("SELECT * FROM abonos WHERE id_prestamo = :id AND activo = 1 ORDER BY fecha_abono DESC, id_abono DESC");
+        // Abonos + método de pago (sin usuario del abono)
+        $sqlAb = "SELECT a.*,
+                        fp.descripcion AS forma_pago_desc
+                FROM abonos a
+                LEFT JOIN formas_pago fp ON fp.id_forma_pago = a.id_forma_pago
+                WHERE a.id_prestamo = :id AND a.activo = 1
+                ORDER BY a.fecha_abono DESC, a.id_abono DESC";
+        $ab = $this->conn->prepare($sqlAb);
         $ab->bindValue(':id', $id, PDO::PARAM_INT);
         $ab->execute();
         $abonos = $ab->fetchAll(PDO::FETCH_ASSOC);
@@ -266,7 +274,7 @@ class PrestamoModel
                     $id,
                     'Ajuste de saldo por cambio de monto_total',
                     ['saldo' => $prev['saldo']],
-                    ['saldo' => '(saldo + delta)'] // comentario informativo
+                    ['saldo' => '(saldo + delta)']
                 );
             }
 
@@ -280,22 +288,43 @@ class PrestamoModel
         }
     }
 
-    public function abonar(int $idPrestamo, float $monto, string $fechaAbono, ?string $refPago, ?int $idUsuario = null): bool
-    {
+    /**
+     * Registra un abono y actualiza el saldo del préstamo.
+     * $idFormaPago es opcional para mantener compatibilidad con llamadas existentes.
+     */
+    public function abonar(
+        int $idPrestamo,
+        float $monto,
+        string $fechaAbono,
+        ?string $refPago,
+        ?int $idUsuario = null,
+        ?int $idFormaPago = null
+    ): bool {
         if ($monto <= 0) return false;
 
         try {
             $this->conn->beginTransaction();
 
-            // 1) Insertar abono
-            $sqlA = "INSERT INTO abonos (id_prestamo, monto, fecha_abono, referencia_pago, activo, fecha_creacion)
-                     VALUES (:id, :monto, :fecha, :ref, 1, NOW())";
+            // Valida que sea un préstamo (no disposición)
+            $prev = $this->obtenerSoloPrestamo($idPrestamo);
+            if (!$prev || $prev['tipo_operacion'] !== 'Prestamo') {
+                $this->conn->rollBack();
+                return false;
+            }
+
+            // Normaliza forma de pago (NULL si no existe)
+            $idFormaPago = $this->formaPagoValida($idFormaPago) ? (int)$idFormaPago : null;
+
+            // 1) Insertar abono (ahora con id_forma_pago)
+            $sqlA = "INSERT INTO abonos (id_prestamo, monto, fecha_abono, referencia_pago, id_forma_pago, activo, fecha_creacion)
+                     VALUES (:id, :monto, :fecha, :ref, :fp, 1, NOW())";
             $stA = $this->conn->prepare($sqlA);
             $stA->execute([
                 ':id'    => $idPrestamo,
                 ':monto' => $monto,
                 ':fecha' => $fechaAbono,
-                ':ref'   => $refPago
+                ':ref'   => $refPago,
+                ':fp'    => $idFormaPago
             ]);
             $idAbono = (int)$this->conn->lastInsertId();
 
@@ -306,23 +335,28 @@ class PrestamoModel
                 $idAbono,
                 'Alta de abono',
                 null,
-                ['id_prestamo'=>$idPrestamo, 'monto'=>$monto, 'fecha_abono'=>$fechaAbono, 'referencia_pago'=>$refPago],
+                [
+                    'id_prestamo'   => $idPrestamo,
+                    'monto'         => $monto,
+                    'fecha_abono'   => $fechaAbono,
+                    'referencia_pago'=> $refPago,
+                    'id_forma_pago' => $idFormaPago
+                ],
                 null,
-                'abonos' // <- tabla personalizada para este registro
+                'abonos'
             );
 
             // 2) Actualizar saldo
-            $prev = $this->obtenerSoloPrestamo($idPrestamo);
-            if (!$prev) { $this->conn->rollBack(); return false; }
-
             $saldoAntes = (float)$prev['saldo'];
             $sqlU = "UPDATE prestamos SET saldo = GREATEST(0, saldo - :monto) WHERE id_prestamo=:id";
             $this->conn->prepare($sqlU)->execute([':monto'=>$monto, ':id'=>$idPrestamo]);
 
             // 3) Si saldo llega a 0 => estatus Pagado
-            $stS = $this->conn->prepare("SELECT saldo FROM prestamos WHERE id_prestamo = :id");
+            $stS = $this->conn->prepare("SELECT saldo, estatus FROM prestamos WHERE id_prestamo = :id");
             $stS->execute([':id'=>$idPrestamo]);
-            $saldoDespues = (float)$stS->fetchColumn();
+            $row = $stS->fetch(PDO::FETCH_ASSOC);
+            $saldoDespues = (float)($row['saldo'] ?? 0);
+            $estatusPrev  = $row['estatus'] ?? 'Pendiente';
 
             // Bitácora: cambio de saldo
             $this->registrarBitacora(
@@ -335,7 +369,7 @@ class PrestamoModel
                 'saldo'
             );
 
-            if ($saldoDespues <= 0.00001 && $prev['estatus'] !== 'Pagado') {
+            if ($saldoDespues <= 0.00001 && $estatusPrev !== 'Pagado') {
                 $this->conn->prepare("UPDATE prestamos SET estatus = 'Pagado' WHERE id_prestamo = :id")
                            ->execute([':id'=>$idPrestamo]);
 
@@ -344,7 +378,7 @@ class PrestamoModel
                     'UPDATE',
                     $idPrestamo,
                     'Estatus cambiado a Pagado por saldo 0',
-                    ['estatus'=>$prev['estatus']],
+                    ['estatus'=>$estatusPrev],
                     ['estatus'=>'Pagado'],
                     'estatus'
                 );
@@ -444,6 +478,15 @@ class PrestamoModel
         $st->bindValue(':lim', (int)$limite, PDO::PARAM_INT);
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // ✅ Checa si la forma de pago existe y está activa
+    private function formaPagoValida(?int $id = null): bool
+    {
+        if (empty($id)) return false;
+        $st = $this->conn->prepare("SELECT 1 FROM formas_pago WHERE id_forma_pago = :id AND activo = 1 LIMIT 1");
+        $st->execute([':id'=>$id]);
+        return (bool)$st->fetchColumn();
     }
 
     /* ===== Bitácora (misma firma/estilo que ClienteModel) ===== */

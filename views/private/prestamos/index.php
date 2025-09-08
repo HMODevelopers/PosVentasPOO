@@ -173,10 +173,10 @@ $hoy = date('Y-m-d');
         <!-- Nuevo -->
         <?php include_once __DIR__ . '/../prestamos/modales/agregar.php'; ?>
 
-        <!-- Abonar -->
+        <!-- Abonar (debe incluir un <select name="id_forma_pago" id="selFormaPagoAbono"> o id="abono_forma_pago") -->
         <?php include_once __DIR__ . '/../prestamos/modales/abonar.php'; ?>
 
-        <!-- Detalle -->
+        <!-- Detalle (tabla de abonos con columna "Método") -->
         <?php include_once __DIR__ . '/../prestamos/modales/detalle.php'; ?>
 
       </div> <!-- /container-fluid -->
@@ -201,12 +201,11 @@ $hoy = date('Y-m-d');
 
     $(function(){
       const BASE = BASE_URL;
-      const PRESTAMOS_URL = `${BASE}/controllers/PrestamosController.php`;
-      const CLIENTES_URL  = `${BASE}/controllers/ClientesController.php`;
-      // 👇 Usamos el controller de USUARIOS para llenar el select de "Empleado"
-      const USUARIOS_URL  = `${BASE}/controllers/UsuariosController.php`;
-      // Para no cambiar mucho código previo, referimos EMPLEADOS_URL a USUARIOS_URL
-      const EMPLEADOS_URL = USUARIOS_URL;
+      const PRESTAMOS_URL   = `${BASE}/controllers/PrestamosController.php`;
+      const CLIENTES_URL    = `${BASE}/controllers/ClientesController.php`;
+      const USUARIOS_URL    = `${BASE}/controllers/UsuariosController.php`; // para Empleados
+      const EMPLEADOS_URL   = USUARIOS_URL;
+      const FORMAS_PAGO_URL = `${BASE}/controllers/FormasPagoController.php`;
 
       const mxn  = v => Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
       const fechaMx = dt => { try{ const d=new Date(String(dt).replace(' ','T')); return d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}); } catch { return dt||'—'; } };
@@ -235,7 +234,7 @@ $hoy = date('Y-m-d');
         const m = concepto.match(/\[Beneficiario:\s*(.+?)\]/i);
         return m ? m[1] : null;
       }
-      
+
       function beneficiarioLabel(r){
         if (r.tipo==='Cliente' && r.id_cliente)   return `Cliente #${r.id_cliente}`;
         if (r.tipo==='Empleado' && r.id_empleado) return `Empleado #${r.id_empleado}`;
@@ -246,24 +245,27 @@ $hoy = date('Y-m-d');
         return r.tipo || '—';
       }
 
-      // ACCIONES (Cancelado => solo "Ver detalle")
+      // ========= Acciones por fila =========
       function accionesFila(r){
+        // Siempre permitir ver detalle
         let out = `
           <a class="dropdown-item accion-detalle" href="#" data-id="${r.id_prestamo}">
             <i class="mdi mdi-eye mr-2 text-muted font-18 vertical-middle"></i>Ver detalle
           </a>`;
 
-        if (String(r.estatus) === 'Cancelado') {
-          return out;
-        }
+        // Si está Pagado o Cancelado: no mostrar nada más
+        const frozen = (String(r.estatus) === 'Pagado' || String(r.estatus) === 'Cancelado');
+        if (frozen) return out;
 
-        if (r.tipo_operacion==='Prestamo' && r.estatus!=='Pagado' && Number(r.saldo)>0){
+        // Si es PRÉSTAMO y aún tiene saldo, habilitar "Abonar"
+        if (r.tipo_operacion==='Prestamo' && Number(r.saldo)>0){
           out += `
           <a class="dropdown-item accion-abonar" href="#" data-id="${r.id_prestamo}">
             <i class="mdi mdi-cash mr-2 text-muted font-18 vertical-middle"></i>Abonar
           </a>`;
         }
 
+        // Opción "Cancelar"
         out += `
           <a class="dropdown-item accion-cancelar" href="#" data-id="${r.id_prestamo}">
             <i class="mdi mdi-cancel mr-2 text-muted font-18 vertical-middle"></i>Cancelar
@@ -389,7 +391,7 @@ $hoy = date('Y-m-d');
           .fail(()=> setSelect($('#selCliente'), [], 'id','nombre'));
       }
 
-      // 👇 AHORA llena con USUARIOS (controller: UsuariosController.php -> listar-min)
+      // Empleados desde UsuariosController (listar-min)
       function cargarEmpleados(selected){
         $.post(EMPLEADOS_URL, {accion:'listar-min', limite:200})
           .done(r=>{
@@ -405,7 +407,38 @@ $hoy = date('Y-m-d');
           .fail(()=> setSelect($('#selEmpleado'), [], 'id','nombre'));
       }
 
-      // Mostrar/ocultar inputs según tipo de beneficiario
+      // Helper: referencia segura al select de forma de pago del ABONO (acepta dos ids)
+      function $selAbonoFP(){
+        return $('#selFormaPagoAbono').length ? $('#selFormaPagoAbono') : $('#abono_forma_pago');
+      }
+
+      // Formas de pago para el modal de abono
+      function cargarFormasPagoAbono(selected){
+        const $sel = $selAbonoFP();
+        if(!$sel.length) return;
+        $sel.prop('disabled', true).empty().append('<option value="">Cargando…</option>');
+        $.get(FORMAS_PAGO_URL, {accion:'listar_select'})
+          .done(r=>{
+            const arr = r?.data || (Array.isArray(r)?r:[]);
+            $sel.empty();
+            if(!arr.length){
+              $sel.append('<option value="">(sin formas de pago)</option>');
+            } else {
+              arr.forEach(fp => $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`));
+              if (selected!=null) $sel.val(String(selected));
+              if(!$sel.val()){
+                const opEfe = $sel.find('option').filter(function(){ return $(this).text().toLowerCase().includes('efectivo'); }).first().val();
+                if(opEfe) $sel.val(opEfe);
+              }
+            }
+          })
+          .fail(()=>{
+            $sel.empty().append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option>');
+          })
+          .always(()=> $sel.prop('disabled', false));
+      }
+
+      // Mostrar/ocultar inputs según tipo de beneficiario (usa ids del modal agregar.php)
       function toggleBenefWrappers(){
         const t = $('#tipo').val();
         const $selCli = $('#selCliente');
@@ -425,7 +458,7 @@ $hoy = date('Y-m-d');
           $('#txtOtro').val('');
         }
         if (t==='Empleado'){
-          cargarEmpleados();   // << llena desde UsuariosController
+          cargarEmpleados();
           $selCli.val('');
           $('#txtOtro').val('');
         }
@@ -472,7 +505,7 @@ $hoy = date('Y-m-d');
         .always(()=> $btn.prop('disabled',false).html(html));
       });
 
-      // ========= Abonar (abrir modal con saldo y limitar "max") =========
+      // ========= Abonar =========
       $(document).on('click', 'a.accion-abonar', function(e){
         e.preventDefault();
         const id = $(this).data('id');
@@ -480,6 +513,10 @@ $hoy = date('Y-m-d');
 
         $('#formAbono')[0].reset();
         $('#abono_id_prestamo').val(id);
+        $('#abono_hint_saldo').text('');
+
+        // Cargar formas de pago del abono
+        cargarFormasPagoAbono();
 
         // Traemos el saldo actual para limitar el monto
         $.post(PRESTAMOS_URL, {accion:'detalle', id_prestamo:id}, function(resp){
@@ -491,13 +528,15 @@ $hoy = date('Y-m-d');
           $inpMonto.data('saldo', saldo);
           $inpMonto.attr('placeholder', saldo > 0 ? `Máximo: ${mxn(saldo)}` : 'Sin saldo');
 
+          if ($('#abono_hint_saldo').length) $('#abono_hint_saldo').text(saldo>0 ? `Saldo disponible: ${mxn(saldo)}` : 'Saldo agotado');
+
           $('#modalAbonar').modal('show');
         }, 'json').fail(()=>{
           toastr.error('No se pudo obtener el saldo del préstamo.');
         });
       });
 
-      // ========= Abonar (validación: no puede ser mayor que el saldo) =========
+      // Validación y envío del abono
       $('#formAbono').on('submit', function(e){
         e.preventDefault();
 
@@ -522,7 +561,7 @@ $hoy = date('Y-m-d');
           return;
         }
 
-        const form = $(this).serializeArray();
+        const form = $(this).serializeArray(); // incluye id_forma_pago
         form.push({name:'accion', value:'abonar'});
 
         const $btn = $('#formAbono button[type=submit]'), html=$btn.html();
@@ -546,17 +585,23 @@ $hoy = date('Y-m-d');
       $(document).on('click','a.accion-detalle',function(e){
         e.preventDefault();
         const id=$(this).data('id'); if(!id) return;
-        $('#det-error').addClass('d-none').empty();
+
+        $('#det-error').hide().empty();
         $('#det-contenido').hide(); $('#det-loader').show();
         $('#modalDetalle').modal('show');
 
         $.post(PRESTAMOS_URL,{accion:'detalle', id_prestamo:id}, function(resp){
           const p = resp?.data?.prestamo || null;
           const abs = resp?.data?.abonos || [];
-          if(!p){ $('#det-loader').hide(); $('#det-error').removeClass('d-none').text('No se encontró el registro.'); return; }
+          if(!p){
+            $('#det-loader').hide();
+            $('#det-error').show().text('No se encontró el registro.');
+            return;
+          }
 
+          // Encabezado
           $('#det-folio').text(p.id_prestamo);
-          $('#det-tipo').html(p.tipo_operacion==='Prestamo' ? 'Préstamo' : 'Disposición');
+          $('#det-tipo').text(p.tipo_operacion==='Prestamo' ? 'Préstamo' : 'Disposición');
           $('#det-estatus').text(p.estatus);
 
           const benefDet = (function(){
@@ -569,20 +614,36 @@ $hoy = date('Y-m-d');
             return p.tipo || '—';
           })();
 
-          $('#det-benef').text(benefDet);
+          $('#det-beneficiario').text(benefDet);
           $('#det-monto').text(mxn(p.monto_total));
           $('#det-saldo').text(mxn(p.saldo));
           $('#det-fecha').text(fechaMx(p.fecha_prestamo));
+          $('#det-usuario').text(p.usuario_nombre || p.usuario || (p.id_usuario ? `ID ${p.id_usuario}` : '—'));
+          $('#det-sucursal').text(p.sucursal_nombre || p.sucursal || '—');
 
-          let tb='';
-          if(!abs.length){ tb='<tr><td colspan="4" class="text-center text-muted">Sin abonos</td></tr>'; }
-          else {
-            tb = abs.map(a=> `<tr><td>${a.id_abono}</td><td>${fechaMx(a.fecha_abono)}</td><td>${mxn(a.monto)}</td><td>${a.referencia_pago||''}</td></tr>`).join('');
+          // Tabla de abonos (6 columnas: #, Fecha, Monto, Método, Referencia, Usuario)
+          let tb = '';
+          if(!abs.length){
+            tb = '<tr><td colspan="6" class="text-center text-muted">Sin abonos</td></tr>';
+          } else {
+            tb = abs.map(a => `
+              <tr>
+                <td>${a.id_abono}</td>
+                <td>${fechaMx(a.fecha_abono)}</td>
+                <td class="text-right">${mxn(a.monto)}</td>
+                <td>${a.forma_pago_desc || '—'}</td>
+                <td>${a.referencia_pago || ''}</td>
+                <td>${a.usuario_nombre || '—'}</td>
+              </tr>
+            `).join('');
           }
           $('#det-tbody').html(tb);
 
           $('#det-loader').hide(); $('#det-contenido').show();
-        },'json').fail(()=> { $('#det-loader').hide(); $('#det-error').removeClass('d-none').text('Error al cargar el detalle.'); });
+        },'json').fail(()=>{
+          $('#det-loader').hide();
+          $('#det-error').show().text('Error al cargar el detalle.');
+        });
       });
 
       // ========= Cancelar con SweetAlert2 =========
@@ -612,7 +673,7 @@ $hoy = date('Y-m-d');
         });
       });
 
-      // ========= Eliminar (lógico) con SweetAlert2 =========
+      // ========= Eliminar (lógico) =========
       $(document).on('click','a.accion-eliminar', function(e){
         e.preventDefault();
         const id = $(this).data('id');

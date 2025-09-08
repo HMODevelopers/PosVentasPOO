@@ -7,7 +7,7 @@ $model = new PrestamoModel();
 
 $accion = $_REQUEST['accion'] ?? '';
 
-// Toma el id del usuario logueado, igual que tu controller de clientes
+// id del usuario logueado (mismo criterio que en otros controllers)
 $idUsuario = null;
 if (!empty($_SESSION['usuario'])) {
     $u = $_SESSION['usuario'];
@@ -18,8 +18,8 @@ switch ($accion) {
 
     /* ===== LISTAR ===== */
     case 'listar':
-        $pagina = (int)($_GET['pagina'] ?? $_POST['pagina'] ?? 1);
-        $limite = (int)($_GET['limite'] ?? $_POST['limite'] ?? 10);
+        $pagina = max(1, (int)($_GET['pagina'] ?? $_POST['pagina'] ?? 1));
+        $limite = max(1, (int)($_GET['limite'] ?? $_POST['limite'] ?? 10));
         $filtros = [
             'q'              => trim($_GET['q']              ?? $_POST['q']              ?? ''),
             'tipo_operacion' => trim($_GET['tipo_operacion'] ?? $_POST['tipo_operacion'] ?? ''),
@@ -32,71 +32,76 @@ switch ($accion) {
         ];
         $data  = $model->listar($pagina, $limite, $filtros);
         $total = $model->contar($filtros);
-        echo json_encode(['ok'=>true, 'data'=>$data, 'total'=>$total]);
+        echo json_encode(['ok'=>true, 'data'=>$data, 'total'=>$total], JSON_UNESCAPED_UNICODE);
     break;
 
     /* ===== LISTA CORTA (préstamos con saldo) ===== */
     case 'listar-min':
         $q   = trim($_GET['q'] ?? $_POST['q'] ?? '');
         $lim = (int)($_GET['limite'] ?? $_POST['limite'] ?? 50);
+        $lim = max(1, min($lim, 1000));
         $data = $model->listarMin($q, $lim);
-        echo json_encode(['ok'=>true, 'data'=>$data]);
+        echo json_encode(['ok'=>true, 'data'=>$data], JSON_UNESCAPED_UNICODE);
     break;
 
     /* ===== DETALLE ===== */
     case 'detalle':
         $id = (int)($_GET['id_prestamo'] ?? $_POST['id_prestamo'] ?? 0);
-        if ($id <= 0) { echo json_encode(['ok'=>false,'msg'=>'id_prestamo inválido']); break; }
+        if ($id <= 0) { echo json_encode(['ok'=>false,'msg'=>'id_prestamo inválido'], JSON_UNESCAPED_UNICODE); break; }
         $row = $model->obtenerPorId($id);
-        echo json_encode(['ok'=>true, 'data' => $row]);
+        echo json_encode(['ok'=>true, 'data' => $row], JSON_UNESCAPED_UNICODE);
     break;
 
     /* ===== CREAR ===== */
     case 'crear':
         $payload = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         $id = $model->crear($payload ?? [], $idUsuario);
-        echo json_encode(['ok' => $id > 0, 'id_prestamo' => $id]);
+        echo json_encode(['ok' => $id > 0, 'id_prestamo' => $id], JSON_UNESCAPED_UNICODE);
     break;
 
     /* ===== ACTUALIZAR (editar datos del registro) ===== */
     case 'actualizar':
         $payload = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         $id = (int)($payload['id_prestamo'] ?? $_POST['id_prestamo'] ?? 0);
-        if ($id <= 0) { echo json_encode(['ok'=>false,'msg'=>'id_prestamo requerido']); break; }
+        if ($id <= 0) { echo json_encode(['ok'=>false,'msg'=>'id_prestamo requerido'], JSON_UNESCAPED_UNICODE); break; }
         $ok = $model->actualizar($id, $payload, $idUsuario);
-        echo json_encode(['ok'=>(bool)$ok]);
+        echo json_encode(['ok'=>(bool)$ok], JSON_UNESCAPED_UNICODE);
     break;
 
     /* ===== ABONAR ===== */
     case 'abonar':
         $idPrestamo = (int)($_POST['id_prestamo'] ?? $_GET['id_prestamo'] ?? 0);
         $monto      = (float)($_POST['monto'] ?? $_GET['monto'] ?? 0);
-        $fecha      = $_POST['fecha_abono'] ?? $_GET['fecha_abono'] ?? date('Y-m-d H:i:s');
+        $fecha      = $_POST['fecha_abono'] ?? $_GET['fecha_abono'] ?? date('Y-m-d');
         $ref        = $_POST['referencia_pago'] ?? $_GET['referencia_pago'] ?? null;
+        // ✅ Nueva: forma de pago del abono (opcional)
+        $idFP       = isset($_POST['id_forma_pago']) ? $_POST['id_forma_pago']
+                    : (isset($_GET['id_forma_pago']) ? $_GET['id_forma_pago'] : null);
+        $idFP       = ($idFP === '' || $idFP === null) ? null : (int)$idFP;
 
-        if ($idPrestamo<=0 || $monto<=0) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos']); break; }
+        if ($idPrestamo<=0 || $monto<=0) { echo json_encode(['ok'=>false,'msg'=>'Datos inválidos'], JSON_UNESCAPED_UNICODE); break; }
 
-        $ok = $model->abonar($idPrestamo, $monto, $fecha, $ref, $idUsuario);
-        echo json_encode(['ok'=>(bool)$ok]);
+        $ok = $model->abonar($idPrestamo, $monto, $fecha, $ref, $idUsuario, $idFP);
+        echo json_encode(['ok'=>(bool)$ok], JSON_UNESCAPED_UNICODE);
     break;
 
     /* ===== CANCELAR ===== */
     case 'cancelar':
         $id = (int)($_POST['id_prestamo'] ?? $_GET['id_prestamo'] ?? 0);
-        if ($id <= 0) { echo json_encode(['ok'=>false,'msg'=>'id_prestamo requerido']); break; }
+        if ($id <= 0) { echo json_encode(['ok'=>false,'msg'=>'id_prestamo requerido'], JSON_UNESCAPED_UNICODE); break; }
         $ok = $model->cancelar($id, $idUsuario);
-        echo json_encode(['ok'=>(bool)$ok]);
+        echo json_encode(['ok'=>(bool)$ok], JSON_UNESCAPED_UNICODE);
     break;
 
     /* ===== ELIMINAR (lógico) ===== */
     case 'eliminar':
         $id = (int)($_POST['id_prestamo'] ?? $_GET['id_prestamo'] ?? 0);
-        if ($id <= 0) { echo json_encode(['ok'=>false,'msg'=>'id_prestamo requerido']); break; }
+        if ($id <= 0) { echo json_encode(['ok'=>false,'msg'=>'id_prestamo requerido'], JSON_UNESCAPED_UNICODE); break; }
         $ok = $model->eliminar($id, $idUsuario);
-        echo json_encode(['ok'=>(bool)$ok]);
+        echo json_encode(['ok'=>(bool)$ok], JSON_UNESCAPED_UNICODE);
     break;
 
     default:
-        echo json_encode(['ok'=>false, 'msg'=>'Acción no válida']);
+        echo json_encode(['ok'=>false, 'msg'=>'Acción no válida'], JSON_UNESCAPED_UNICODE);
     break;
 }

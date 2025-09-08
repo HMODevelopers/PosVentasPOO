@@ -15,17 +15,6 @@
                         </li>
 
 
-                        <li class="d-none d-sm-block d-flex align-items-center" style="margin-top:18px; margin-right:15px;">
-                            <a href="<?= BASE_URL ?>/views/private/caja/index.php"
-                                id="btnTopbarPOS"
-                                class="btn btn-success waves-effect my-0 py-1"
-                                style="display:flex; align-items:center; gap:6px;"
-                                title="Ir al Punto de Venta">
-                                <i class="mdi mdi-desktop-classic"></i> POS
-                            </a>
-                        </li>
-
-
                         <!--NOTIFICACIONES-->
                         
 
