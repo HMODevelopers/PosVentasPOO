@@ -1,31 +1,52 @@
-<div class="modal fade" id="modalAbonar" tabindex="-1" role="dialog" aria-hidden="true">
-          <div class="modal-dialog modal-md" role="document">
-            <div class="modal-content">
-              <form id="formAbono">
-                <div class="modal-header py-2">
-                  <h5 class="modal-title">Registrar abono</h5>
-                  <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-                </div>
-                <div class="modal-body">
-                  <input type="hidden" name="id_prestamo" id="abono_id_prestamo">
-                  <div class="form-group">
-                    <label class="form-label">Fecha</label>
-                    <input type="date" class="form-control" name="fecha_abono" value="<?= date('Y-m-d') ?>">
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Monto</label>
-                    <input type="number" step="0.01" min="0.01" class="form-control" name="monto" required>
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Referencia de pago</label>
-                    <input type="text" class="form-control" name="referencia_pago" placeholder="Opcional">
-                  </div>
-                </div>
-                <div class="modal-footer py-2">
-                  <button type="button" class="btn btn-outline-secondary" data-dismiss="modal">Cerrar</button>
-                  <button type="submit" class="btn btn-success"><i class="mdi mdi-check-circle-outline"></i> Guardar abono</button>
-                </div>
-              </form>
+<!-- =================== Modal Registrar Abono =================== -->
+<div id="modalAbonar" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="modalAbonarLabel" aria-hidden="true" data-backdrop="static">
+  <div class="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable" role="document">
+    <div class="modal-content">
+      <form id="formAbono" autocomplete="off">
+        <!-- Header -->
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalAbonarLabel">
+            <i class="mdi mdi-cash-multiple"></i> Registrar abono
+          </h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div class="modal-body">
+          <input type="hidden" name="id_prestamo" id="abono_id_prestamo">
+
+          <!-- Línea 1 -->
+          <div class="form-row">
+            <div class="form-group col-md-6">
+              <label class="form-label">Fecha</label>
+              <input type="date" class="form-control" name="fecha_abono" value="<?= date('Y-m-d') ?>">
+            </div>
+            <div class="form-group col-md-6">
+              <label class="form-label">Monto</label>
+              <input type="number" step="0.01" min="0.01" class="form-control" name="monto" required>
             </div>
           </div>
+
+          <!-- Línea 2 -->
+          <div class="form-row">
+            <div class="form-group col-12">
+              <label class="form-label">Referencia de pago</label>
+              <input type="text" class="form-control" name="referencia_pago" placeholder="Opcional">
+            </div>
+          </div>
+        </div><!-- /body -->
+
+        <!-- Footer -->
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-success">
+            <i class="mdi mdi-check-circle-outline"></i> Guardar abono
+          </button>
         </div>
+      </form>
+    </div>
+  </div>
+</div>
+<!-- =================== /Modal Registrar Abono =================== -->

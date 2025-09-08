@@ -19,7 +19,8 @@
                                   <i class="la la-money"></i>Ventas <div class="arrow-down"></div></a>
                                 <ul class="submenu">
                                    <li><a href="<?= BASE_URL ?>/views/private/ventas/index.php">Gestionar Ventas</a></li>
-                                   <li><a href="<?= BASE_URL ?>/views/private/prestamos/index.php">Gestionar Prestamos y Abonos</a></li>
+                                   <li><a href="<?= BASE_URL ?>/views/private/prestamos/index.php">Prestamos y Abonos</a></li>
+                                   <li><a href="<?= BASE_URL ?>/views/private/caja/index.php">Punto de Venta (POS)</a></li>
                                 </ul>
                             </li>
 

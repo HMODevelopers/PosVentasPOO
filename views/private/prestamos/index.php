@@ -36,7 +36,15 @@ $hoy = date('Y-m-d');
       .badge-dispo    { background: rgba(250,92,124,.12); color:#fa5c7c; }
       .text-center{ text-align:center!important; }
       .text-right{ text-align:right!important; }
-      .clean-filter{ display:none; } /* se muestra cuando hay valor */
+      .clean-filter{ display:none; }
+
+      /* Evitar scroll horizontal por textos largos */
+      #tablaPrestamos th, #tablaPrestamos td { white-space: normal; }
+      #tablaPrestamos td:nth-child(3) { word-break: break-word; }
+
+      /* Menú de acciones compacto en responsive */
+      .table-responsive-lg .dropdown-menu,
+      .table-responsive .dropdown-menu { min-width: unset; }
     </style>
   </head>
 
@@ -108,7 +116,7 @@ $hoy = date('Y-m-d');
                       <option value="Pendiente">Pendiente</option>
                       <option value="Pagado">Pagado</option>
                       <option value="Cancelado">Cancelado</option>
-                      <option value="SinRetorno">SinRetorno</option>
+                      <option value="SinRetorno">Sin Retorno</option>
                     </select>
                   </div>
                 </div>
@@ -129,7 +137,8 @@ $hoy = date('Y-m-d');
                 </button>
               </div>
 
-              <div class="table-responsive">
+              <!-- Solo responsive en pantallas chicas -->
+              <div class="table-responsive-lg">
                 <table id="tablaPrestamos" class="table table-bordered table-hover table-striped">
                   <thead>
                     <tr>
@@ -169,7 +178,6 @@ $hoy = date('Y-m-d');
 
         <!-- Detalle -->
         <?php include_once __DIR__ . '/../prestamos/modales/detalle.php'; ?>
-        
 
       </div> <!-- /container-fluid -->
     </div> <!-- /wrapper -->
@@ -184,6 +192,8 @@ $hoy = date('Y-m-d');
     <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <script>
     // helper para íconos "limpiar"
@@ -193,7 +203,10 @@ $hoy = date('Y-m-d');
       const BASE = BASE_URL;
       const PRESTAMOS_URL = `${BASE}/controllers/PrestamosController.php`;
       const CLIENTES_URL  = `${BASE}/controllers/ClientesController.php`;
-      const EMPLEADOS_URL = `${BASE}/controllers/EmpleadosController.php`; // opcional si lo tienes
+      // 👇 Usamos el controller de USUARIOS para llenar el select de "Empleado"
+      const USUARIOS_URL  = `${BASE}/controllers/UsuariosController.php`;
+      // Para no cambiar mucho código previo, referimos EMPLEADOS_URL a USUARIOS_URL
+      const EMPLEADOS_URL = USUARIOS_URL;
 
       const mxn  = v => Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
       const fechaMx = dt => { try{ const d=new Date(String(dt).replace(' ','T')); return d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}); } catch { return dt||'—'; } };
@@ -206,6 +219,7 @@ $hoy = date('Y-m-d');
           ? '<span class="badge-soft badge-prestamo">Préstamo</span>'
           : '<span class="badge-soft badge-dispo">Disposición</span>';
       }
+
       function badgeEstatus(s){
         const m = {
           'Pendiente':'badge-light-warning',
@@ -221,6 +235,7 @@ $hoy = date('Y-m-d');
         const m = concepto.match(/\[Beneficiario:\s*(.+?)\]/i);
         return m ? m[1] : null;
       }
+      
       function beneficiarioLabel(r){
         if (r.tipo==='Cliente' && r.id_cliente)   return `Cliente #${r.id_cliente}`;
         if (r.tipo==='Empleado' && r.id_empleado) return `Empleado #${r.id_empleado}`;
@@ -231,24 +246,29 @@ $hoy = date('Y-m-d');
         return r.tipo || '—';
       }
 
+      // ACCIONES (Cancelado => solo "Ver detalle")
       function accionesFila(r){
         let out = `
           <a class="dropdown-item accion-detalle" href="#" data-id="${r.id_prestamo}">
             <i class="mdi mdi-eye mr-2 text-muted font-18 vertical-middle"></i>Ver detalle
           </a>`;
+
+        if (String(r.estatus) === 'Cancelado') {
+          return out;
+        }
+
         if (r.tipo_operacion==='Prestamo' && r.estatus!=='Pagado' && Number(r.saldo)>0){
           out += `
           <a class="dropdown-item accion-abonar" href="#" data-id="${r.id_prestamo}">
-            <i class="mdi mdi-cash-plus mr-2 text-muted font-18 vertical-middle"></i>Abonar
+            <i class="mdi mdi-cash mr-2 text-muted font-18 vertical-middle"></i>Abonar
           </a>`;
         }
+
         out += `
           <a class="dropdown-item accion-cancelar" href="#" data-id="${r.id_prestamo}">
             <i class="mdi mdi-cancel mr-2 text-muted font-18 vertical-middle"></i>Cancelar
-          </a>
-          <a class="dropdown-item accion-eliminar" href="#" data-id="${r.id_prestamo}">
-            <i class="mdi mdi-delete mr-2 text-muted font-18 vertical-middle"></i>Eliminar
           </a>`;
+
         return out;
       }
 
@@ -285,11 +305,12 @@ $hoy = date('Y-m-d');
                   <td class="text-center">${badgeEstatus(r.estatus)}</td>
                   <td class="text-center">${fechaMx(r.fecha_prestamo)}</td>
                   <td class="text-center">
-                    <div class="btn-group dropdown">
-                      <a href="javascript:void(0);" class="table-action-btn dropdown-toggle arrow-none btn btn-light btn-sm" data-toggle="dropdown">
+                    <!-- dropleft para evitar overflow hacia la derecha -->
+                    <div class="btn-group dropdown dropleft">
+                      <a href="javascript:void(0);" class="table-action-btn dropdown-toggle arrow-none btn btn-light btn-sm" data-toggle="dropdown" aria-expanded="false">
                         <i class="mdi mdi-dots-horizontal"></i>
                       </a>
-                      <div class="dropdown-menu dropdown-menu-right">
+                      <div class="dropdown-menu">
                         ${accionesFila(r)}
                       </div>
                     </div>
@@ -331,7 +352,7 @@ $hoy = date('Y-m-d');
         if (Number.isFinite(p)){ paginaActual=p; cargarPrestamos(paginaActual); }
       });
 
-      // Filtros (mismo comportamiento que Ventas)
+      // Filtros
       $(".filtrar")
         .on('change keyup', function(){
           const $el=$(this);
@@ -355,6 +376,7 @@ $hoy = date('Y-m-d');
           if (id != null) $sel.append(`<option value="${id}">${label}</option>`);
         });
       }
+
       function cargarClientes(selected){
         const LIM=200;
         $.post(CLIENTES_URL,{accion:'listar-min', limite:LIM})
@@ -366,11 +388,17 @@ $hoy = date('Y-m-d');
           })
           .fail(()=> setSelect($('#selCliente'), [], 'id','nombre'));
       }
+
+      // 👇 AHORA llena con USUARIOS (controller: UsuariosController.php -> listar-min)
       function cargarEmpleados(selected){
         $.post(EMPLEADOS_URL, {accion:'listar-min', limite:200})
           .done(r=>{
             const data = r?.data || [];
-            const mapped = data.map(e=>({ id: e.id_empleado ?? e.id, nombre: e.nombre ?? e.fullname ?? e.nombre_completo }));
+            const mapped = data.map(u=>{
+              const id = u.id_usuario ?? u.id;
+              const nom = u.nombre ?? u.nombre_completo ?? u.usuario ?? `Usuario ${id}`;
+              return { id, nombre: nom };
+            });
             setSelect($('#selEmpleado'), mapped, 'id','nombre');
             if (selected!=null) $('#selEmpleado').val(String(selected));
           })
@@ -380,13 +408,31 @@ $hoy = date('Y-m-d');
       // Mostrar/ocultar inputs según tipo de beneficiario
       function toggleBenefWrappers(){
         const t = $('#tipo').val();
+        const $selCli = $('#selCliente');
+        const $selEmp = $('#selEmpleado');
+
         $('#wrapCliente').toggleClass('d-none', t!=='Cliente');
         $('#wrapEmpleado').toggleClass('d-none', t!=='Empleado');
         $('#wrapOtro').toggleClass('d-none', t!=='Otro');
 
-        if (t==='Cliente') { cargarClientes(); $('#selEmpleado').val(''); $('#txtOtro').val(''); }
-        if (t==='Empleado'){ cargarEmpleados(); $('#selCliente').val(''); $('#txtOtro').val(''); }
-        if (t==='Otro')    { $('#selCliente').val(''); $('#selEmpleado').val(''); }
+        // Reglas de requerido
+        $selCli.prop('required', t==='Cliente');
+        $selEmp.prop('required', t==='Empleado');
+
+        if (t==='Cliente') {
+          cargarClientes();
+          $selEmp.val('');
+          $('#txtOtro').val('');
+        }
+        if (t==='Empleado'){
+          cargarEmpleados();   // << llena desde UsuariosController
+          $selCli.val('');
+          $('#txtOtro').val('');
+        }
+        if (t==='Otro') {
+          $selCli.val('');
+          $selEmp.val('');
+        }
       }
 
       // ========= Nuevo =========
@@ -398,7 +444,6 @@ $hoy = date('Y-m-d');
       });
       $('#tipo').on('change', toggleBenefWrappers);
 
-      // Envío de "Nuevo": cliente/empleado opcional, y "Otro" inyecta en concepto
       $('#formNuevo').on('submit', function(e){
         e.preventDefault();
 
@@ -406,11 +451,9 @@ $hoy = date('Y-m-d');
         const data = {};
         arr.forEach(x=> data[x.name]=x.value);
 
-        // Quitar ids vacíos para no ensuciar payload
         if (!data.id_cliente)  delete data.id_cliente;
         if (!data.id_empleado) delete data.id_empleado;
 
-        // Si es "Otro", anexar nombre al concepto sin tocar backend/modelo
         const otro = ($('#tipo').val()==='Otro') ? ($('#txtOtro').val()||'').trim() : '';
         if (otro){
           const conceptoBase = (data.concepto||'').trim();
@@ -429,26 +472,74 @@ $hoy = date('Y-m-d');
         .always(()=> $btn.prop('disabled',false).html(html));
       });
 
-      // ========= Abonar =========
+      // ========= Abonar (abrir modal con saldo y limitar "max") =========
       $(document).on('click', 'a.accion-abonar', function(e){
         e.preventDefault();
-        const id=$(this).data('id'); if(!id) return;
+        const id = $(this).data('id');
+        if(!id) return;
+
         $('#formAbono')[0].reset();
         $('#abono_id_prestamo').val(id);
-        $('#modalAbonar').modal('show');
+
+        // Traemos el saldo actual para limitar el monto
+        $.post(PRESTAMOS_URL, {accion:'detalle', id_prestamo:id}, function(resp){
+          const p = resp?.data?.prestamo || null;
+          const saldo = Number(p?.saldo || 0);
+
+          const $inpMonto = $('#formAbono [name=monto]');
+          $inpMonto.attr('max', saldo > 0 ? saldo : 0);
+          $inpMonto.data('saldo', saldo);
+          $inpMonto.attr('placeholder', saldo > 0 ? `Máximo: ${mxn(saldo)}` : 'Sin saldo');
+
+          $('#modalAbonar').modal('show');
+        }, 'json').fail(()=>{
+          toastr.error('No se pudo obtener el saldo del préstamo.');
+        });
       });
 
+      // ========= Abonar (validación: no puede ser mayor que el saldo) =========
       $('#formAbono').on('submit', function(e){
         e.preventDefault();
+
+        const $inpMonto = $('#formAbono [name=monto]');
+        const monto = Number($inpMonto.val() || 0);
+        const saldo = Number($inpMonto.data('saldo') || 0);
+
+        if (saldo <= 0) {
+          Swal.fire({icon:'error', title:'Sin saldo', text:'Este préstamo no admite más abonos.'});
+          return;
+        }
+        if (!monto || monto <= 0) {
+          Swal.fire({icon:'warning', title:'Monto inválido', text:'Ingresa un monto mayor a 0.'});
+          return;
+        }
+        if (monto > saldo) {
+          Swal.fire({
+            icon:'error',
+            title:'Monto excede el saldo',
+            html:`El abono no puede ser mayor al saldo restante.<br>Saldo: <b>${mxn(saldo)}</b>`
+          });
+          return;
+        }
+
         const form = $(this).serializeArray();
         form.push({name:'accion', value:'abonar'});
+
         const $btn = $('#formAbono button[type=submit]'), html=$btn.html();
         $btn.prop('disabled',true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Guardando...');
         $.post(PRESTAMOS_URL, form, function(r){
-          if(r && r.ok){ toastr.success('Abono registrado.'); $('#modalAbonar').modal('hide'); cargarPrestamos(paginaActual); }
-          else { toastr.error(r?.msg || 'No se pudo registrar el abono.'); }
-        },'json').fail(()=> toastr.error('Error de comunicación.'))
-        .always(()=> $btn.prop('disabled',false).html(html));
+          if(r && r.ok){
+            Swal.fire({icon:'success', title:'Abono registrado', timer:1400, showConfirmButton:false});
+            $('#modalAbonar').modal('hide');
+            cargarPrestamos(paginaActual);
+          } else {
+            Swal.fire({icon:'error', title:'No se pudo registrar el abono', text: r?.msg || 'Error desconocido'});
+          }
+        },'json').fail(()=>{
+          Swal.fire({icon:'error', title:'Error de comunicación'});
+        }).always(()=>{
+          $btn.prop('disabled',false).html(html);
+        });
       });
 
       // ========= Detalle =========
@@ -494,26 +585,68 @@ $hoy = date('Y-m-d');
         },'json').fail(()=> { $('#det-loader').hide(); $('#det-error').removeClass('d-none').text('Error al cargar el detalle.'); });
       });
 
-      // ========= Cancelar / Eliminar =========
+      // ========= Cancelar con SweetAlert2 =========
       $(document).on('click','a.accion-cancelar', function(e){
         e.preventDefault();
-        if(!confirm('¿Cancelar este registro?')) return;
-        const id=$(this).data('id');
-        $.post(PRESTAMOS_URL,{accion:'cancelar', id_prestamo:id}, r=>{
-          if(r && r.ok){ toastr.success('Registro cancelado.'); cargarPrestamos(paginaActual); }
-          else { toastr.error(r?.msg||'No se pudo cancelar.'); }
-        },'json').fail(()=> toastr.error('Error de comunicación.'));
+        const id = $(this).data('id');
+        if(!id) return;
+
+        Swal.fire({
+          title: '¿Cancelar este registro?',
+          text: 'Esta acción marcará el préstamo/disposición como cancelado.',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Sí, cancelar',
+          cancelButtonText: 'No, cerrar'
+        }).then((res)=>{
+          if(res.isConfirmed){
+            $.post(PRESTAMOS_URL,{accion:'cancelar', id_prestamo:id}, r=>{
+              if(r && r.ok){
+                Swal.fire({icon:'success', title:'Registro cancelado', timer:1200, showConfirmButton:false});
+                cargarPrestamos(paginaActual);
+              } else {
+                Swal.fire({icon:'error', title:'No se pudo cancelar', text:r?.msg||'Error desconocido'});
+              }
+            },'json').fail(()=> Swal.fire({icon:'error', title:'Error de comunicación'}));
+          }
+        });
       });
 
+      // ========= Eliminar (lógico) con SweetAlert2 =========
       $(document).on('click','a.accion-eliminar', function(e){
         e.preventDefault();
-        if(!confirm('¿Eliminar (lógico) este registro?')) return;
-        const id=$(this).data('id');
-        $.post(PRESTAMOS_URL,{accion:'eliminar', id_prestamo:id}, r=>{
-          if(r && r.ok){ toastr.success('Registro eliminado.'); cargarPrestamos(paginaActual); }
-          else { toastr.error(r?.msg||'No se pudo eliminar.'); }
-        },'json').fail(()=> toastr.error('Error de comunicación.'));
+        const id = $(this).data('id');
+        if(!id) return;
+
+        Swal.fire({
+          title: '¿Eliminar este registro?',
+          text: 'Se realizará un borrado lógico del registro.',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Sí, eliminar',
+          cancelButtonText: 'No, cerrar'
+        }).then((res)=>{
+          if(res.isConfirmed){
+            $.post(PRESTAMOS_URL,{accion:'eliminar', id_prestamo:id}, r=>{
+              if(r && r.ok){
+                Swal.fire({icon:'success', title:'Registro eliminado', timer:1200, showConfirmButton:false});
+                cargarPrestamos(paginaActual);
+              } else {
+                Swal.fire({icon:'error', title:'No se pudo eliminar', text:r?.msg||'Error desconocido'});
+              }
+            },'json').fail(()=> Swal.fire({icon:'error', title:'Error de comunicación'}));
+          }
+        });
       });
+
+      /* Evitar scroll horizontal al abrir el dropdown de acciones */
+      $('#tablaPrestamos')
+        .on('show.bs.dropdown', '.dropdown', function(){
+          $(this).closest('.table-responsive-lg, .table-responsive').css('overflow-x','visible');
+        })
+        .on('hide.bs.dropdown', '.dropdown', function(){
+          $(this).closest('.table-responsive-lg, .table-responsive').css('overflow-x','auto');
+        });
 
       // ============== INICIO ==============
       cargarPrestamos(paginaActual);

@@ -16,7 +16,7 @@
 
           <div class="alert alert-info py-2 px-3 mb-3">
             <i class="mdi mdi-information-outline"></i>
-            Si eliges <b>Préstamo</b> después podrás registrar <b>abonos</b>. Una <b>Disposición</b> queda <b>SinRetorno</b>.
+            Si eliges <b>Préstamo</b> después podrás registrar <b>abonos</b>. Una <b>Disposición</b> queda <b>Sin Retorno</b>.
           </div>
 
           <!-- Línea 1: Tipo de operación / Beneficiario -->
