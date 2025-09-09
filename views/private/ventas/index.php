@@ -221,18 +221,19 @@ if (!isset($_SESSION['usuario'])) {
       const fix2 = v => (Number(v||0)).toFixed(2);
       const num  = v => parseFloat(v ?? 0) || 0;
       const norm = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
-      const fechaMx = dt => { try{ const d=new Date(dt); return d.toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}); } catch { return dt||'—'; } };
+      const fechaMx = dt => { try{ const d=new Date(String(dt).replace(' ','T')); return d.toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}); } catch { return dt||'—'; } };
 
       // =================== LISTADO ===================
       let paginaActual=1; const limitePorPagina=10;
 
       function getBadge(estatus){
         switch(estatus){
-          case 'Activa': return '<span class="badge badge-light-success badge-pill">Activa</span>';
-          case 'Cancelada': return '<span class="badge badge-light-danger badge-pill">Cancelada</span>';
-          case 'Devuelta': return '<span class="badge badge-light-warning badge-pill">Devuelta</span>';
-          case 'Guardada': return '<span class="badge badge-light-primary badge-pill">Guardada</span>';
-          default: return `<span class="badge badge-light-secondary badge-pill">${estatus||'—'}</span>`;
+          case 'Activa':     return '<span class="badge badge-light-success badge-pill">Activa</span>';
+          case 'Cancelada':  return '<span class="badge badge-light-danger badge-pill">Cancelada</span>';
+          case 'Devuelta':   return '<span class="badge badge-light-warning badge-pill">Devuelta</span>';
+          case 'Guardada':   return '<span class="badge badge-light-primary badge-pill">Guardada</span>';
+          case 'Credito':    return '<span class="badge badge-light-info badge-pill">Crédito</span>';
+          default:           return `<span class="badge badge-light-secondary badge-pill">${estatus||'—'}</span>`;
         }
       }
       function accionesVenta(v){
@@ -240,7 +241,8 @@ if (!isset($_SESSION['usuario'])) {
           <a class="dropdown-item accion-ver-detalle" href="#" data-toggle="modal" data-target="#modalDetalle" data-id="${v.id_venta}">
             <i class="mdi mdi-eye mr-2 text-muted font-18 vertical-middle"></i>Ver Detalle
           </a>`;
-        if (v.estatus==='Activa' || v.estatus==='Guardada'){
+        // Permitir Ticket/Editar en Activa, Guardada y Credito
+        if (v.estatus==='Activa' || v.estatus==='Guardada' || v.estatus==='Credito'){
           out += `
             <a class="dropdown-item" href="javascript:void(0);" onclick="abrirTicket(${v.id_venta});">
               <i class="mdi mdi-printer mr-2 text-muted font-18 vertical-middle"></i>Ticket / Imprimir
@@ -256,7 +258,8 @@ if (!isset($_SESSION['usuario'])) {
               <i class="mdi mdi-check-circle mr-2 text-muted font-18 vertical-middle"></i>Activar (contabilizar)
             </a>`;
         }
-        if (v.estatus==='Activa'){
+        // Cancelar en Activa o Credito
+        if (v.estatus==='Activa' || v.estatus==='Credito'){
           out += `
             <a class="dropdown-item accion-eliminar" href="#" data-id="${v.id_venta}" data-folio="${v.folio}">
               <i class="mdi mdi-delete mr-2 text-muted font-18 vertical-middle"></i>Cancelar
@@ -442,6 +445,9 @@ if (!isset($_SESSION['usuario'])) {
       });
 
       // =================== ACTIVAR (Guardada → Activa) ===================
+      let AC_TIENE_CLIENTE = false;
+      let AC_FP_CREDITO_ID = null;
+
       // abrir modal
       $(document).on('click','a.accion-activar', function(e){
         e.preventDefault();
@@ -453,25 +459,50 @@ if (!isset($_SESSION['usuario'])) {
         $('#ac-folio').text(folio);
         $('#ac-error').addClass('d-none').empty();
         $('#ac-fechaAhora').prop('checked', true);
+        AC_TIENE_CLIENTE = false;
+        AC_FP_CREDITO_ID = null;
 
-        // cargar formas de pago
-        $.get(FORMASPAGO_URL, {accion:'listar_select'}).done(r=>{
-          const arr = r?.data || (Array.isArray(r)?r:[]);
-          const $sel = $('#ac-selFormaPago').empty();
-          if (!arr.length){
-            $sel.append(`<option value="">(sin formas de pago)</option>`);
-          } else {
-            arr.forEach(fp => $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`));
-            // seleccionar efectivo si existe
-            const $ef = $sel.find('option').filter(function(){ return $(this).text().toLowerCase().includes('efectivo'); });
-            if ($ef.length) $ef.prop('selected', true);
-          }
-          $('#modalActivarVenta').modal('show');
-        }).fail(()=>{
-          const $sel = $('#ac-selFormaPago').empty();
-          $sel.append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option>');
-          $('#modalActivarVenta').modal('show');
-        });
+        // 1) Traer cabecera para saber si hay cliente
+        $.get(VENTAS_URL, {accion:'detalle', id_venta:id})
+          .done(r=>{
+            const v = r?.venta || {};
+            AC_TIENE_CLIENTE = !!(v.id_cliente);
+
+            // 2) Cargar formas de pago
+            $.get(FORMASPAGO_URL, {accion:'listar_select'}).done(rr=>{
+              const arr = rr?.data || (Array.isArray(rr)?rr:[]);
+              const $sel = $('#ac-selFormaPago').empty();
+
+              if (!arr.length){
+                $sel.append(`<option value="">(sin formas de pago)</option>`);
+              } else {
+                arr.forEach(fp=>{
+                  const opt = $(`<option/>`, { value: fp.id_forma_pago, text: fp.descripcion });
+                  // Detecta Crédito
+                  if (String(fp.descripcion||'').toLowerCase().includes('credito') || String(fp.descripcion||'').toLowerCase().includes('crédito')){
+                    AC_FP_CREDITO_ID = fp.id_forma_pago;
+                    if (!AC_TIENE_CLIENTE){
+                      opt.prop('disabled', true).text(fp.descripcion + ' (requiere cliente)');
+                    }
+                  }
+                  $sel.append(opt);
+                });
+                // seleccionar efectivo si existe
+                const $ef = $sel.find('option').filter(function(){ return $(this).text().toLowerCase().includes('efectivo'); });
+                if ($ef.length) $ef.prop('selected', true);
+              }
+              $('#modalActivarVenta').modal('show');
+            }).fail(()=>{
+              const $sel = $('#ac-selFormaPago').empty();
+              $sel.append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option><option value="99" '+(!AC_TIENE_CLIENTE?'disabled':'')+'>Crédito</option>');
+              AC_FP_CREDITO_ID = 99;
+              $('#modalActivarVenta').modal('show');
+            });
+          })
+          .fail(()=>{
+            $('#ac-error').removeClass('d-none').text('No se pudo verificar la venta. Intenta de nuevo.');
+            $('#modalActivarVenta').modal('show');
+          });
       });
 
       // confirmar activar
@@ -483,6 +514,12 @@ if (!isset($_SESSION['usuario'])) {
         if (!idVenta){ return; }
         if (!idForma){
           $('#ac-error').removeClass('d-none').text('Selecciona una forma de pago.');
+          return;
+        }
+
+        const esCredito = (AC_FP_CREDITO_ID && idForma===Number(AC_FP_CREDITO_ID));
+        if (esCredito && !AC_TIENE_CLIENTE){
+          $('#ac-error').removeClass('d-none').text('Para activar como Crédito, primero edita la venta y asigna un cliente.');
           return;
         }
 
@@ -533,6 +570,9 @@ if (!isset($_SESSION['usuario'])) {
       const detalleCache = new Map();
       let debTimer = null;
 
+      // Detectar el ID de "Crédito" cuando cargamos formas de pago en el editor
+      let FP_CREDITO_ID = null;
+
       function vendibleDe(det){ return Math.max(0, num(det.stock_actual ?? det.existencia) - num(det.stock_minimo)); }
       function maxVendible(it){ return Math.max(0, num(it.stock_actual) - num(it.stock_minimo)); }
       function mapTipoPrecioId(slug){ const m={publico:1, taller:2, proveedor:3}; return m[slug]||1; }
@@ -577,15 +617,34 @@ if (!isset($_SESSION['usuario'])) {
           .done(r=>{
             const arr=r?.data || (Array.isArray(r)?r:[]);
             $selForma.empty();
-            if (!arr.length){ $selForma.append(`<option value="">(sin formas de pago)</option>`); return; }
-            arr.forEach(fp=> $selForma.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`));
-            if (selected!=null) $selForma.val(String(selected));
-            else if (fallbackText){
+            FP_CREDITO_ID = null;
+
+            if (!arr.length){
+              $selForma.append(`<option value="">(sin formas de pago)</option>`);
+              return;
+            }
+
+            arr.forEach(fp=>{
+              const opt = $(`<option/>`, { value: fp.id_forma_pago, text: fp.descripcion });
+              $selForma.append(opt);
+              if (String(fp.descripcion||'').toLowerCase().includes('credito') || String(fp.descripcion||'').toLowerCase().includes('crédito')){
+                FP_CREDITO_ID = fp.id_forma_pago;
+              }
+            });
+
+            if (selected!=null) {
+              $selForma.val(String(selected));
+            } else if (fallbackText){
               $selForma.find('option').filter(function(){return $(this).text()===fallbackText;}).prop('selected',true);
             }
           })
           .fail(()=>{
-            $selForma.empty().append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option>');
+            $selForma.empty()
+              .append('<option value="1">Efectivo</option>')
+              .append('<option value="2">Tarjeta</option>')
+              .append('<option value="3">Mixto</option>')
+              .append('<option value="99">Crédito</option>');
+            FP_CREDITO_ID = 99;
             if (selected!=null) $selForma.val(String(selected));
           });
       }
@@ -787,13 +846,31 @@ if (!isset($_SESSION['usuario'])) {
         if (!edVentaId){ toastr.error('No hay venta cargada.'); return; }
         if (!carrito.length){ toastr.warning('Agrega productos a la orden'); return; }
 
+        // === Reglas para Crédito ===
+        const selIdForma = $selForma.val() ? Number($selForma.val()) : null;
+        const selTxtForma = ($selForma.find('option:selected').text()||'').toLowerCase();
+        const esCredito = (selIdForma && FP_CREDITO_ID && selIdForma===Number(FP_CREDITO_ID))
+                       || selTxtForma.includes('credito') || selTxtForma.includes('crédito');
+
+        const idClienteSel = $selCliente.val() ? Number($selCliente.val()) : null;
+
+        if (esCredito && !idClienteSel){
+          toastr.error('Para ventas a crédito es obligatorio seleccionar un cliente.');
+          $selCliente.focus();
+          return;
+        }
+
+        // Si es crédito, enviaremos estatus: "Credito"; si no, "Activa"
+        const nuevoEstatus = esCredito ? 'Credito' : 'Activa';
+
         const id_tipo_precio = mapTipoPrecioId($tpPrecio.val());
         const venta = {
           id_venta: edVentaId,
-          fecha: $('#ed-fechaVenta').val(),          // fecha editable
-          id_cliente: $selCliente.val() ? Number($selCliente.val()) : null,
-          id_forma_pago: $selForma.val() ? Number($selForma.val()) : null,
-          id_tipo_precio: id_tipo_precio
+          fecha: $('#ed-fechaVenta').val(),
+          id_cliente: idClienteSel ?? null,
+          id_forma_pago: selIdForma ?? null,
+          id_tipo_precio: id_tipo_precio,
+          estatus: nuevoEstatus
         };
         const detalles = carrito.map(it=>{
           const unit = precioDeItem(it);
@@ -837,7 +914,7 @@ if (!isset($_SESSION['usuario'])) {
           $edUsrCaja.text(`${v.usuario||'—'} / ${v.caja||'—'}`);
 
           // selects & fecha editable
-          const slug = mapIdToSlug(v.id_tipo_precio || (v.tipo_precio_id||1));
+          const slug = (function(id){ const m={1:'publico',2:'taller',3:'proveedor'}; return m[id||1]||'publico'; })(v.id_tipo_precio||1);
           $tpPrecio.val(slug);
           const ymd = (v.fecha || '').slice(0,10);
           $fechaVenta.val( ymd || '<?= date('Y-m-d') ?>' );

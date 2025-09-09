@@ -209,16 +209,21 @@ if (!isset($_SESSION['usuario'])) {
     const detalleCache = new Map();
     let totalActual = 0;
 
+    // CAMBIO: Flag para comportamiento post-venta (normal / autoprint / credito / guardada)
+    let POST_BEHAVIOR = 'normal';
+
     // ===== utils =====
     const normalize = s => (s||'').toString().toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 
+    // CAMBIO: detectar transferencia y crédito (venta a crédito) de forma clara
     function formaPagoSlug(){
       const txt = $('#selFormaPago option:selected').text()?.trim() || '';
       const t = normalize(txt);
       if (t.includes('efectivo')) return 'efectivo';
-      if (t.includes('mixto') || t.includes('mixta')) return 'mixto';
-      if (t.includes('tarjeta') || t.includes('debito') || t.includes('credito')) return 'tarjeta';
+      if (t.includes('transfer')) return 'transferencia';
+      if (t.includes('tarjeta') || t.includes('debito')) return 'tarjeta';
+      if (t.includes('credito') || t.includes('crédito')) return 'credito'; // venta a crédito (no tarjeta)
       return 'tarjeta';
     }
 
@@ -283,8 +288,7 @@ if (!isset($_SESSION['usuario'])) {
                 if (!data2.length) toastr.info('No hay clientes activos. Usando “Mostrador / Público general”.');
               })
               .fail(()=> {
-                setClientesOptions([]);
-                toastr.error('No se pudieron cargar clientes (listar).');
+                setClientesOptions([]); toastr.error('No se pudieron cargar clientes (listar).');
               });
           }
         })
@@ -295,10 +299,7 @@ if (!isset($_SESSION['usuario'])) {
               setClientesOptions(data2);
               if (!data2.length) toastr.info('No hay clientes activos. Usando “Mostrador / Público general”.');
             })
-            .fail(()=>{
-              setClientesOptions([]);
-              toastr.error('No se pudieron cargar clientes.');
-            });
+            .fail(()=>{ setClientesOptions([]); toastr.error('No se pudieron cargar clientes.'); });
         });
     }
 
@@ -309,16 +310,22 @@ if (!isset($_SESSION['usuario'])) {
           const sel = $('#selFormaPago').empty();
           const arr = r?.data || (Array.isArray(r) ? r : []);
           if (!arr.length) return sel.append(`<option value="">(sin formas de pago)</option>`);
+          // CAMBIO: default a "Crédito" (si existe; si no, primer registro)
           let idxDefault = 0;
           arr.forEach((fp, i)=>{
             sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
-            if (normalize(fp.descripcion).includes('efectivo')) idxDefault = i;
+            const desc = normalize(fp.descripcion);
+            if ((desc.includes('credito') || desc.includes('crédito')) && !desc.includes('tarjeta')) {
+              idxDefault = i;
+            }
           });
           sel.prop('selectedIndex', idxDefault);
         })
         .fail(()=>{
           const sel = $('#selFormaPago').empty();
-          sel.append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option>');
+          // CAMBIO: incluir opción Crédito por defecto de emergencia
+          sel.append('<option value="99">Crédito</option><option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Transferencia</option>');
+          sel.prop('selectedIndex', 0); // Crédito
         });
     }
 
@@ -345,8 +352,7 @@ if (!isset($_SESSION['usuario'])) {
       return { extra, sinStock: (vendibleDe(det) <= 0) };
     }
     function renderSugerencias(list){
-      ultResultados = (list||[]).map((p,i)=>({...p,__i:i}));
-      idxFocus = -1; $panel.empty();
+      ultResultados = (list||[]).map((p,i)=>({...p,__i:i})); idxFocus = -1; $panel.empty();
       if(!ultResultados.length) return $panel.addClass('d-none');
       ultResultados.forEach(p=>$panel.append(sugHTMLBasico(p)));
       $panel.removeClass('d-none');
@@ -363,8 +369,7 @@ if (!isset($_SESSION['usuario'])) {
 
         $.post(`${BASE}/controllers/ProductosController.php`,{accion:'detalle', id_producto:id})
           .done(r=>{
-            const det=r?.data||{};
-            detalleCache.set(id,det);
+            const det=r?.data||{}; detalleCache.set(id,det);
             const {extra,sinStock}=sugHTMLDetallado(det);
             $row.find('[data-slot="extra"]').html(extra);
             $row.toggleClass('disabled', sinStock).attr('aria-disabled', sinStock ? 'true' : null);
@@ -445,8 +450,8 @@ if (!isset($_SESSION['usuario'])) {
       carrito.forEach((it,idx)=>{
         const precio = precioDeItem(it);
         const cantidad = Number(it.cantidad) || 0;
-        const subtotal = cantidad * precio;
-        total += subtotal;
+        theSubtotal = cantidad * precio;
+        total += theSubtotal;
 
         tb.append(`
           <tr>
@@ -463,15 +468,15 @@ if (!isset($_SESSION['usuario'])) {
             </td>
             <td class="text-center">
               <div class="btn-group btn-group-sm" role="group">
-                <button class="btn btn-outline-danger" data-dec="${idx}"><i class="mdi mdi-minus"></i></button>
+                <button class="btn btn-outline-danger" data-incdec="dec" data-idx="${idx}"><i class="mdi mdi-minus"></i></button>
                 <input type="number" min="1" step="1" class="form-control form-control-sm text-center w-70px" value="${fix2(it.cantidad)}" data-qty="${idx}">
-                <button class="btn btn-outline-success" data-inc="${idx}"><i class="mdi mdi-plus"></i></button>
+                <button class="btn btn-outline-success" data-incdec="inc" data-idx="${idx}"><i class="mdi mdi-plus"></i></button>
               </div>
             </td>
             <td class="text-end">
               <input type="number" min="0" step="0.01"
                     class="form-control form-control-sm text-end"
-                    value="${fix2(subtotal)}" data-sub="${idx}"
+                    value="${fix2(theSubtotal)}" data-sub="${idx}"
                     title="Editar subtotal (ajusta el precio unitario automáticamente)">
             </td>
             <td class="text-end"><button class="btn btn-sm btn-outline-danger" data-del="${idx}"><i class="mdi mdi-delete"></i></button></td>
@@ -481,22 +486,14 @@ if (!isset($_SESSION['usuario'])) {
       $('#resTotal').text(mxn(total));
     }
 
-    $('#tpPrecio').on('change',pintarCarrito);
-
-    $('#tablaCarrito').on('click','button[data-inc]',function(){
-      const i=Number(this.dataset.inc);
+    // botones +/- unificados
+    $('#tablaCarrito').on('click','button[data-incdec]',function(){
+      const i=Number(this.dataset.idx);
       if(isNaN(i)||!carrito[i]) return;
       const vendible=maxVendible(carrito[i]);
-      const next=Number(carrito[i].cantidad)+1;
-      carrito[i].cantidad = next>vendible ? (toastr.info('Se alcanzó el máximo vendible.'), vendible) : next;
-      pintarCarrito();
-    });
-
-    $('#tablaCarrito').on('click','button[data-dec]',function(){
-      const i=Number(this.dataset.dec);
-      if(isNaN(i)||!carrito[i]) return;
-      carrito[i].cantidad=Math.max(1,Number(carrito[i].cantidad)-1);
-      pintarCarrito();
+      const sign=this.dataset.incdec==='inc'?1:-1;
+      const next=Math.max(1, Math.min(vendible, Number(carrito[i].cantidad)+sign));
+      carrito[i].cantidad=next; pintarCarrito();
     });
 
     $('#tablaCarrito').on('change','input[data-qty]',function(){
@@ -505,27 +502,22 @@ if (!isset($_SESSION['usuario'])) {
       let val=Math.max(1, Number(this.value||1));
       const vendible=maxVendible(carrito[i]);
       if(val>vendible){ val=vendible; toastr.info('Se ajustó a máximo vendible.'); }
-      carrito[i].cantidad=val;
-      pintarCarrito();
+      carrito[i].cantidad=val; pintarCarrito();
     });
 
     $('#tablaCarrito').on('click','button[data-del]',function(){
       const i=Number(this.dataset.del);
       if(isNaN(i)) return;
-      carrito.splice(i,1);
-      pintarCarrito();
+      carrito.splice(i,1); pintarCarrito();
     });
 
     $('#tablaCarrito').on('change','input[data-sub]', function(){
       const i = Number(this.dataset.sub);
       if (isNaN(i) || !carrito[i]) return;
-
       let sub = Number(this.value);
       if (isNaN(sub) || sub < 0) sub = 0;
-
       const qty = Math.max(1, Number(carrito[i].cantidad) || 1);
       const unit = sub / qty;
-
       carrito[i].override_unit = Number(unit.toFixed(2));
       pintarCarrito();
     });
@@ -559,7 +551,7 @@ if (!isset($_SESSION['usuario'])) {
       const payload = {
         venta: {
           fecha: $('#fechaVenta').val(),
-          estatus,
+          estatus, // CAMBIO: respetar Activa / Credito / Guardada
           id_cliente: idCliente,
           id_forma_pago: estatus==='Guardada' ? null : (Number($('#selFormaPago').val()) || null),
           id_tipo_precio: mapTipoPrecioId(slugPrecio),
@@ -577,9 +569,22 @@ if (!isset($_SESSION['usuario'])) {
 
         $('#tk-idventa').val(r.id_venta || '');
 
+        // CAMBIO: comportamiento según estatus / forma de pago
         if(estatus==='Guardada'){
           Swal.fire({icon:'success', title:'Venta guardada', html:`<p>Folio: <b>${r.folio}</b></p>`});
+        } else if (estatus==='Credito' || POST_BEHAVIOR==='credito') {
+          Swal.fire({
+            icon:'success',
+            title:'Venta a crédito registrada',
+            html:`<p><small>Folio:</small> <b>${r.folio}</b></p>
+                  <p class="mb-0">Podrás realizar <b>abonos</b> o liquidar la venta desde el módulo de <b>Pagos Parciales</b>.</p>`
+          });
+        } else if (POST_BEHAVIOR==='autoprint') {
+          // Tarjeta / Transferencia: imprime sin preguntar
+          if (r.id_venta) imprimirTicketAjax(r.id_venta);
+          Swal.fire({icon:'success', title:'Venta registrada', html:`<p><small>Folio:</small> <b>${r.folio}</b></p>`});
         } else {
+          // Efectivo / Mixto: preguntar si desea imprimir
           const cambioTxt = (typeof pagos.cambio === 'number')
             ? `<p><small>Cambio:</small> <b>${mxn(pagos.cambio)}</b></p>` : '';
           Swal.fire({
@@ -590,23 +595,49 @@ if (!isset($_SESSION['usuario'])) {
             showCancelButton: true,
             cancelButtonText: 'Cerrar'
           }).then(res=>{
-            if(res.isConfirmed && r.id_venta){
-              imprimirTicketAjax(r.id_venta);
-            }
+            if(res.isConfirmed && r.id_venta){ imprimirTicketAjax(r.id_venta); }
           });
         }
 
-        carrito=[]; pintarCarrito(); $('#selCliente').val(''); $('#tpPrecio').val('publico'); pintarFolioSugerido();
+        // Reinicio (CAMBIO: tipo de precio vuelve a "taller"; forma de pago vuelve a Crédito)
+        carrito=[]; pintarCarrito(); $('#selCliente').val('');
+        $('#tpPrecio').val('taller'); // CAMBIO
+        cargarFormasPago();           // CAMBIO
+        pintarFolioSugerido();
+        POST_BEHAVIOR = 'normal';     // CAMBIO
       });
     }
 
     // ===== flujo de cobro
     function flujoCobro(){
       if(!carrito.length){ toastr.warning('Agrega productos a la orden'); return; }
+
       const total = totalActual;
       const fpSlug = formaPagoSlug();
 
+      // CAMBIO: Validación de cliente obligatorio en ventas a Crédito
+      if (fpSlug === 'credito'){
+        const idCliente  = $('#selCliente').val() ? Number($('#selCliente').val()) : null;
+        if (!idCliente){
+          Swal.fire({icon:'warning', title:'Selecciona un cliente', text:'Para ventas a crédito es obligatorio elegir un cliente.'});
+          return;
+        }
+        POST_BEHAVIOR = 'credito';
+        Swal.fire({
+          icon:'question',
+          title:'Confirmar venta a crédito',
+          html:`<p>Total a crédito: <b>${mxn(total)}</b></p>
+                <p class="mb-0">No se imprimirá ticket ahora. Podrás abonar o liquidar después en el panel de <b>Pagos Parciales</b>.</p>`,
+          showCancelButton:true,
+          confirmButtonText:'Registrar crédito'
+        }).then(res=>{
+          if(res.isConfirmed){ registrarVenta({estatus:'Credito', pagos:{ tipo:'credito' }}); }
+        });
+        return;
+      }
+
       if(fpSlug === 'efectivo'){
+        POST_BEHAVIOR = 'normal';
         Swal.fire({
           title: 'Cobro en efectivo', html: `<p>Total a pagar: <b>${mxn(total)}</b></p>`,
           input:'number', inputLabel:'Monto recibido', inputAttributes:{min:'0', step:'0.01'},
@@ -626,6 +657,7 @@ if (!isset($_SESSION['usuario'])) {
       }
 
       if(fpSlug === 'mixto'){
+        POST_BEHAVIOR = 'normal';
         Swal.fire({
           title:'Cobro mixto',
           html:`<div class="text-start">
@@ -653,16 +685,33 @@ if (!isset($_SESSION['usuario'])) {
         return;
       }
 
-      Swal.fire({
-        title:'Cobro con tarjeta', html:`<p>Total a pagar: <b>${mxn(total)}</b></p>`,
-        icon:'question', showCancelButton:true, confirmButtonText:'Confirmar cobro'
-      }).then(res=>{ if(res.isConfirmed){ registrarVenta({estatus:'Activa', pagos:{ tipo:'tarjeta' }}); }});
+      // Tarjeta o Transferencia => Activa + AutoPrint
+      if (fpSlug === 'tarjeta' || fpSlug === 'transferencia'){
+        POST_BEHAVIOR = 'autoprint';
+        Swal.fire({
+          title: (fpSlug==='tarjeta'?'Cobro con tarjeta':'Cobro por transferencia'),
+          html:`<p>Total a cobrar: <b>${mxn(total)}</b></p>`,
+          icon:'question', showCancelButton:true, confirmButtonText:'Confirmar'
+        }).then(res=>{
+          if(res.isConfirmed){
+            registrarVenta({estatus:'Activa', pagos:{ tipo:fpSlug }});
+          }
+        });
+        return;
+      }
     }
 
     // ===== botones
     $('#btnCobrar').on('click', flujoCobro);
+
+    // CAMBIO: si el usuario intenta Guardar con forma de pago "Crédito" y sin cliente, bloquear
     $('#btnGuardar').on('click', ()=>{
       if(!carrito.length) return toastr.warning('Agrega productos a la orden');
+      if (formaPagoSlug()==='credito' && !$('#selCliente').val()){
+        Swal.fire({icon:'warning', title:'Selecciona un cliente', text:'Para ventas a crédito es obligatorio elegir un cliente.'});
+        return;
+      }
+      POST_BEHAVIOR = 'guardada';
       Swal.fire({
         icon:'question', title:'Guardar venta',
         text:'Se reservará inventario pero NO contará para el corte hasta que la cobres. ¿Continuar?',
@@ -672,12 +721,16 @@ if (!isset($_SESSION['usuario'])) {
 
     $('#btnCancelar').on('click', ()=>{
       carrito=[]; pintarCarrito(); $('#selCliente').val(''); $('#txtBuscar').val('');
-      $('#fechaVenta').val('<?= date('Y-m-d') ?>'); $('#tpPrecio').val('publico'); pintarFolioSugerido();
+      $('#fechaVenta').val('<?= date('Y-m-d') ?>');
+      $('#tpPrecio').val('taller'); // CAMBIO: reset a taller
+      cargarFormasPago();           // CAMBIO: reset a Crédito
+      pintarFolioSugerido();
+      POST_BEHAVIOR='normal';
     });
 
     // init
     cargarClientes();
-    cargarFormasPago();
+    cargarFormasPago(); // CAMBIO: quedará en Crédito por default
     pintarFolioSugerido();
     $('#fechaVenta').on('change', pintarFolioSugerido);
   })();
