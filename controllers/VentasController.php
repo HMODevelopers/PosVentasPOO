@@ -23,7 +23,7 @@ $accion = $_REQUEST['accion'] ?? $RAW['accion'] ?? '';
 function map_tipo_precio(?string $slug): int {
     $slug = strtolower(trim((string)$slug));
     $map = ['publico' => 1, 'taller' => 2, 'proveedor' => 3];
-    return $map[$slug] ?? 2; // default -> taller
+    return $map[$slug] ?? 2; // default -> taller (como en la UI)
 }
 
 /** Helper: respuesta de error estándar */
@@ -98,14 +98,20 @@ try {
             // Validaciones mínimas
             if (!is_array($detalles) || !count($detalles)) jserr('Debes enviar al menos un detalle.');
 
-            // Pass-through: estatus y id_forma_pago van tal cual; el modelo normaliza a Activa/Guardada/Credito.
+            // ⚠️ Validación suave: si explícitamente llega estatus "Credito" pero no hay cliente
+            $estatusIn = strtolower(trim((string)($venta['estatus'] ?? '')));
+            if (($estatusIn === 'credito' || $estatusIn === 'crédito') && empty($venta['id_cliente'])) {
+                jserr('Para ventas a crédito es obligatorio seleccionar un cliente.', 400);
+            }
+
+            // Pass-through: el modelo normaliza estatus y calcula costo/utilidad de detalle.
             $resp = $ventaModel->crearVenta($venta, $detalles);
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }
 
         /* ============================================================
-         * Detalle (cabecera + partidas + abonos + saldo calculado)
+         * Detalle (cabecera + partidas + abonos + saldo + totales costo/utilidad)
          * GET/POST: id_venta
          * ============================================================ */
         case 'detalle': {
@@ -117,22 +123,37 @@ try {
 
             $detalles = $ventaModel->obtenerDetalleVenta($idVenta);
 
-            // Opcional: listar abonos para el detalle
+            // Totales de costo y utilidad a partir de ventas_detalle (nuevas columnas)
+            $costo_total = 0.0;
+            $util_total  = 0.0;
+            foreach ($detalles as $d) {
+                $costo_total += (float)($d['costo_subtotal'] ?? 0);
+                $util_total  += (float)($d['utilidad_subtotal'] ?? 0);
+            }
+
             if (method_exists($ventaModel, 'obtenerAbonosVenta')) {
                 $abonos  = $ventaModel->obtenerAbonosVenta($idVenta);
                 $abonado = 0.0;
                 foreach ($abonos as $a) { $abonado += (float)($a['monto'] ?? 0); }
                 $saldo = max(0, (float)$venta['total'] - $abonado);
                 echo json_encode([
-                    'ok'       => true,
-                    'venta'    => $venta,
-                    'detalles' => $detalles,
-                    'abonos'   => $abonos,
-                    'abonado'  => $abonado,
-                    'saldo'    => $saldo
+                    'ok'            => true,
+                    'venta'         => $venta,
+                    'detalles'      => $detalles,
+                    'abonos'        => $abonos,
+                    'abonado'       => $abonado,
+                    'saldo'         => $saldo,
+                    'costo_total'   => round($costo_total, 2),
+                    'utilidad_total'=> round($util_total, 2)
                 ], JSON_UNESCAPED_UNICODE);
             } else {
-                echo json_encode(['ok'=>true, 'venta'=>$venta, 'detalles'=>$detalles], JSON_UNESCAPED_UNICODE);
+                echo json_encode([
+                    'ok'=>true,
+                    'venta'=>$venta,
+                    'detalles'=>$detalles,
+                    'costo_total'=>round($costo_total, 2),
+                    'utilidad_total'=>round($util_total, 2)
+                ], JSON_UNESCAPED_UNICODE);
             }
             break;
         }

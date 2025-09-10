@@ -320,7 +320,7 @@ class VentaModel
                     if ($idCliente===null) $stVenta->bindValue(':idc',null,\PDO::PARAM_NULL); else $stVenta->bindValue(':idc',$idCliente,\PDO::PARAM_INT);
                     $stVenta->bindValue(':idu',$idUsuario,\PDO::PARAM_INT);
                     $stVenta->bindValue(':idcj',$idCaja,\PDO::PARAM_INT);
-                    // 👇 Se guarda la forma de pago tal cual viene (sin forzar null en Guardada)
+                    // Guardar forma de pago tal cual venga
                     if ($idFormaPago===null) $stVenta->bindValue(':idfp',null,\PDO::PARAM_NULL);
                     else $stVenta->bindValue(':idfp',$idFormaPago,\PDO::PARAM_INT);
                     $stVenta->bindValue(':idtp',$idTipoPrecio,\PDO::PARAM_INT);
@@ -330,13 +330,20 @@ class VentaModel
 
                     $idVenta = (int)$this->conn->lastInsertId();
 
-                    /* detalle + inventario */
+                    /* ======== detalle + inventario + costo/utilidad ======== */
                     $stDet = $this->conn->prepare(
-                        "INSERT INTO ventas_detalle (id_venta,id_producto,cantidad,precio_unitario,subtotal,activo)
-                         VALUES (:idv,:idp,:cant,:unit,:sub,1)"
+                        "INSERT INTO ventas_detalle
+                         (id_venta, id_producto, cantidad, precio_unitario, subtotal,
+                          costo_unitario, costo_subtotal, utilidad_subtotal, activo)
+                         VALUES
+                         (:idv, :idp, :cant, :unit, :sub,
+                          :c_unit, :c_sub, :u_sub, 1)"
                     );
                     $stGet = $this->conn->prepare(
-                        "SELECT stock_actual, stock_minimo FROM productos WHERE id_producto=:idp FOR UPDATE"
+                        "SELECT stock_actual, stock_minimo, costo_neto
+                           FROM productos
+                          WHERE id_producto=:idp
+                          FOR UPDATE"
                     );
                     $stUpd = $this->conn->prepare(
                         "UPDATE productos SET stock_actual = stock_actual - :cant WHERE id_producto=:idp"
@@ -357,10 +364,20 @@ class VentaModel
                         $stGet->execute([':idp'=>$idp]);
                         $p = $stGet->fetch(\PDO::FETCH_ASSOC);
                         if (!$p) throw new \Exception("Producto $idp no encontrado.");
+
                         $vendible = max(0.0, (float)$p['stock_actual'] - (float)$p['stock_minimo']);
                         if ($cant > $vendible) throw new \Exception("Stock insuficiente en producto $idp. Vendible: $vendible, solicitado: $cant.");
 
-                        $stDet->execute([':idv'=>$idVenta,':idp'=>$idp,':cant'=>$cant,':unit'=>$unit,':sub'=>$sub]);
+                        // === costo / utilidad (a partir de costo_neto vigente)
+                        $costoUnit = (float)($p['costo_neto'] ?? 0);
+                        $costoSub  = round($cant * $costoUnit, 2);
+                        $utilSub   = round($sub - $costoSub, 2);
+
+                        $stDet->execute([
+                            ':idv'=>$idVenta, ':idp'=>$idp, ':cant'=>$cant, ':unit'=>$unit, ':sub'=>$sub,
+                            ':c_unit'=>$costoUnit, ':c_sub'=>$costoSub, ':u_sub'=>$utilSub
+                        ]);
+
                         $stUpd->execute([':cant'=>$cant,':idp'=>$idp]);
                         $stMov->execute([
                             ':idp'=>$idp, ':cant'=>$cant, ':ids'=>$idSucursal, ':idu'=>$idUsuario,
@@ -368,7 +385,7 @@ class VentaModel
                             ':f'=>$ahora
                         ]);
 
-                        $itemsBit[] = ['id_producto'=>$idp,'cant'=>$cant,'precio_unit'=>$unit,'subtotal'=>$sub];
+                        $itemsBit[] = ['id_producto'=>$idp,'cant'=>$cant,'precio_unit'=>$unit,'subtotal'=>$sub,'costo_unit'=>$costoUnit];
                     }
 
                     $this->registrarBitacora(
@@ -457,7 +474,6 @@ class VentaModel
                 );
                 $stUp->bindValue(':fecha',$fechaBD);
                 if ($idCliente===null) $stUp->bindValue(':idc',null,\PDO::PARAM_NULL); else $stUp->bindValue(':idc',$idCliente,\PDO::PARAM_INT);
-                // 👇 Se guarda la forma de pago tal cual venga (sin limpiar por estatus)
                 if ($idFormaPago===null) $stUp->bindValue(':idfp',null,\PDO::PARAM_NULL);
                 else $stUp->bindValue(':idfp',$idFormaPago,\PDO::PARAM_INT);
                 $stUp->bindValue(':idtp',$idTipoPrecio,\PDO::PARAM_INT);
@@ -567,11 +583,17 @@ class VentaModel
                 $deltasBit[] = ['id_producto'=>$pid,'delta'=>$delta];
             }
 
+            // Desactivar detalle actual y reinsertar
             $this->conn->prepare("UPDATE ventas_detalle SET activo = 0 WHERE id_venta = :id")->execute([':id'=>$idVenta]);
+
             $stInsDet = $this->conn->prepare(
-                "INSERT INTO ventas_detalle (id_venta,id_producto,cantidad,precio_unitario,subtotal,activo)
-                 VALUES (:idv,:idp,:cant,:unit,:sub,1)"
+                "INSERT INTO ventas_detalle
+                 (id_venta,id_producto,cantidad,precio_unitario,subtotal,
+                  costo_unitario,costo_subtotal,utilidad_subtotal,activo)
+                 VALUES
+                 (:idv,:idp,:cant,:unit,:sub,:c_unit,:c_sub,:u_sub,1)"
             );
+            $stCosto = $this->conn->prepare("SELECT costo_neto FROM productos WHERE id_producto=:idp");
 
             $totalNuevo = 0.0;
             foreach ($nuevo as $pid=>$row) {
@@ -579,7 +601,17 @@ class VentaModel
                 $unit = (float)$row['precio_unitario'];
                 $sub  = $cant * $unit;
                 $totalNuevo += $sub;
-                $stInsDet->execute([':idv'=>$idVenta,':idp'=>$pid,':cant'=>$cant,':unit'=>$unit,':sub'=>$sub]);
+
+                // costo / utilidad con costo_neto vigente
+                $stCosto->execute([':idp'=>$pid]);
+                $costoUnit = (float)($stCosto->fetchColumn() ?? 0);
+                $costoSub  = round($cant * $costoUnit, 2);
+                $utilSub   = round($sub - $costoSub, 2);
+
+                $stInsDet->execute([
+                    ':idv'=>$idVenta, ':idp'=>$pid, ':cant'=>$cant, ':unit'=>$unit, ':sub'=>$sub,
+                    ':c_unit'=>$costoUnit, ':c_sub'=>$costoSub, ':u_sub'=>$utilSub
+                ]);
             }
 
             $stUpV = $this->conn->prepare(
@@ -594,7 +626,6 @@ class VentaModel
             );
             $stUpV->bindValue(':fecha',$fechaBD);
             if ($idCliente===null) $stUpV->bindValue(':idc',null,\PDO::PARAM_NULL); else $stUpV->bindValue(':idc',$idCliente,\PDO::PARAM_INT);
-            // 👇 Se guarda la forma de pago tal cual venga
             if ($idFormaPago===null) $stUpV->bindValue(':idfp',null,\PDO::PARAM_NULL);
             else $stUpV->bindValue(':idfp',$idFormaPago,\PDO::PARAM_INT);
             $stUpV->bindValue(':idtp',$idTipoPrecio,\PDO::PARAM_INT);
@@ -631,55 +662,72 @@ class VentaModel
         try {
             $this->conn->beginTransaction();
 
-            // Trae venta + valida que sea crédito y no esté cancelada
+            // Trae SOLO la venta; sin JOIN a formas_pago ni columnas que no existen
             $st = $this->conn->prepare(
-                "SELECT v.*, fp.es_credito
-                   FROM ventas v
-              LEFT JOIN formas_pago fp ON fp.id_forma_pago = v.id_forma_pago
-                  WHERE v.id_venta = :id
-                  FOR UPDATE"
+                "SELECT id_venta, estatus, id_forma_pago, total
+                FROM ventas
+                WHERE id_venta = :id
+                FOR UPDATE"
             );
             $st->execute([':id'=>$idVenta]);
             $v = $st->fetch(\PDO::FETCH_ASSOC);
-            if (!$v) { $this->conn->rollBack(); return ['ok'=>false,'msg'=>'Venta no encontrada']; }
-
-            $esCreditoHeader = isset($v['es_credito'])
-                ? (int)$v['es_credito'] === 1
-                : $this->formaPagoEsCredito((int)($v['id_forma_pago'] ?? 0));
-
-            if (!$esCreditoHeader && strcasecmp($v['estatus'],'Credito')!==0) {
-                $this->conn->rollBack(); return ['ok'=>false,'msg'=>'La venta no es de crédito'];
-            }
-            if (strcasecmp($v['estatus'],'Cancelada')===0) {
-                $this->conn->rollBack(); return ['ok'=>false,'msg'=>'Venta cancelada'];
+            if (!$v) {
+                $this->conn->rollBack();
+                return ['ok'=>false,'msg'=>'Venta no encontrada'];
             }
 
+            // Debe ser venta de CRÉDITO y NO cancelada
+            if (strcasecmp($v['estatus'], 'Cancelada') === 0) {
+                $this->conn->rollBack();
+                return ['ok'=>false,'msg'=>'Venta cancelada'];
+            }
+            if (strcasecmp($v['estatus'], 'Credito') !== 0) {
+                $this->conn->rollBack();
+                return ['ok'=>false,'msg'=>'La venta no es de crédito'];
+            }
+
+            // Saldo actual
             $saldo = $this->saldoVenta($idVenta);
-            if ($saldo <= 0) { $this->conn->rollBack(); return ['ok'=>false,'msg'=>'Venta sin saldo']; }
-            if ($monto > $saldo + 0.0001) { $this->conn->rollBack(); return ['ok'=>false,'msg'=>'El abono excede el saldo']; }
+            if ($saldo <= 0) {
+                $this->conn->rollBack();
+                return ['ok'=>false,'msg'=>'Venta sin saldo'];
+            }
+            if ($monto > $saldo + 0.0001) {
+                $this->conn->rollBack();
+                return ['ok'=>false,'msg'=>'El abono excede el saldo'];
+            }
 
-            // Insert abono
+            // Inserta abono
             $fecha = $fechaAbono ? ($fechaAbono.' '.date('H:i:s')) : $this->ahoraHermStr();
             $ins = $this->conn->prepare(
                 "INSERT INTO ventas_abonos
-                 (id_venta,id_forma_pago,monto,fecha_abono,referencia_pago,id_usuario,activo,fecha_creacion)
-                 VALUES (:v,:fp,:m,:f,:r,:u,1,NOW())"
+                (id_venta,id_forma_pago,monto,fecha_abono,referencia_pago,id_usuario,activo,fecha_creacion)
+                VALUES (:v,:fp,:m,:f,:r,:u,1,NOW())"
             );
             $ins->execute([
-                ':v'=>$idVenta, ':fp'=>$idFormaPago, ':m'=>$monto, ':f'=>$fecha,
-                ':r'=>$ref, ':u'=>$idUsuario
+                ':v'=>$idVenta,
+                ':fp'=>$idFormaPago,
+                ':m'=>$monto,
+                ':f'=>$fecha,
+                ':r'=>$ref,
+                ':u'=>$idUsuario
             ]);
 
+            // Recalcula saldo; si quedó en 0, marcar como Cobrada
             $saldo2 = $this->saldoVenta($idVenta);
             if ($saldo2 <= 0.0001) {
                 $this->conn->prepare("UPDATE ventas SET estatus='Cobrada' WHERE id_venta=:id")
-                           ->execute([':id'=>$idVenta]);
+                        ->execute([':id'=>$idVenta]);
             }
 
             // Bitácora
             $this->registrarBitacora(
-                $idUsuario, 'ventas_abonos', 'INSERT', (int)$this->conn->lastInsertId(),
-                'Abono a venta de crédito', null,
+                $idUsuario,
+                'ventas_abonos',
+                'INSERT',
+                (int)$this->conn->lastInsertId(),
+                'Abono a venta de crédito',
+                null,
                 json_encode(['id_venta'=>$idVenta,'monto'=>$monto,'saldo_antes'=>$saldo,'saldo_despues'=>$saldo2])
             );
 
@@ -691,6 +739,7 @@ class VentaModel
             return ['ok'=>false,'msg'=>$e->getMessage()];
         }
     }
+
 
     /* ========================= Cambiar estatus / cancelar ========================= */
     public function cambiarEstatus($idVenta, $nuevoEstatus)

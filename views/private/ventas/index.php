@@ -155,42 +155,10 @@ if (!isset($_SESSION['usuario'])) {
         <?php include_once __DIR__ . '/../ventas/modales/ticket.php'; ?>
         <?php include_once __DIR__ . '/../ventas/modales/eliminar.php'; ?>
         <?php include_once __DIR__ . '/../ventas/modales/editar.php'; ?>
+        <?php include_once __DIR__ . '/../ventas/modales/abono.php'; ?>
+        <?php include_once __DIR__ . '/../ventas/modales/activar.php'; ?>
 
-        <!-- Modal Activar Venta Guardada -->
-        <div class="modal fade" id="modalActivarVenta" tabindex="-1" role="dialog" aria-labelledby="lblActivarVenta" aria-hidden="true">
-          <div class="modal-dialog modal-md modal-dialog-scrollable" role="document">
-            <div class="modal-content">
-              <div class="modal-header py-2">
-                <h5 class="modal-title">Activar venta <span class="text-muted">Folio</span> <b id="ac-folio">—</b></h5>
-                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-              </div>
-              <div class="modal-body">
-                <input type="hidden" id="ac-id-venta" value="">
-                <div class="form-group">
-                  <label for="ac-selFormaPago">Forma de pago</label>
-                  <select id="ac-selFormaPago" class="form-control">
-                    <option value="">Cargando…</option>
-                  </select>
-                  <small class="text-muted">Se requiere una forma de pago para contabilizarla en el corte.</small>
-                </div>
-                <div class="form-group form-check mt-2">
-                  <input class="form-check-input" type="checkbox" id="ac-fechaAhora" checked>
-                  <label class="form-check-label" for="ac-fechaAhora">
-                    Usar fecha y hora actual al activar
-                  </label>
-                </div>
-                <div id="ac-error" class="alert alert-danger d-none mt-2"></div>
-              </div>
-              <div class="modal-footer py-2">
-                <button type="button" class="btn btn-outline-secondary" data-dismiss="modal">Cerrar</button>
-                <button type="button" class="btn btn-success" id="btnConfirmarActivar">
-                  <i class="mdi mdi-check-circle-outline"></i> Activar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <!-- /Modal Activar -->
+        
 
       </div> <!-- /container-fluid -->
     </div> <!-- /wrapper -->
@@ -258,6 +226,16 @@ if (!isset($_SESSION['usuario'])) {
               <i class="mdi mdi-check-circle mr-2 text-muted font-18 vertical-middle"></i>Activar (contabilizar)
             </a>`;
         }
+
+         // Abonar SOLO si es Crédito
+        if (v.estatus==='Credito'){
+          out += `
+            <a class="dropdown-item accion-abonar-venta" href="#"
+              data-id="${v.id_venta}" data-folio="${v.folio}">
+              <i class="mdi mdi-cash mr-2 text-muted font-18 vertical-middle"></i>Abonar
+            </a>`;
+        }
+
         // Cancelar en Activa o Credito
         if (v.estatus==='Activa' || v.estatus==='Credito'){
           out += `
@@ -265,6 +243,9 @@ if (!isset($_SESSION['usuario'])) {
               <i class="mdi mdi-delete mr-2 text-muted font-18 vertical-middle"></i>Cancelar
             </a>`;
         }
+
+       
+
         return out;
       }
 
@@ -313,6 +294,7 @@ if (!isset($_SESSION['usuario'])) {
           $('#infoVentas').text(`Mostrando ${total===0?0:desde} a ${hasta} de ${total} ventas`);
         },'json');
       }
+
       function configurarPaginacion(currentPage,totalItems,itemsPerPage){
         const totalPages=Math.max(1,Math.ceil(totalItems/itemsPerPage));
         const $ul=$('#pagination').empty();
@@ -333,6 +315,7 @@ if (!isset($_SESSION['usuario'])) {
           $ul.append(`<li class="page-item"><a class="page-link" data-page="${totalPages}">Última</a></li>`);
         }
       }
+
       $('#pagination').on('click','a.page-link',function(e){
         e.preventDefault(); const p=Number($(this).data('page'));
         if (Number.isFinite(p)){ paginaActual=p; cargarVentas(paginaActual); }
@@ -405,6 +388,7 @@ if (!isset($_SESSION['usuario'])) {
         const row2 = descripcion ? `<div style="margin-left:50px;font-size:11px;white-space:normal;overflow-wrap:anywhere;">${descripcion}</div>` : '';
         return row1+row2;
       }
+
       window.abrirTicket = function(idVenta){
         $('#tk-items').empty(); $('#tk-folio').text('—'); $('#tk-fecha').text('—'); $('#tk-total').text('$0.00'); $('#tk-idventa').val(idVenta);
         $.get(VENTAS_URL,{accion:'detalle',id_venta:idVenta},function(resp){
@@ -422,6 +406,7 @@ if (!isset($_SESSION['usuario'])) {
           $('#modalTicket').modal('show');
         },'json').fail(()=> alert('Error al cargar el ticket.'));
       };
+
       $(document).on('click','#btnImprimirTicket',function(){
         const id=$('#tk-idventa').val(); if(!id){ alert('No hay venta seleccionada'); return; }
         $.get(`${BASE}/utils/ticket_mike42.php`,{id_venta:id}).done(r=>console.log('Impresión:',r)).fail(xhr=>console.error('Error al imprimir:',xhr.responseText||'Error'));
@@ -433,6 +418,7 @@ if (!isset($_SESSION['usuario'])) {
         const id=$(this).data('id'), folio=$(this).data('folio'); if(!id) return;
         $('#el-id-venta').val(id); $('#el-folio').text(folio); $('#modalEliminar').modal('show');
       });
+
       $(document).off('click','#btnConfirmarEliminar').on('click','#btnConfirmarEliminar',function(){
         const id=$('#el-id-venta').val(); if(!id) return;
         const $b=$(this), txt=$b.html();
@@ -595,6 +581,7 @@ if (!isset($_SESSION['usuario'])) {
         });
         if (selected!=null) $selCliente.val(String(selected));
       }
+
       function cargarClientes(selected){
         const LIM=200;
         $.post(`${CLIENTES_URL}`,{accion:'listar-min', limite:LIM})
@@ -612,6 +599,7 @@ if (!isset($_SESSION['usuario'])) {
              .fail(()=> setClientesOptions([], selected));
           });
       }
+
       function cargarFormasPago(selected, fallbackText){
         $.get(`${FORMASPAGO_URL}`,{accion:'listar_select'})
           .done(r=>{
@@ -661,6 +649,7 @@ if (!isset($_SESSION['usuario'])) {
             <i class="mdi mdi-plus-circle-outline"></i>
           </a>`;
       }
+
       function sugHTMLDetallado(det){
         const pub = Number(det.precio_publico ?? 0);
         const tal = Number(det.precio_taller ?? 0);
@@ -668,6 +657,7 @@ if (!isset($_SESSION['usuario'])) {
         const extra = `<span>Taller: ${mxn(tal)}</span> · <span>Público: ${mxn(pub)}</span> · <span>Exist: ${fix2(stk)}</span>`;
         return { extra, sinStock:(vendibleDe(det) <= 0) };
       }
+
       function renderSugerencias(arr){
         $sug.empty();
         if(!arr.length){ $sug.hide(); return; }
@@ -693,20 +683,24 @@ if (!isset($_SESSION['usuario'])) {
            });
         });
       }
+
       function buscar(q){
         if(!q||q.length<2){ $sug.hide().empty(); return; }
         $.post(PRODUCTOS_URL,{accion:'buscar-min', q, limite:20})
          .done(r=>renderSugerencias(r?.data||[]))
          .fail(()=> $sug.hide().empty());
       }
+
       $buscar.on('input', function(){
         const val=this.value.trim(); clearTimeout(debTimer);
         debTimer = setTimeout(()=>buscar(val), 220);
       });
+
       $sug.on('click','.list-group-item',function(e){
         e.preventDefault(); if($(this).hasClass('disabled')) return;
         seleccionarPorId(Number($(this).data('id')));
       });
+
       $(document).on('click', e=>{ if(!$(e.target).closest('#ed-buscar,#ed-sug').length){ $sug.hide().empty(); } });
 
       function seleccionarPorId(idProd){
@@ -960,6 +954,104 @@ if (!isset($_SESSION['usuario'])) {
           });
         },'json').fail(()=> $errEd.removeClass('d-none').text('Error al cargar la venta.'));
       };
+
+      /* ====== Abonos a ventas de CRÉDITO ====== */
+      function cargarFormasPagoAbono(selected){
+        const $sel = $('#ab-forma');
+        $sel.prop('disabled', true).empty().append('<option value="">Cargando…</option>');
+        $.get(FORMASPAGO_URL, {accion:'listar_select'})
+          .done(r=>{
+            const arr = r?.data || (Array.isArray(r)?r:[]);
+            $sel.empty();
+            if(!arr.length){
+              $sel.append('<option value="">(sin formas de pago)</option>');
+            } else {
+              arr.forEach(fp => $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`));
+              if (selected!=null) $sel.val(String(selected));
+              // default efectivo si no hay selección
+              if(!$sel.val()){
+                const opEfe = $sel.find('option').filter(function(){ return $(this).text().toLowerCase().includes('efectivo'); }).first().val();
+                if(opEfe) $sel.val(opEfe);
+              }
+            }
+          })
+          .fail(()=>{
+            $sel.empty().append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option>');
+          })
+          .always(()=> $sel.prop('disabled', false));
+      }
+
+      // Click en "Abonar" (solo aparece cuando estatus === 'Credito')
+      $(document).on('click','a.accion-abonar-venta', function(e){
+        e.preventDefault();
+        const id = Number($(this).data('id'));
+        const folio = $(this).data('folio') || '—';
+        if(!id) return;
+
+        // Limpia modal
+        $('#ab-id-venta').val(id);
+        $('#ab-folio').text(folio);
+        $('#ab-monto').val('');
+        $('#ab-ref').val('');
+        $('#ab-error').addClass('d-none').empty();
+
+        // Carga FP
+        cargarFormasPagoAbono();
+
+        // Trae saldo (usamos detalle para no crear otra ruta)
+        $.get(VENTAS_URL,{accion:'detalle', id_venta:id}, function(resp){
+          if(!resp || !resp.venta){
+            toastr.error('No se encontró la venta.'); 
+            return;
+          }
+          // saldo = total - abonado (el controller ya lo manda)
+          const saldo = Number(resp?.saldo ?? ( (Number(resp?.venta?.total||0) - Number(resp?.abonado||0)) ));
+          $('#ab-saldo').text( Number.isFinite(saldo) ? saldo.toLocaleString('es-MX',{style:'currency',currency:'MXN'}) : '$0.00' );
+          $('#ab-monto').attr('max', Math.max(0, saldo||0));
+          $('#modalAbonarVenta').modal('show');
+        }, 'json').fail(()=> toastr.error('No se pudo obtener el saldo.'));
+      });
+
+      // Enviar abono
+      $('#formAbonoVenta').on('submit', function(e){
+        e.preventDefault();
+        const id_venta = Number($('#ab-id-venta').val());
+        const monto    = Number($('#ab-monto').val());
+        const id_fp    = Number($('#ab-forma').val()) || 0;
+        const fecha    = $('#ab-fecha').val() || '';
+        const ref      = $('#ab-ref').val().trim();
+
+        if(!id_venta){ return; }
+        if(!monto || monto<=0){ $('#ab-error').removeClass('d-none').text('Captura un monto válido.'); return; }
+        if(!id_fp){ $('#ab-error').removeClass('d-none').text('Selecciona una forma de pago.'); return; }
+
+        $('#ab-error').addClass('d-none').empty();
+        const $btn = $('#btnConfirmarAbono'); const bak = $btn.html();
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Guardando…');
+
+        $.post(VENTAS_URL, {
+          accion: 'abonar-venta',
+          id_venta: id_venta,
+          monto: monto,
+          id_forma_pago: id_fp,
+          fecha_abono: fecha,
+          referencia_pago: ref
+        }, function(r){
+          if(r && r.ok){
+            toastr.success('Abono registrado.');
+            $('#modalAbonarVenta').modal('hide');
+            // refresca listado
+            if (typeof cargarVentas === 'function') { cargarVentas(paginaActual || 1); }
+          } else {
+            $('#ab-error').removeClass('d-none').text(r?.msg || 'No se pudo registrar el abono.');
+          }
+        }, 'json').fail(()=>{
+          $('#ab-error').removeClass('d-none').text('Error de comunicación con el servidor.');
+        }).always(()=>{
+          $btn.prop('disabled', false).html(bak);
+        });
+      });
+
 
       // ============== INICIO ==============
       cargarVentas(paginaActual);
