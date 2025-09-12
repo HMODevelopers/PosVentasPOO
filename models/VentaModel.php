@@ -101,6 +101,52 @@ class VentaModel
         return ['estatus' => 'Activa', 'id_fp' => $idFormaPago];
     }
 
+    /** Recalcula saldo y estatus_credito a partir de ventas_abonos y total. */
+    private function recalcularSaldoYEstatusCredito(int $idVenta): array
+    {
+        // Traer total y estatus de la venta
+        $stV = $this->conn->prepare("SELECT total, estatus FROM ventas WHERE id_venta=:id");
+        $stV->execute([':id'=>$idVenta]);
+        $venta = $stV->fetch(\PDO::FETCH_ASSOC);
+        if (!$venta) return ['ok'=>false, 'msg'=>'Venta no encontrada'];
+
+        // Sumar abonos activos
+        $stA = $this->conn->prepare(
+            "SELECT COALESCE(SUM(CASE WHEN activo=1 THEN monto ELSE 0 END),0)
+             FROM ventas_abonos
+             WHERE id_venta=:id"
+        );
+        $stA->execute([':id'=>$idVenta]);
+        $abonado = (float)$stA->fetchColumn();
+
+        $total = (float)$venta['total'];
+        $saldo = max(0.0, $total - $abonado);
+
+        // Lógica de estatus_credito: solo si la venta es de crédito
+        if (strcasecmp($venta['estatus'], 'Credito') !== 0) {
+            $estatusCredito = 'N/A';
+            $saldo = 0.0; // si no es crédito, saldo 0
+        } else {
+            if ($saldo >= $total - 0.0001) {
+                $estatusCredito = 'Pendiente';     // sin abonos
+            } elseif ($saldo <= 0.0001) {
+                $estatusCredito = 'Liquidado';     // pagado
+            } else {
+                $estatusCredito = 'En Proceso';    // parcial
+            }
+        }
+
+        // Actualizar cabecera
+        $up = $this->conn->prepare(
+            "UPDATE ventas
+             SET saldo = :saldo, estatus_credito = :ec
+             WHERE id_venta = :id"
+        );
+        $up->execute([':saldo'=>$saldo, ':ec'=>$estatusCredito, ':id'=>$idVenta]);
+
+        return ['ok'=>true, 'saldo'=>$saldo, 'estatus_credito'=>$estatusCredito, 'abonado'=>$abonado];
+    }
+
     public function saldoVenta(int $idVenta): float
     {
         $st = $this->conn->prepare(
@@ -132,22 +178,24 @@ class VentaModel
     }
 
     /* ========================= Listado / consulta ========================= */
-    public function obtenerVentas($pagina = 1, $limite = 10, $folio = '', $fecha = '')
+    public function obtenerVentas($pagina = 1, $limite = 10, $folio = '', $fecha = '', $estatus = '')
     {
         $offset = ($pagina - 1) * $limite;
         $sql = "SELECT v.*,
-                       c.nombre AS cliente,
-                       u.nombre AS usuario,
-                       cj.nombre AS caja,
-                       COALESCE(fp.descripcion,'—') AS forma_pago,
-                       tp.nombre AS tipo_precio,
-                       (SELECT COALESCE(SUM(a.monto),0)
-                          FROM ventas_abonos a
-                         WHERE a.id_venta = v.id_venta AND a.activo=1) AS abonado,
-                       (v.total -
-                        (SELECT COALESCE(SUM(a2.monto),0)
-                           FROM ventas_abonos a2
-                          WHERE a2.id_venta = v.id_venta AND a2.activo=1))      AS saldo
+                    c.nombre AS cliente,
+                    u.nombre AS usuario,
+                    cj.nombre AS caja,
+                    COALESCE(fp.descripcion,'—') AS forma_pago,
+                    tp.nombre AS tipo_precio,
+                    (SELECT COALESCE(SUM(a.monto),0)
+                        FROM ventas_abonos a
+                        WHERE a.id_venta = v.id_venta AND a.activo=1) AS abonado,
+                    COALESCE(v.saldo,
+                             v.total - (SELECT COALESCE(SUM(a2.monto),0)
+                                          FROM ventas_abonos a2
+                                         WHERE a2.id_venta = v.id_venta AND a2.activo=1)
+                    ) AS saldo,
+                    v.estatus_credito
                 FROM ventas v
                 LEFT JOIN clientes     c  ON v.id_cliente     = c.id_cliente
                 INNER JOIN usuarios    u  ON v.id_usuario     = u.id_usuario
@@ -158,6 +206,8 @@ class VentaModel
         $params = [];
         if ($folio !== '') { $sql .= " AND v.folio LIKE :folio"; $params[':folio'] = "%$folio%"; }
         if ($fecha !== '') { $sql .= " AND DATE(v.fecha) = :fecha"; $params[':fecha'] = $fecha; }
+        if ($estatus !== '') { $sql .= " AND v.estatus = :estatus"; $params[':estatus'] = $estatus; }
+
         $sql .= " ORDER BY v.id_venta DESC LIMIT :limite OFFSET :offset";
 
         $st = $this->conn->prepare($sql);
@@ -168,12 +218,14 @@ class VentaModel
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
-    public function contarVentas($folio = '', $fecha = '')
+    public function contarVentas($folio = '', $fecha = '', $estatus = '')
     {
         $sql = "SELECT COUNT(*) FROM ventas v WHERE v.activo = 1";
         $params = [];
         if ($folio !== '') { $sql .= " AND v.folio LIKE :folio"; $params[':folio'] = "%$folio%"; }
         if ($fecha !== '') { $sql .= " AND DATE(v.fecha) = :fecha"; $params[':fecha'] = $fecha; }
+        if ($estatus !== '') { $sql .= " AND v.estatus = :estatus"; $params[':estatus'] = $estatus; }
+
         $st = $this->conn->prepare($sql);
         foreach ($params as $k=>$v) $st->bindValue($k,$v);
         $st->execute();
@@ -192,10 +244,12 @@ class VentaModel
                     (SELECT COALESCE(SUM(a.monto),0)
                        FROM ventas_abonos a
                       WHERE a.id_venta = v.id_venta AND a.activo=1) AS abonado,
-                    (v.total -
-                     (SELECT COALESCE(SUM(a2.monto),0)
-                        FROM ventas_abonos a2
-                       WHERE a2.id_venta = v.id_venta AND a2.activo=1)) AS saldo
+                    COALESCE(v.saldo,
+                             v.total - (SELECT COALESCE(SUM(a2.monto),0)
+                                          FROM ventas_abonos a2
+                                         WHERE a2.id_venta = v.id_venta AND a2.activo=1)
+                    ) AS saldo,
+                    v.estatus_credito
              FROM ventas v
              LEFT JOIN clientes     c  ON v.id_cliente     = c.id_cliente
              INNER JOIN usuarios    u  ON v.id_usuario     = u.id_usuario
@@ -271,36 +325,65 @@ class VentaModel
             $fechaHora  = $this->fechaHoraDesdeInput($datosVenta['fecha'] ?? null);
             $ahora      = $this->ahoraHermStr();
 
+            // Cliente opcional -> NULL
             $idClienteRaw = $datosVenta['id_cliente'] ?? null;
             $idCliente = (is_null($idClienteRaw) || $idClienteRaw==='' || (int)$idClienteRaw===0) ? null : (int)$idClienteRaw;
 
+            // Sesión obligatoria
             $idUsuario  = (int)($datosVenta['id_usuario']  ?? 0);
             $idCaja     = (int)($datosVenta['id_caja']     ?? 0);
             $idSucursal = (int)($datosVenta['id_sucursal'] ?? 0);
-            if (!$idUsuario || !$idCaja || !$idSucursal) throw new \Exception('Faltan usuario/caja/sucursal.');
+            if (!$idUsuario || !$idCaja || !$idSucursal) {
+                throw new \Exception('Faltan usuario/caja/sucursal.');
+            }
 
+            // Forma de pago (puede venir vacía/NULL)
             $idFormaPago = null;
-            if (array_key_exists('id_forma_pago',$datosVenta) && $datosVenta['id_forma_pago']!=='') {
+            if (array_key_exists('id_forma_pago', $datosVenta) && $datosVenta['id_forma_pago'] !== '') {
                 $idFormaPago = (int)$datosVenta['id_forma_pago'];
             }
 
+            // Tipo de precio
             $idTipoPrecio = (int)($datosVenta['id_tipo_precio'] ?? 1);
 
+            // Total
             $total = 0.0;
-            foreach ($detalles as $d) { $total += (float)($d['cantidad'] ?? 0) * (float)($d['precio_unitario'] ?? 0); }
+            foreach ($detalles as $d) {
+                $total += (float)($d['cantidad'] ?? 0) * (float)($d['precio_unitario'] ?? 0);
+            }
 
-            // Normaliza SOLO el estatus (reglas arriba), no impone validaciones.
-            $norm = $this->normalizarEstatusYFormaPago((string)($datosVenta['estatus'] ?? 'Activa'), $idFormaPago, $idCliente);
+            // ===== Normaliza estatus y forma de pago
+            $norm = $this->normalizarEstatusYFormaPago(
+                (string)($datosVenta['estatus'] ?? 'Activa'),
+                $idFormaPago,
+                $idCliente
+            );
             $estatusBD   = $norm['estatus'];
             $idFormaPago = $norm['id_fp'];
 
+            // 🔒 Si es "Guardada", FORZAR id_forma_pago = NULL SIEMPRE
+            if (strcasecmp($estatusBD, 'Guardada') === 0) {
+                $idFormaPago = null;
+            } else {
+                // Si NO es "Guardada" y viene id_forma_pago, validar que exista
+                if ($idFormaPago !== null) {
+                    $chk = $this->conn->prepare("SELECT 1 FROM formas_pago WHERE id_forma_pago = :id");
+                    $chk->execute([':id' => $idFormaPago]);
+                    if (!$chk->fetchColumn()) {
+                        throw new \Exception('Forma de pago inválida (no existe en formas_pago).');
+                    }
+                }
+            }
+
             $anio = (int)date('Y', strtotime($fechaHora));
 
+            // ===== Asignación de folio con lock y reintentos
             for ($i=1; $i<=$MAX_REINT; $i++) {
+
                 $lockOk = $this->obtenerLockFolio($anio, 5);
                 if (!$lockOk) {
-                    if ($i===$MAX_REINT) throw new \Exception('No se pudo obtener candado de folio.');
-                    usleep(random_int(20000,90000));
+                    if ($i === $MAX_REINT) throw new \Exception('No se pudo obtener candado de folio.');
+                    usleep(random_int(20000, 90000));
                     continue;
                 }
 
@@ -310,48 +393,52 @@ class VentaModel
                     $folio = trim($datosVenta['folio'] ?? '');
                     if ($folio === '') $folio = $this->generarFolioDesdeVentas($anio);
 
+                    // ===== INSERT cabecera
                     $stVenta = $this->conn->prepare(
                         "INSERT INTO ventas
-                         (folio, fecha, id_cliente, id_usuario, id_caja, id_forma_pago, id_tipo_precio, total, estatus, activo)
-                         VALUES (:folio,:fecha,:idc,:idu,:idcj,:idfp,:idtp,:total,:estatus,1)"
+                        (folio, fecha, id_cliente, id_usuario, id_caja, id_forma_pago, id_tipo_precio, total, estatus, activo)
+                        VALUES (:folio,:fecha,:idc,:idu,:idcj,:idfp,:idtp,:total,:estatus,1)"
                     );
-                    $stVenta->bindValue(':folio',$folio);
-                    $stVenta->bindValue(':fecha',$fechaHora);
-                    if ($idCliente===null) $stVenta->bindValue(':idc',null,\PDO::PARAM_NULL); else $stVenta->bindValue(':idc',$idCliente,\PDO::PARAM_INT);
-                    $stVenta->bindValue(':idu',$idUsuario,\PDO::PARAM_INT);
-                    $stVenta->bindValue(':idcj',$idCaja,\PDO::PARAM_INT);
-                    // Guardar forma de pago tal cual venga
-                    if ($idFormaPago===null) $stVenta->bindValue(':idfp',null,\PDO::PARAM_NULL);
-                    else $stVenta->bindValue(':idfp',$idFormaPago,\PDO::PARAM_INT);
-                    $stVenta->bindValue(':idtp',$idTipoPrecio,\PDO::PARAM_INT);
-                    $stVenta->bindValue(':total',$total);
-                    $stVenta->bindValue(':estatus',$estatusBD);
+                    $stVenta->bindValue(':folio', $folio);
+                    $stVenta->bindValue(':fecha', $fechaHora);
+                    if ($idCliente === null) $stVenta->bindValue(':idc', null, \PDO::PARAM_NULL);
+                    else $stVenta->bindValue(':idc', $idCliente, \PDO::PARAM_INT);
+                    $stVenta->bindValue(':idu', $idUsuario, \PDO::PARAM_INT);
+                    $stVenta->bindValue(':idcj', $idCaja, \PDO::PARAM_INT);
+                    // id_forma_pago puede ser NULL
+                    if ($idFormaPago === null) $stVenta->bindValue(':idfp', null, \PDO::PARAM_NULL);
+                    else $stVenta->bindValue(':idfp', $idFormaPago, \PDO::PARAM_INT);
+                    $stVenta->bindValue(':idtp', $idTipoPrecio, \PDO::PARAM_INT);
+                    $stVenta->bindValue(':total', $total);
+                    $stVenta->bindValue(':estatus', $estatusBD);
                     $stVenta->execute();
 
                     $idVenta = (int)$this->conn->lastInsertId();
 
-                    /* ======== detalle + inventario + costo/utilidad ======== */
+                    // ===== Preparar helpers de detalle / inventario
                     $stDet = $this->conn->prepare(
                         "INSERT INTO ventas_detalle
-                         (id_venta, id_producto, cantidad, precio_unitario, subtotal,
-                          costo_unitario, costo_subtotal, utilidad_subtotal, activo)
-                         VALUES
-                         (:idv, :idp, :cant, :unit, :sub,
-                          :c_unit, :c_sub, :u_sub, 1)"
+                        (id_venta, id_producto, cantidad, precio_unitario, subtotal,
+                        costo_unitario, costo_subtotal, utilidad_subtotal, activo)
+                        VALUES
+                        (:idv, :idp, :cant, :unit, :sub,
+                        :c_unit, :c_sub, :u_sub, 1)"
                     );
                     $stGet = $this->conn->prepare(
                         "SELECT stock_actual, stock_minimo, costo_neto
-                           FROM productos
-                          WHERE id_producto=:idp
-                          FOR UPDATE"
+                        FROM productos
+                        WHERE id_producto = :idp
+                        FOR UPDATE"
                     );
                     $stUpd = $this->conn->prepare(
-                        "UPDATE productos SET stock_actual = stock_actual - :cant WHERE id_producto=:idp"
+                        "UPDATE productos
+                            SET stock_actual = stock_actual - :cant
+                        WHERE id_producto = :idp"
                     );
                     $stMov = $this->conn->prepare(
                         "INSERT INTO inventario_movimientos
-                         (id_producto,tipo,cantidad,id_sucursal,id_usuario,referencia,motivo,fecha,activo)
-                         VALUES (:idp,'Salida',:cant,:ids,:idu,:ref,:mot,:f,1)"
+                        (id_producto,tipo,cantidad,id_sucursal,id_usuario,referencia,motivo,fecha,activo)
+                        VALUES (:idp,'Salida',:cant,:ids,:idu,:ref,:mot,:f,1)"
                     );
 
                     $itemsBit = [];
@@ -361,52 +448,107 @@ class VentaModel
                         $unit = (float)$d['precio_unitario'];
                         $sub  = $cant * $unit;
 
-                        $stGet->execute([':idp'=>$idp]);
+                        // Lock y validaciones de stock
+                        $stGet->execute([':idp' => $idp]);
                         $p = $stGet->fetch(\PDO::FETCH_ASSOC);
                         if (!$p) throw new \Exception("Producto $idp no encontrado.");
 
                         $vendible = max(0.0, (float)$p['stock_actual'] - (float)$p['stock_minimo']);
-                        if ($cant > $vendible) throw new \Exception("Stock insuficiente en producto $idp. Vendible: $vendible, solicitado: $cant.");
+                        if ($cant > $vendible) {
+                            throw new \Exception("Stock insuficiente en producto $idp. Vendible: $vendible, solicitado: $cant.");
+                        }
 
-                        // === costo / utilidad (a partir de costo_neto vigente)
+                        // costo/utilidad con costo_neto vigente
                         $costoUnit = (float)($p['costo_neto'] ?? 0);
                         $costoSub  = round($cant * $costoUnit, 2);
                         $utilSub   = round($sub - $costoSub, 2);
 
+                        // Insert detalle
                         $stDet->execute([
-                            ':idv'=>$idVenta, ':idp'=>$idp, ':cant'=>$cant, ':unit'=>$unit, ':sub'=>$sub,
-                            ':c_unit'=>$costoUnit, ':c_sub'=>$costoSub, ':u_sub'=>$utilSub
+                            ':idv'    => $idVenta,
+                            ':idp'    => $idp,
+                            ':cant'   => $cant,
+                            ':unit'   => $unit,
+                            ':sub'    => $sub,
+                            ':c_unit' => $costoUnit,
+                            ':c_sub'  => $costoSub,
+                            ':u_sub'  => $utilSub
                         ]);
 
-                        $stUpd->execute([':cant'=>$cant,':idp'=>$idp]);
+                        // Descontar inventario
+                        $stUpd->execute([':cant' => $cant, ':idp' => $idp]);
+
+                        // Movimiento de inventario (motivo depende del estatus)
+                        $motivoMov = (strcasecmp($estatusBD, 'Guardada') === 0)
+                            ? 'Venta guardada (reserva)'
+                            : 'Venta de mostrador / crédito';
+
                         $stMov->execute([
-                            ':idp'=>$idp, ':cant'=>$cant, ':ids'=>$idSucursal, ':idu'=>$idUsuario,
-                            ':ref'=>$folio, ':mot'=>($estatusBD==='Guardada'?'Venta guardada (reserva)':'Venta de mostrador / crédito'),
-                            ':f'=>$ahora
+                            ':idp' => $idp,
+                            ':cant'=> $cant,
+                            ':ids' => $idSucursal,
+                            ':idu' => $idUsuario,
+                            ':ref' => $folio,
+                            ':mot' => $motivoMov,
+                            ':f'   => $ahora
                         ]);
 
-                        $itemsBit[] = ['id_producto'=>$idp,'cant'=>$cant,'precio_unit'=>$unit,'subtotal'=>$sub,'costo_unit'=>$costoUnit];
+                        $itemsBit[] = [
+                            'id_producto' => $idp,
+                            'cant'        => $cant,
+                            'precio_unit' => $unit,
+                            'subtotal'    => $sub,
+                            'costo_unit'  => $costoUnit
+                        ];
                     }
 
+                    // Bitácora
                     $this->registrarBitacora(
-                        $idUsuario,'ventas','INSERT',$idVenta,'Creación de venta',
-                        null, json_encode([
-                            'folio'=>$folio,'estatus'=>$estatusBD,'id_cliente'=>$idCliente,
-                            'id_caja'=>$idCaja,'total'=>$total,'items'=>$itemsBit
-                        ]), null, $ahora
+                        $idUsuario,
+                        'ventas',
+                        'INSERT',
+                        $idVenta,
+                        'Creación de venta',
+                        null,
+                        json_encode([
+                            'folio'     => $folio,
+                            'estatus'   => $estatusBD,
+                            'id_cliente'=> $idCliente,
+                            'id_caja'   => $idCaja,
+                            'total'     => $total,
+                            'items'     => $itemsBit
+                        ], JSON_UNESCAPED_UNICODE),
+                        null,
+                        $ahora
                     );
+
+                    // ✅ Saldo / estatus_credito
+                    try { $this->recalcularSaldoYEstatusCredito($idVenta); } catch (\Throwable $th) {}
 
                     $this->conn->commit();
                     $this->liberarLockFolio($anio);
-                    return ['ok'=>true,'id_venta'=>$idVenta,'folio'=>$folio,'total'=>$total,'estatus'=>$estatusBD];
+
+                    return [
+                        'ok'      => true,
+                        'id_venta'=> $idVenta,
+                        'folio'   => $folio,
+                        'total'   => $total,
+                        'estatus' => $estatusBD
+                    ];
 
                 } catch (\PDOException $e) {
                     if ($this->conn->inTransaction()) $this->conn->rollBack();
                     $this->liberarLockFolio($anio);
+
+                    // Colisión de folio
                     if (($e->errorInfo[1] ?? 0) === 1062) {
-                        if ($i===$MAX_REINT) return ['ok'=>false,'msg'=>'No se pudo asignar folio único.'];
-                        usleep(random_int(20000,90000)); continue;
+                        if ($i === $MAX_REINT) {
+                            return ['ok'=>false,'msg'=>'No se pudo asignar folio único.'];
+                        }
+                        usleep(random_int(20000, 90000));
+                        continue;
                     }
+
                     return ['ok'=>false,'msg'=>'Error BD: '.$e->getMessage()];
                 } catch (\Throwable $th) {
                     if ($this->conn->inTransaction()) $this->conn->rollBack();
@@ -489,16 +631,19 @@ class VentaModel
                         'id_forma_pago_prev'=>$ventaActual['id_forma_pago'],
                         'id_tipo_precio_prev'=>$ventaActual['id_tipo_precio'],
                         'fecha_prev'=>$ventaActual['fecha']
-                    ]),
+                    ], JSON_UNESCAPED_UNICODE),
                     json_encode([
                         'estatus'=>$estatusBD,
                         'id_cliente'=>$idCliente,
                         'id_forma_pago'=>$idFormaPago,
                         'id_tipo_precio'=>$idTipoPrecio,
                         'fecha'=>$fechaBD
-                    ]),
+                    ], JSON_UNESCAPED_UNICODE),
                     null, $ahora
                 );
+
+                // ✅ Recalcular saldo/estatus_credito por cambio de estatus
+                try { $this->recalcularSaldoYEstatusCredito($idVenta); } catch (\Throwable $th) {}
 
                 $this->conn->commit();
                 return ['ok'=>true,'msg'=>'Cabecera actualizada (sin tocar inventario ni detalle).'];
@@ -636,10 +781,13 @@ class VentaModel
 
             $this->registrarBitacora(
                 $idUsuario,'ventas','UPDATE',$idVenta,'Edición de venta',
-                json_encode(['antes'=>$act,'estatus'=>$ventaActual['estatus'],'total'=>$ventaActual['total']]),
-                json_encode(['despues'=>$nuevo,'estatus'=>$estatusBD,'total'=>$totalNuevo,'deltas'=>$deltasBit,'fecha'=>$fechaBD,'id_cliente'=>$idCliente,'id_forma_pago'=>$idFormaPago,'id_tipo_precio'=>$idTipoPrecio]),
+                json_encode(['antes'=>$act,'estatus'=>$ventaActual['estatus'],'total'=>$ventaActual['total']], JSON_UNESCAPED_UNICODE),
+                json_encode(['despues'=>$nuevo,'estatus'=>$estatusBD,'total'=>$totalNuevo,'deltas'=>$deltasBit,'fecha'=>$fechaBD,'id_cliente'=>$idCliente,'id_forma_pago'=>$idFormaPago,'id_tipo_precio'=>$idTipoPrecio], JSON_UNESCAPED_UNICODE),
                 null,$ahora
             );
+
+            // ✅ Recalcular saldo/estatus_credito porque cambió el total
+            try { $this->recalcularSaldoYEstatusCredito($idVenta); } catch (\Throwable $th) {}
 
             $this->conn->commit();
             return ['ok'=>true,'msg'=>'Venta actualizada','total'=>$totalNuevo,'estatus'=>$estatusBD];
@@ -665,9 +813,9 @@ class VentaModel
             // Trae SOLO la venta; sin JOIN a formas_pago ni columnas que no existen
             $st = $this->conn->prepare(
                 "SELECT id_venta, estatus, id_forma_pago, total
-                FROM ventas
-                WHERE id_venta = :id
-                FOR UPDATE"
+                 FROM ventas
+                 WHERE id_venta = :id
+                 FOR UPDATE"
             );
             $st->execute([':id'=>$idVenta]);
             $v = $st->fetch(\PDO::FETCH_ASSOC);
@@ -701,8 +849,8 @@ class VentaModel
             $fecha = $fechaAbono ? ($fechaAbono.' '.date('H:i:s')) : $this->ahoraHermStr();
             $ins = $this->conn->prepare(
                 "INSERT INTO ventas_abonos
-                (id_venta,id_forma_pago,monto,fecha_abono,referencia_pago,id_usuario,activo,fecha_creacion)
-                VALUES (:v,:fp,:m,:f,:r,:u,1,NOW())"
+                 (id_venta,id_forma_pago,monto,fecha_abono,referencia_pago,id_usuario,activo,fecha_creacion)
+                 VALUES (:v,:fp,:m,:f,:r,:u,1,NOW())"
             );
             $ins->execute([
                 ':v'=>$idVenta,
@@ -713,12 +861,9 @@ class VentaModel
                 ':u'=>$idUsuario
             ]);
 
-            // Recalcula saldo; si quedó en 0, marcar como Cobrada
-            $saldo2 = $this->saldoVenta($idVenta);
-            if ($saldo2 <= 0.0001) {
-                $this->conn->prepare("UPDATE ventas SET estatus='Cobrada' WHERE id_venta=:id")
-                        ->execute([':id'=>$idVenta]);
-            }
+            // ✅ Recalcular saldo y estatus_credito (NO tocar estatus general)
+            $calc = $this->recalcularSaldoYEstatusCredito($idVenta);
+            $saldo2 = (float)($calc['saldo'] ?? 0);
 
             // Bitácora
             $this->registrarBitacora(
@@ -728,7 +873,7 @@ class VentaModel
                 (int)$this->conn->lastInsertId(),
                 'Abono a venta de crédito',
                 null,
-                json_encode(['id_venta'=>$idVenta,'monto'=>$monto,'saldo_antes'=>$saldo,'saldo_despues'=>$saldo2])
+                json_encode(['id_venta'=>$idVenta,'monto'=>$monto,'saldo_antes'=>$saldo,'saldo_despues'=>$saldo2,'estatus_credito_nuevo'=>$calc['estatus_credito'] ?? null], JSON_UNESCAPED_UNICODE)
             );
 
             $this->conn->commit();
@@ -740,12 +885,15 @@ class VentaModel
         }
     }
 
-
     /* ========================= Cambiar estatus / cancelar ========================= */
     public function cambiarEstatus($idVenta, $nuevoEstatus)
     {
         $st = $this->conn->prepare("UPDATE ventas SET estatus = :e WHERE id_venta = :id");
-        return $st->execute([':e'=>$nuevoEstatus, ':id'=>$idVenta]);
+        $ok = $st->execute([':e'=>$nuevoEstatus, ':id'=>$idVenta]);
+
+        // Si el estatus cambia, recalcular saldo/estatus_credito (p.ej., dejará 'N/A' si no es crédito)
+        try { $this->recalcularSaldoYEstatusCredito((int)$idVenta); } catch (\Throwable $th) {}
+        return $ok;
     }
 
     public function cancelarVenta($idVenta, $idSucursal, $idUsuario, $motivo = 'Cancelación de venta')
@@ -762,8 +910,8 @@ class VentaModel
 
             if (strcasecmp($venta['estatus'],'Cancelada')===0) {
                 $this->registrarBitacora($idUsuario,'ventas','CANCEL',$idVenta,'Intento de cancelar venta ya cancelada',
-                    json_encode(['estatus_prev'=>$venta['estatus']]),
-                    json_encode(['estatus_new'=>$venta['estatus']]),
+                    json_encode(['estatus_prev'=>$venta['estatus']], JSON_UNESCAPED_UNICODE),
+                    json_encode(['estatus_new'=>$venta['estatus']], JSON_UNESCAPED_UNICODE),
                     null,$ahora
                 );
                 $this->conn->commit();
@@ -804,9 +952,12 @@ class VentaModel
             $this->conn->prepare("UPDATE ventas SET estatus = 'Cancelada' WHERE id_venta = :id")
                        ->execute([':id'=>$idVenta]);
 
+            // ✅ Recalcular saldo/estatus_credito (quedará N/A y saldo 0)
+            try { $this->recalcularSaldoYEstatusCredito((int)$idVenta); } catch (\Throwable $th) {}
+
             $this->registrarBitacora(
                 $idUsuario,'ventas','CANCEL',$idVenta,'Cancelación de venta y devolución a inventario',
-                null, json_encode(['estatus_new'=>'Cancelada','devoluciones'=>$items]), null, $ahora
+                null, json_encode(['estatus_new'=>'Cancelada','devoluciones'=>$items], JSON_UNESCAPED_UNICODE), null, $ahora
             );
 
             $this->conn->commit();
@@ -821,57 +972,109 @@ class VentaModel
         }
     }
 
-    public function activarGuardada(int $idVenta, ?int $idFormaPago, bool $actualizarFecha = false): array
+    public function activarGuardada(int $idVenta, ?int $idFormaPago, bool $actualizarFecha = false, ?int $idCliente = null): array
     {
+        // Constante para identificar Crédito (PPD)
+        $ID_FP_CREDITO = 21;
+
         try {
+            if ($idFormaPago === null) {
+                return ['ok'=>false, 'msg'=>'Debes seleccionar una forma de pago.'];
+            }
+
             $this->conn->beginTransaction();
 
-            $stV = $this->conn->prepare("SELECT * FROM ventas WHERE id_venta = :id FOR UPDATE");
+            // Lock de la venta
+            $stV = $this->conn->prepare(
+                "SELECT id_venta, estatus, id_cliente, id_usuario, id_forma_pago, fecha
+                 FROM ventas
+                 WHERE id_venta = :id
+                 FOR UPDATE"
+            );
             $stV->execute([':id'=>$idVenta]);
             $venta = $stV->fetch(\PDO::FETCH_ASSOC);
-            if (!$venta) { throw new \Exception('Venta no encontrada.'); }
+            if (!$venta) {
+                throw new \Exception('Venta no encontrada.');
+            }
 
             $estatusPrev = $venta['estatus'];
-            if (strcasecmp($estatusPrev, 'Activa') === 0) {
+            if (strcasecmp($estatusPrev, 'Activa') === 0 || strcasecmp($estatusPrev, 'Credito') === 0) {
                 $this->conn->commit();
-                return ['ok'=>true, 'msg'=>'La venta ya estaba activa.'];
+
+                // Recalcular por si se venía como Guardada y ya se activó antes
+                try { $this->recalcularSaldoYEstatusCredito($idVenta); } catch (\Throwable $th) {}
+
+                return ['ok'=>true, 'msg'=>'La venta ya estaba contabilizada.'];
             }
             if (strcasecmp($estatusPrev, 'Guardada') !== 0) {
                 throw new \Exception('Solo se pueden activar ventas con estatus "Guardada".');
             }
 
-            // Normalizar a partir de la forma de pago elegida al activar
-            $nuevoEstatus = 'Activa';
-            if ($idFormaPago && $this->formaPagoEsCredito($idFormaPago)) {
-                if (empty($venta['id_cliente'])) {
-                    throw new \Exception('Para activar como crédito se requiere cliente en la venta.');
-                }
-                $nuevoEstatus = 'Credito';
+            // Si se envía cliente y cambia, actualizar solo el cliente
+            if ($idCliente && ((int)($venta['id_cliente'] ?? 0) !== (int)$idCliente)) {
+                $this->conn->prepare("UPDATE ventas SET id_cliente=:c WHERE id_venta=:id")
+                    ->execute([':c'=>$idCliente, ':id'=>$idVenta]);
+                $venta['id_cliente'] = $idCliente;
             }
 
-            $params = [ ':id'=>$idVenta, ':idfp'=>($idFormaPago ?: null) ];
-            $sql = "UPDATE ventas SET estatus=:est, id_forma_pago = :idfp";
-            if ($actualizarFecha) { $sql .= ", fecha = :f"; $params[':f'] = $this->ahoraHermStr(); }
-            $sql .= " WHERE id_venta = :id";
-            $params[':est'] = $nuevoEstatus;
-            $this->conn->prepare($sql)->execute($params);
+            // ✅ REGLA: si es Crédito (PPD) (id_forma_pago=21) -> estatus Crédito, si no Activa
+            $nuevoEstatus = ($idFormaPago === $ID_FP_CREDITO) ? 'Credito' : 'Activa';
 
-            $idUsuario = (int)($venta['id_usuario'] ?? 0);
+            // Si es crédito, debe existir cliente
+            if ($nuevoEstatus === 'Credito' && empty($venta['id_cliente'])) {
+                throw new \Exception('Para activar como Crédito se requiere seleccionar un cliente.');
+            }
+
+            // Actualizar cabecera
+            $params = [':id'=>$idVenta, ':est'=>$nuevoEstatus, ':idfp'=>$idFormaPago];
+            $sql = "UPDATE ventas SET estatus=:est, id_forma_pago=:idfp";
+            if ($actualizarFecha) {
+                $params[':f'] = $this->ahoraHermStr();
+                $sql .= ", fecha = :f";
+            }
+            $this->conn->prepare($sql." WHERE id_venta = :id")->execute($params);
+
+            // ✅ Recalcular saldo/estatus_credito
+            try { $this->recalcularSaldoYEstatusCredito($idVenta); } catch (\Throwable $th) {}
+
+            // Bitácora
             $this->registrarBitacora(
-                $idUsuario,'ventas','UPDATE',$idVenta,'Activación de venta guardada (sin movimiento de inventario)',
-                json_encode(['estatus_prev'=>$estatusPrev,'id_forma_pago_prev'=>$venta['id_forma_pago'],'fecha_prev'=>$venta['fecha']]),
-                json_encode(['estatus_new'=>$nuevoEstatus,'id_forma_pago'=>$idFormaPago,'fecha_new'=>$actualizarFecha?($params[':f'] ?? $venta['fecha']):$venta['fecha']]),
-                null,$this->ahoraHermStr()
+                (int)($venta['id_usuario'] ?? 0),
+                'ventas',
+                'UPDATE',
+                $idVenta,
+                'Activación de venta guardada',
+                json_encode([
+                    'estatus_prev'=>$estatusPrev,
+                    'id_forma_pago_prev'=>$venta['id_forma_pago'] ?? null,
+                    'fecha_prev'=>$venta['fecha'] ?? null,
+                    'id_cliente_prev'=>$venta['id_cliente'] ?? null
+                ], JSON_UNESCAPED_UNICODE),
+                json_encode([
+                    'estatus_new'=>$nuevoEstatus,
+                    'id_forma_pago'=>$idFormaPago,
+                    'fecha_new'=>$actualizarFecha ? ($params[':f'] ?? $venta['fecha']) : ($venta['fecha'] ?? null),
+                    'id_cliente_new'=>$venta['id_cliente'] ?? $idCliente
+                ], JSON_UNESCAPED_UNICODE),
+                null,
+                $this->ahoraHermStr()
             );
 
             $this->conn->commit();
-            return ['ok'=>true, 'msg'=>'Venta activada correctamente.'];
+            return [
+                'ok'=>true,
+                'msg'=>($nuevoEstatus === 'Credito')
+                    ? 'Venta activada como Crédito.'
+                    : 'Venta activada como Activa.'
+            ];
 
         } catch (\Exception $e) {
-            if ($this->conn->inTransaction()) $this->conn->rollBack();
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
             try {
                 $idU = (int)($_SESSION['usuario']['id_usuario'] ?? $_SESSION['id_usuario'] ?? 0);
-                $this->registrarBitacora($idU,'ventas','ERROR',(int)$idVenta,$e->getMessage(),null,null,null,$this->ahoraHermStr());
+                $this->registrarBitacora($idU, 'ventas', 'ERROR', (int)$idVenta, $e->getMessage(), null, null, null, $this->ahoraHermStr());
             } catch (\Throwable $th) {}
             return ['ok'=>false, 'msg'=>$e->getMessage()];
         }

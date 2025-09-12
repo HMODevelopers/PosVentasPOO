@@ -43,7 +43,7 @@ switch ($accion) {
         // Asegura id_usuario desde sesión si no viene en payload
         if (empty($compra['id_usuario'])) {
             $compra['id_usuario'] = $_SESSION['usuario']['id_usuario']
-                                ?? $_SESSION['usuario']['id']      // <- añadido
+                                ?? $_SESSION['usuario']['id']
                                 ?? $_SESSION['id_usuario']
                                 ?? null;
         }
@@ -69,6 +69,44 @@ switch ($accion) {
         }
 
         $resp = $compraModel->crearCompra($compra, $detalles);
+        echo json_encode($resp);
+    break;
+
+    // ================================
+    // ACTUALIZAR COMPRA
+    //  - Puede actualizar solo encabezado
+    //  - O reemplazar completamente el detalle (si se envía "detalles")
+    // ================================
+    case 'actualizar':
+        session_start();
+        $payload   = json_decode(file_get_contents('php://input'), true) ?? [];
+        $idCompra  = (int)($payload['id_compra'] ?? 0);
+        $compra    = $payload['compra']    ?? [];
+        $detalles  = $payload['detalles']  ?? null;   // puede venir null o []
+        // si no te mandan el flag, infiere reemplazo si vienen detalles
+        $reemplazar = (bool)($payload['reemplazar_detalles'] ?? (is_array($detalles) && count($detalles) > 0));
+
+        if ($idCompra <= 0) {
+            echo json_encode(['ok' => false, 'msg' => 'id_compra inválido']);
+            break;
+        }
+
+        // completa sesión
+        if (empty($compra['id_usuario'])) {
+            $compra['id_usuario'] = $_SESSION['usuario']['id_usuario']
+                                ?? $_SESSION['usuario']['id']
+                                ?? $_SESSION['id_usuario']
+                                ?? null;
+        }
+        if (!isset($compra['id_sucursal'])) {
+            $compra['id_sucursal'] = $_SESSION['id_sucursal'] ?? ($_SESSION['usuario']['id_sucursal'] ?? null);
+        }
+        if (empty($compra['id_usuario'])) {
+            echo json_encode(['ok' => false, 'msg' => 'Falta id_usuario (sesión).']);
+            break;
+        }
+
+        $resp = $compraModel->actualizarCompra($idCompra, $compra, $reemplazar ? (array)$detalles : null, $reemplazar);
         echo json_encode($resp);
     break;
 
@@ -102,11 +140,10 @@ switch ($accion) {
             break;
         }
 
-        // Si tu modelo tiene este método, úsalo. Si no, puedes actualizar directo aquí.
         if (method_exists($compraModel, 'cambiarEstatus')) {
             $ok = $compraModel->cambiarEstatus($idCompra, $estatus);
         } else {
-            // Fallback rápido si tu modelo no lo trae:
+            // fallback (requiere $pdo global de includes/db.php)
             global $pdo;
             $st = $pdo->prepare("UPDATE compras SET estatus = :e WHERE id_compra = :id");
             $ok = $st->execute([':e' => $estatus, ':id' => $idCompra]);

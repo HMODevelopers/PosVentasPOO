@@ -42,20 +42,22 @@ try {
 
         /* ============================================================
          * Listar ventas (paginado + filtros)
-         * POST/GET: pagina, limite, folio?, fecha?
+         * POST/GET: pagina, limite, folio?, fecha?, estatus?
          * ============================================================ */
         case 'listar': {
             $pagina = i($_POST['pagina'] ?? $_GET['pagina'] ?? 1);
             $limite = i($_POST['limite'] ?? $_GET['limite'] ?? 10);
             $folio  = trim($_POST['folio'] ?? $_GET['folio'] ?? '');
             $fecha  = trim($_POST['fecha'] ?? $_GET['fecha'] ?? '');
+            $estatus= trim($_POST['estatus'] ?? $_GET['estatus'] ?? '');
 
             if ($pagina < 1) $pagina = 1;
             if ($limite < 1) $limite = 10;
 
-            $ventas = $ventaModel->obtenerVentas($pagina, $limite, $folio, $fecha);
-            $total  = $ventaModel->contarVentas($folio, $fecha);
+            $ventas = $ventaModel->obtenerVentas($pagina, $limite, $folio, $fecha, $estatus);
+            $total  = $ventaModel->contarVentas($folio, $fecha, $estatus);
 
+            // Model ya trae: saldo, abonado, estatus_credito
             echo json_encode(['ok' => true, 'data' => $ventas, 'total' => $total], JSON_UNESCAPED_UNICODE);
             break;
         }
@@ -92,26 +94,25 @@ try {
                 $venta['id_tipo_precio'] = map_tipo_precio($venta['tipo_precio_slug']);
             }
             if (empty($venta['id_tipo_precio'])) {
-                $venta['id_tipo_precio'] = 2; // taller por default (UI)
+                $venta['id_tipo_precio'] = 2;
             }
 
             // Validaciones mínimas
             if (!is_array($detalles) || !count($detalles)) jserr('Debes enviar al menos un detalle.');
 
-            // ⚠️ Validación suave: si explícitamente llega estatus "Credito" pero no hay cliente
+            // Suave: si llega explícito "Credito" pero sin cliente
             $estatusIn = strtolower(trim((string)($venta['estatus'] ?? '')));
             if (($estatusIn === 'credito' || $estatusIn === 'crédito') && empty($venta['id_cliente'])) {
                 jserr('Para ventas a crédito es obligatorio seleccionar un cliente.', 400);
             }
 
-            // Pass-through: el modelo normaliza estatus y calcula costo/utilidad de detalle.
             $resp = $ventaModel->crearVenta($venta, $detalles);
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }
 
         /* ============================================================
-         * Detalle (cabecera + partidas + abonos + saldo + totales costo/utilidad)
+         * Detalle (cabecera + partidas + abonos + saldo + estatus_credito)
          * GET/POST: id_venta
          * ============================================================ */
         case 'detalle': {
@@ -123,7 +124,12 @@ try {
 
             $detalles = $ventaModel->obtenerDetalleVenta($idVenta);
 
-            // Totales de costo y utilidad a partir de ventas_detalle (nuevas columnas)
+            // El modelo ya trae en $venta: abonado, saldo, estatus_credito y abonos[]
+            $abonos  = $venta['abonos'] ?? [];
+            $abonado = (float)($venta['abonado'] ?? 0);
+            $saldo   = (float)($venta['saldo']   ?? max(0, (float)$venta['total'] - $abonado));
+
+            // Totales de costo y utilidad desde ventas_detalle
             $costo_total = 0.0;
             $util_total  = 0.0;
             foreach ($detalles as $d) {
@@ -131,30 +137,18 @@ try {
                 $util_total  += (float)($d['utilidad_subtotal'] ?? 0);
             }
 
-            if (method_exists($ventaModel, 'obtenerAbonosVenta')) {
-                $abonos  = $ventaModel->obtenerAbonosVenta($idVenta);
-                $abonado = 0.0;
-                foreach ($abonos as $a) { $abonado += (float)($a['monto'] ?? 0); }
-                $saldo = max(0, (float)$venta['total'] - $abonado);
-                echo json_encode([
-                    'ok'            => true,
-                    'venta'         => $venta,
-                    'detalles'      => $detalles,
-                    'abonos'        => $abonos,
-                    'abonado'       => $abonado,
-                    'saldo'         => $saldo,
-                    'costo_total'   => round($costo_total, 2),
-                    'utilidad_total'=> round($util_total, 2)
-                ], JSON_UNESCAPED_UNICODE);
-            } else {
-                echo json_encode([
-                    'ok'=>true,
-                    'venta'=>$venta,
-                    'detalles'=>$detalles,
-                    'costo_total'=>round($costo_total, 2),
-                    'utilidad_total'=>round($util_total, 2)
-                ], JSON_UNESCAPED_UNICODE);
-            }
+            echo json_encode([
+                'ok'              => true,
+                'venta'           => $venta,          // incluye estatus_credito, saldo, abonado
+                'detalles'        => $detalles,
+                'abonos'          => $abonos,
+                'abonado'         => round($abonado, 2),
+                'saldo'           => round($saldo, 2),
+                'estatus_credito' => $venta['estatus_credito'] ?? 'N/A',
+                'costo_total'     => round($costo_total, 2),
+                'utilidad_total'  => round($util_total, 2)
+            ], JSON_UNESCAPED_UNICODE);
+
             break;
         }
 
@@ -191,6 +185,7 @@ try {
                 $idUsuario
             );
 
+            // El modelo ya recalcula saldo y estatus_credito; devolvemos lo nuevo.
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }
@@ -276,7 +271,7 @@ try {
 
         /* ============================================================
          * ACTUALIZAR (editar TODO)
-         * Body JSON: { venta:{ id_venta, fecha?, id_cliente?, id_forma_pago?, id_tipo_precio? | tipo_precio_slug? }, detalles:[...] }
+         * Body JSON: { venta:{ id_venta, ... }, detalles:[...] }
          * ============================================================ */
         case 'actualizar': {
             $data     = $RAW ?: [];
@@ -287,11 +282,11 @@ try {
             if ($idVenta <= 0) jserr('venta.id_venta es requerido.');
 
             // Cliente opcional → null si vacío
-            if (array_key_exists('id_cliente', $venta) && empty($venta['id_cliente'])) {
+            if (array_key_exists('id_cliente', $venta) && $venta['id_cliente'] === '') {
                 $venta['id_cliente'] = null;
             }
 
-            // Tipo de precio: permitir slug (si no viene, se mantiene el actual en el modelo)
+            // Tipo de precio: permitir slug
             if (empty($venta['id_tipo_precio']) && !empty($venta['tipo_precio_slug'])) {
                 $venta['id_tipo_precio'] = map_tipo_precio($venta['tipo_precio_slug']);
             }
@@ -310,20 +305,21 @@ try {
 
         /* ============================================================
          * Activar una venta Guardada (ponerla Activa/Credito)
-         * POST/GET/JSON: id_venta, id_forma_pago?, actualizar_fecha? (0/1)
+         * POST/GET/JSON: id_venta, id_forma_pago?, actualizar_fecha?, id_cliente?
          * ============================================================ */
         case 'activar-guardada': {
             $id_venta         = (int)($_POST['id_venta'] ?? $_GET['id_venta'] ?? $RAW['id_venta'] ?? 0);
-            $id_forma_pago    = isset($_POST['id_forma_pago']) ? (int)$_POST['id_forma_pago']
-                                  : (isset($_GET['id_forma_pago']) ? (int)$_GET['id_forma_pago']
-                                  : (isset($RAW['id_forma_pago']) ? (int)$RAW['id_forma_pago'] : null));
+            $id_forma_pago    = (int)($_POST['id_forma_pago'] ?? $_GET['id_forma_pago'] ?? $RAW['id_forma_pago'] ?? 0);
+            $id_cliente       = (int)($_POST['id_cliente']    ?? $_GET['id_cliente']    ?? $RAW['id_cliente']    ?? 0);
+
             $actualizar_fecha = false;
             $af = ($_POST['actualizar_fecha'] ?? $_GET['actualizar_fecha'] ?? $RAW['actualizar_fecha'] ?? 0);
             if ($af === '1' || $af === 1 || $af === true || $af === 'true') { $actualizar_fecha = true; }
 
-            if (!$id_venta) { echo json_encode(['ok'=>false,'msg'=>'id_venta requerido.']); break; }
+            if ($id_venta <= 0)       { echo json_encode(['ok'=>false,'msg'=>'id_venta requerido.']); break; }
+            if ($id_forma_pago <= 0)  { echo json_encode(['ok'=>false,'msg'=>'id_forma_pago requerido.']); break; }
 
-            $resp = $ventaModel->activarGuardada($id_venta, $id_forma_pago, $actualizar_fecha);
+            $resp = $ventaModel->activarGuardada($id_venta, $id_forma_pago, $actualizar_fecha, ($id_cliente ?: null));
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }

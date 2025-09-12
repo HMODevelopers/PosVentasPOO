@@ -69,7 +69,7 @@
 
           <!-- Tabla de Abonos -->
           <div class="table-responsive">
-            <table class="table table-hover table-sm">
+            <table class="table table-hover table-sm table-bordered mb-0">
               <thead>
                 <tr>
                   <th>#</th>

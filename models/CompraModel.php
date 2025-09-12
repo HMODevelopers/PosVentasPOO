@@ -133,18 +133,6 @@ class CompraModel
     // =========================
     // CREAR COMPRA + INVENTARIO + PRECIOS PRODUCTO (ACTUALIZADO)
     // =========================
-    /**
-     * $datosCompra = [
-     *   'id_usuario', 'id_proveedor', 'id_sucursal' (nullable),
-     *   'folio_factura' (nullable), 'fecha_factura' (Y-m-d nullable),
-     *   'estatus' => 'Pendiente'|'Pagada'|'Parcial'|'Cancelada' (default 'Pendiente'),
-     *   'tipo_movimiento' => 'Entrada'|'Salida'|'Ajuste'|'Devolucion Venta'|'Devolucion Compra' (opcional)
-     * ]
-     * $detalles = [
-     *   ['id_producto'=>X, 'cantidad'=>N, 'precio_unitario'=>PPV, 'subtotal'=>opc, 'tipo_movimiento'=>opc]
-     *   // precio_unitario = PPV (precio de factura/proveedor)
-     * ]
-     */
     public function crearCompra(array $datosCompra, array $detalles)
     {
         try {
@@ -209,11 +197,7 @@ class CompraModel
                 "UPDATE productos SET stock_actual = stock_actual + :delta WHERE id_producto = :idp"
             );
 
-            // ==== ACTUALIZAR PRECIOS DE PRODUCTO (según tu esquema actual)
-            // PPV -> productos.precio_lista
-            // PB  -> productos.precio_venta
-            // PT  -> productos.precio_taller
-            // CN  -> productos.costo_neto
+            // Actualiza precios del producto (PPV -> precio_proveedor, etc.)
             $stUpdPrecios = $this->conn->prepare(
                 "UPDATE productos
                  SET precio_proveedor = :ppv,
@@ -246,8 +230,9 @@ class CompraModel
                     ':subt' => $subtotal,
                 ]);
 
-                // 2) Tipo de movimiento (renglón o compra)
+                // 2) Tipo de movimiento
                 $tipoMov = $d['tipo_movimiento'] ?? $tipoPorCompra;
+                $tiposPermitidos = ['Entrada','Salida','Ajuste','Devolucion Venta','Devolucion Compra'];
                 if (!in_array($tipoMov, $tiposPermitidos, true)) {
                     $tipoMov = 'Entrada';
                 }
@@ -264,7 +249,7 @@ class CompraModel
                         $delta = -abs($cantidad);
                         break;
                     case 'Ajuste':
-                        $delta = $cantidad; // puede ser negativo o positivo
+                        $delta = $cantidad;
                         break;
                 }
 
@@ -338,6 +323,256 @@ class CompraModel
             return ['ok' => false, 'msg' => $e->getMessage()];
         }
     }
+
+    // =========================
+    // ACTUALIZAR COMPRA
+    //   - Actualiza encabezado
+    //   - Si $reemplazarDetalles === true y $detalles != null,
+    //     revierte stock del detalle anterior y lo reemplaza por el nuevo
+    // =========================
+    public function actualizarCompra(int $idCompra, array $datosCompra, ?array $detalles = null, bool $reemplazarDetalles = false)
+    {
+        try {
+            $this->conn->beginTransaction();
+
+            // 1) Bloquea y lee la compra actual
+            $stLock = $this->conn->prepare("SELECT * FROM compras WHERE id_compra = :id FOR UPDATE");
+            $stLock->execute([':id' => $idCompra]);
+            $compraActual = $stLock->fetch(PDO::FETCH_ASSOC);
+            if (!$compraActual) {
+                throw new Exception('Compra no encontrada.');
+            }
+
+            // Sesión / defaults
+            $idUsuario  = (int)($datosCompra['id_usuario']  ?? $compraActual['id_usuario']);
+            $idSucursal = (int)($datosCompra['id_sucursal'] ?? ($compraActual['id_sucursal'] ?? 1));
+            $idProvNvo  = (int)($datosCompra['id_proveedor'] ?? $compraActual['id_proveedor']);
+
+            // 2) Actualiza encabezado (solo campos permitidos)
+            $nuevoEncabezado = [
+                'id_proveedor' => $idProvNvo,
+                'folio_factura'=> $datosCompra['folio_factura'] ?? $compraActual['folio_factura'],
+                'fecha_factura'=> $datosCompra['fecha_factura'] ?? $compraActual['fecha_factura'],
+                'estatus'      => $datosCompra['estatus'] ?? $compraActual['estatus'],
+            ];
+
+            $sqlUp = "UPDATE compras
+                    SET id_proveedor = :prov,
+                        folio_factura = :folio,
+                        fecha_factura = :ffac,
+                        estatus = :est
+                    WHERE id_compra = :id";
+            $this->conn->prepare($sqlUp)->execute([
+                ':prov'  => $nuevoEncabezado['id_proveedor'],
+                ':folio' => $nuevoEncabezado['folio_factura'],
+                ':ffac'  => $nuevoEncabezado['fecha_factura'],
+                ':est'   => $nuevoEncabezado['estatus'],
+                ':id'    => $idCompra
+            ]);
+
+            // 2.1) Bitácora de CAMBIOS DE ENCABEZADO (campo por campo)
+            $mapCampos = [
+                'id_proveedor' => 'Proveedor',
+                'folio_factura'=> 'Folio factura',
+                'fecha_factura'=> 'Fecha factura',
+                'estatus'      => 'Estatus',
+            ];
+            foreach ($mapCampos as $k => $label) {
+                $antes = $compraActual[$k] ?? null;
+                $desp  = $nuevoEncabezado[$k] ?? null;
+                if ($antes != $desp) {
+                    $this->registrarBitacora(
+                        $idUsuario,
+                        'compras',
+                        'UPDATE',
+                        $idCompra,
+                        "Cambio de {$label}",
+                        is_null($antes) ? null : (string)$antes,
+                        is_null($desp)  ? null : (string)$desp,
+                        $k
+                    );
+                }
+            }
+
+            $ref = ($nuevoEncabezado['folio_factura'] ?: ('COMP-' . $idCompra));
+
+            // 3) ¿Reemplazar detalle?
+            if ($reemplazarDetalles && is_array($detalles) && count($detalles) > 0) {
+
+                // 3.1) Detalle actual (para bitácora y reversa)
+                $stCur = $this->conn->prepare("
+                    SELECT id_producto, cantidad, precio_unitario, subtotal
+                    FROM compras_detalle
+                    WHERE id_compra = :id
+                    ORDER BY id_compra_detalle ASC
+                ");
+                $stCur->execute([':id' => $idCompra]);
+                $detalleActual = $stCur->fetchAll(PDO::FETCH_ASSOC);
+
+                // Copias simplificadas para bitácora (no saturar)
+                $detalleActualSimple = array_map(function($r){
+                    return [
+                        'id_producto'     => (int)$r['id_producto'],
+                        'cantidad'        => (float)$r['cantidad'],
+                        'precio_unitario' => (float)$r['precio_unitario'],
+                        'subtotal'        => (float)$r['subtotal'],
+                    ];
+                }, $detalleActual);
+
+                // 3.2) Revertir stock del detalle actual (asumimos compra original = Entrada)
+                $stRevStock = $this->conn->prepare(
+                    "UPDATE productos SET stock_actual = stock_actual - :cant WHERE id_producto = :idp"
+                );
+                $stMovRev = $this->conn->prepare(
+                    "INSERT INTO inventario_movimientos
+                    (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
+                    VALUES (:idp, 'Devolucion Compra', :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+                );
+                foreach ($detalleActual as $r) {
+                    $stRevStock->execute([':cant' => (float)$r['cantidad'], ':idp' => (int)$r['id_producto']]);
+                    $stMovRev->execute([
+                        ':idp'   => (int)$r['id_producto'],
+                        ':cant'  => (float)$r['cantidad'],
+                        ':idsuc' => $idSucursal,
+                        ':idusr' => $idUsuario,
+                        ':ref'   => $ref,
+                        ':mot'   => 'Reversa por edición de compra'
+                    ]);
+                }
+
+                // 3.3) Borrar detalle actual
+                $this->conn->prepare("DELETE FROM compras_detalle WHERE id_compra = :id")
+                        ->execute([':id' => $idCompra]);
+
+                // 3.4) Insertar nuevo detalle (+ stock + precios + movimiento Entrada)
+                $stDet = $this->conn->prepare(
+                    "INSERT INTO compras_detalle
+                    (id_compra, id_producto, cantidad, precio_unitario, subtotal, activo, fecha_creacion)
+                    VALUES
+                    (:idc, :idp, :cant, :prec, :subt, 1, NOW())"
+                );
+                $stUpdStock = $this->conn->prepare(
+                    "UPDATE productos SET stock_actual = stock_actual + :delta WHERE id_producto = :idp"
+                );
+                $stUpdPrecios = $this->conn->prepare(
+                    "UPDATE productos
+                    SET precio_proveedor = :ppv,
+                        costo_neto       = :cn,
+                        precio_publico   = :pb,
+                        precio_taller    = :pt
+                    WHERE id_producto    = :idp"
+                );
+                $stMov = $this->conn->prepare(
+                    "INSERT INTO inventario_movimientos
+                    (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
+                    VALUES (:idp, 'Entrada', :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+                );
+
+                // Reglas de precios por proveedor
+                $stProvNom = $this->conn->prepare("SELECT LOWER(TRIM(nombre)) FROM proveedores WHERE id_proveedor = :id LIMIT 1");
+                $stProvNom->execute([':id' => $idProvNvo]);
+                $provNombre = (string)$stProvNom->fetchColumn();
+
+                $total = 0.0;
+                $detalleNuevoSimple = [];
+                foreach ($detalles as &$d) {
+                    $cant = (float)($d['cantidad'] ?? 0);
+                    $ppv  = (float)($d['precio_unitario'] ?? 0);
+                    if (!isset($d['subtotal'])) {
+                        $d['subtotal'] = round($cant * $ppv, 2);
+                    }
+                    $total += (float)$d['subtotal'];
+                } unset($d);
+
+                foreach ($detalles as $d) {
+                    $idProducto = (int)$d['id_producto'];
+                    $cantidad   = (float)$d['cantidad'];
+                    $ppv        = (float)$d['precio_unitario'];
+                    $precio     = number_format($ppv, 2, '.', '');
+                    $subtotal   = number_format((float)$d['subtotal'], 2, '.', '');
+
+                    // Detalle
+                    $stDet->execute([
+                        ':idc'  => $idCompra,
+                        ':idp'  => $idProducto,
+                        ':cant' => $cantidad,
+                        ':prec' => $precio,
+                        ':subt' => $subtotal,
+                    ]);
+
+                    // Stock
+                    $stUpdStock->execute([':delta' => +abs($cantidad), ':idp' => $idProducto]);
+
+                    // Precios
+                    [$cn, $pb, $pt] = $this->calcularPreciosPorProveedor($ppv, $provNombre);
+                    $stUpdPrecios->execute([
+                        ':ppv' => number_format($ppv, 2, '.', ''),
+                        ':cn'  => number_format($cn,  2, '.', ''),
+                        ':pb'  => number_format($pb,  2, '.', ''),
+                        ':pt'  => number_format($pt,  2, '.', ''),
+                        ':idp' => $idProducto
+                    ]);
+
+                    // Movimiento
+                    $stMov->execute([
+                        ':idp'   => $idProducto,
+                        ':cant'  => abs($cantidad),
+                        ':idsuc' => $idSucursal,
+                        ':idusr' => $idUsuario,
+                        ':ref'   => $ref,
+                        ':mot'   => 'Entrada por edición de compra'
+                    ]);
+
+                    // Para bitácora
+                    $detalleNuevoSimple[] = [
+                        'id_producto'     => $idProducto,
+                        'cantidad'        => $cantidad,
+                        'precio_unitario' => (float)$ppv,
+                        'subtotal'        => (float)$subtotal,
+                    ];
+                }
+
+                // Total nuevo
+                $this->conn->prepare("UPDATE compras SET total = :t WHERE id_compra = :id")
+                        ->execute([':t' => number_format($total, 2, '.', ''), ':id' => $idCompra]);
+
+                // 3.5) Bitácora del reemplazo de DETALLE (antes vs después)
+                $this->registrarBitacora(
+                    $idUsuario, 'compras', 'UPDATE', $idCompra,
+                    'Reemplazo de detalle (reversa y alta)',
+                    json_encode($detalleActualSimple, JSON_UNESCAPED_UNICODE),
+                    json_encode($detalleNuevoSimple, JSON_UNESCAPED_UNICODE),
+                    'detalles'
+                );
+
+                // Bitácora resumen (opcional)
+                $this->registrarBitacora(
+                    $idUsuario, 'compras', 'UPDATE', $idCompra,
+                    'Actualización de compra con reemplazo de detalle',
+                    null,
+                    json_encode(['total' => $total], JSON_UNESCAPED_UNICODE)
+                );
+
+            } else {
+                // Solo encabezado
+                $this->registrarBitacora(
+                    $idUsuario, 'compras', 'UPDATE', $idCompra,
+                    'Actualización de encabezado de compra'
+                );
+            }
+
+            $this->conn->commit();
+            return ['ok' => true, 'id_compra' => $idCompra];
+
+        } catch (Exception $e) {
+            $this->conn->rollBack();
+            try {
+                $this->registrarBitacora((int)($datosCompra['id_usuario'] ?? 0), 'compras', 'ERROR', $idCompra, $e->getMessage());
+            } catch (\Throwable $th) {}
+            return ['ok' => false, 'msg' => $e->getMessage()];
+        }
+    }
+
 
     // =========================
     // CANCELAR COMPRA (reversa)
@@ -466,13 +701,8 @@ class CompraModel
     }
 
     // =========================
-    // Reglas por proveedor (en código, como indicaste)
+    // Reglas por proveedor
     // =========================
-    /**
-     * Calcula [costo_neto (CN), precio_venta (PB), precio_taller (PT)]
-     * a partir del precio_proveedor (PPV) y el nombre del proveedor.
-     * Defaults: CN = ppv*IVA, PB = (ppv*1.8)*IVA, PT = PB*0.8
-     */
     private function calcularPreciosPorProveedor(float $ppv, string $provNombre): array
     {
         $ppv = max(0.0, $ppv);
@@ -494,7 +724,7 @@ class CompraModel
             case 'apymsa':
                 $CN = $ppv * 1.044;
                 $PB = $ppv * 1.70694;
-                $PT = $ppv * 1.365552; // (= PB / 1.25)
+                $PT = $ppv * 1.365552;
                 break;
 
             case 'bdh':

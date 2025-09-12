@@ -416,24 +416,63 @@ $hoy = date('Y-m-d');
       function cargarFormasPagoAbono(selected){
         const $sel = $selAbonoFP();
         if(!$sel.length) return;
+
+        // Si conoces el/los ID(s) exactos de "Crédito", agrégalos aquí para blindar:
+        const EXCLUDE_FP_IDS = []; // p.ej. [6]
+
+        // Normaliza: quita acentos, pasa a minúsculas y trimea
+        const norm = (t)=> String(t||'')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+          .toLowerCase().trim();
+
+        // Es "Crédito" puro (Crédito, Crédito (PPD), Crédito X...), no "Tarjeta de crédito"
+        const esCreditoPuro = (desc)=>{
+          const txt = norm(desc);
+          return /^credito\b/.test(txt) && !/tarjeta/.test(txt);
+        };
+
         $sel.prop('disabled', true).empty().append('<option value="">Cargando…</option>');
+
         $.get(FORMAS_PAGO_URL, {accion:'listar_select'})
           .done(r=>{
             const arr = r?.data || (Array.isArray(r)?r:[]);
+            // Filtra fuera "Crédito …" y IDs excluidos (si los agregas)
+            const filtradas = arr.filter(fp => {
+              const id   = Number(fp.id_forma_pago);
+              const desc = fp.descripcion ?? '';
+              return !EXCLUDE_FP_IDS.includes(id) && !esCreditoPuro(desc);
+            });
+
             $sel.empty();
-            if(!arr.length){
+
+            if(!filtradas.length){
               $sel.append('<option value="">(sin formas de pago)</option>');
             } else {
-              arr.forEach(fp => $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`));
-              if (selected!=null) $sel.val(String(selected));
+              filtradas.forEach(fp=>{
+                $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
+              });
+
+              // Intentar respetar "selected" si no fue filtrado
+              if (selected != null && $sel.find(`option[value="${String(selected)}"]`).length){
+                $sel.val(String(selected));
+              }
+
+              // Si no hay selección, elegir "Efectivo" si existe
               if(!$sel.val()){
-                const opEfe = $sel.find('option').filter(function(){ return $(this).text().toLowerCase().includes('efectivo'); }).first().val();
+                const opEfe = $sel.find('option').filter(function(){
+                  return norm($(this).text()) === 'efectivo';
+                }).first().val();
                 if(opEfe) $sel.val(opEfe);
               }
             }
           })
           .fail(()=>{
-            $sel.empty().append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option>');
+            // Fallback sin incluir crédito
+            $sel.empty()
+                .append('<option value="1">Efectivo</option>')
+                .append('<option value="2">Tarjeta de crédito</option>')
+                .append('<option value="3">Tarjeta de débito</option>')
+                .append('<option value="4">Transferencia electrónica de fondos</option>');
           })
           .always(()=> $sel.prop('disabled', false));
       }

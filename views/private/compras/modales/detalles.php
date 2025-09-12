@@ -53,7 +53,7 @@
                   <hr/>
 
                   <div class="table-responsive">
-                    <table class="table table-hover table-sm">
+                    <table class="table table-hover table-striped table-sm table-bordered mb-0">
                       <thead>
                         <tr>
                           <th>Código</th>
