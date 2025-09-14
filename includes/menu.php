@@ -47,6 +47,14 @@
                                     </li>
                                 </ul>
                             </li>
+                            <!-- 🔧 UTILIDADES -->
+                            <li class="has-submenu">
+                                <a href="#"><i class="la la-wrench"></i>Utilidades <div class="arrow-down"></div></a>
+                                <ul class="submenu">
+                                    <li><a href="<?= BASE_URL ?>/views/private/utilidades/comparador.php">Comparador proveedores</a></li>
+                                </ul>
+                            </li>
+
 
                             <li class="has-submenu">
                                 <a href="#">

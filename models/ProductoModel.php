@@ -13,14 +13,8 @@ class ProductoModel
     }
 
     // ================== LISTADO + CONTAR ==================
-    public function listar(
-        int $pagina = 1,
-        int $limite = 10,
-        string $codigo = '',
-        string $descripcion = '',
-        ?int $idProveedor = null,
-        ?int $idGrupo = null   // <-- NUEVO
-    ) {
+    public function listar(int $pagina = 1,int $limite = 10,string $codigo = '',string $descripcion = '',?int $idProveedor = null, ?int $idGrupo = null) 
+    {
         $offset = ($pagina - 1) * $limite;
 
         $sql = "SELECT
@@ -66,12 +60,8 @@ class ProductoModel
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function contar(
-        string $codigo = '',
-        string $descripcion = '',
-        ?int $idProveedor = null,
-        ?int $idGrupo = null    // <-- NUEVO
-    ) {
+    public function contar(string $codigo = '',string $descripcion = '',?int $idProveedor = null,?int $idGrupo = null ) 
+    {
         $sql = "SELECT COUNT(*) AS total
                 FROM productos p
                 WHERE p.activo = 1";
@@ -228,8 +218,8 @@ class ProductoModel
      * $d puede incluir: 'stock_actual' (para calcular delta), 'id_usuario', 'id_sucursal'
      */
    public function actualizar(int $id, array $d)
-   {
-        // Compat: peldano -> peldaño
+{
+        // Compat: peldano -> peldaño (input sin acento)
         if (!array_key_exists('peldaño', $d) && array_key_exists('peldano', $d)) {
             $d['peldaño'] = $d['peldano'];
         }
@@ -255,7 +245,6 @@ class ProductoModel
 
             // 3) Normaliza nuevos valores tomando lo que venga en $d o lo previo
             $new = [];
-
             foreach ($keyFields as $f) {
                 $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f];
             }
@@ -266,42 +255,43 @@ class ProductoModel
                 $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f];
             }
 
-            // 4) Detectar cambios (comparación numérica vs. texto)
-            $changes = []; // campo => ['old'=>..., 'new'=>..., 'numeric'=>bool]
+            // 4) Detectar cambios
+            $changes = [];
             $isDiff = function($old, $new, $numeric = false) {
                 if ($numeric) return (float)$old != (float)$new;
                 return (string)$old !== (string)$new;
             };
+            foreach ($keyFields as $f)     if ($isDiff($prev[$f], $new[$f], false)) $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
+            foreach ($textFields as $f)    if ($isDiff($prev[$f], $new[$f], false)) $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
+            foreach ($numericFields as $f) if ($isDiff($prev[$f], $new[$f], true))  $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>true];
 
-            foreach ($keyFields as $f) {
-                if ($isDiff($prev[$f], $new[$f], false)) {
-                    $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
-                }
-            }
-            foreach ($textFields as $f) {
-                if ($isDiff($prev[$f], $new[$f], false)) {
-                    $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
-                }
-            }
-            foreach ($numericFields as $f) {
-                if ($isDiff($prev[$f], $new[$f], true)) {
-                    $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>true];
-                }
-            }
-
-            // 5) Sin cambios => salir limpio
+            // 5) Sin cambios
             if (empty($changes)) {
                 $this->conn->commit();
                 return ['ok' => true, 'id_producto' => $id, 'msg' => 'Sin cambios'];
             }
 
-            // 6) UPDATE solo de campos cambiados
+            // Helpers para ident y placeholder seguros
+            $quoteIdent = function(string $name): string {
+                // protege backticks en el nombre (raro, pero seguro)
+                return '`' . str_replace('`','``',$name) . '`';
+            };
+            $paramNameFor = function(string $field): string {
+                // reemplaza todo lo que no sea [a-zA-Z0-9_] por _
+                $ascii = preg_replace('/[^a-zA-Z0-9_]/', '_', $field);
+                // si inicia con número, prefija _
+                if ($ascii === '' || ctype_digit($ascii[0])) $ascii = '_' . $ascii;
+                return ':' . $ascii;
+            };
+
+            // 6) UPDATE solo de campos cambiados (ASCII placeholders)
             $setSql = [];
             $params = [':id' => $id];
             foreach ($changes as $field => $info) {
-                $col = ($field === 'peldaño') ? "`peldaño`" : $field;
-                $setSql[] = "$col = :$field";
-                $params[":$field"] = $info['new'];
+                $col   = $quoteIdent($field);        // `peldaño` OK
+                $pname = $paramNameFor($field);      // :pelda_o  (ASCII)
+                $setSql[]        = "$col = $pname";
+                $params[$pname]  = $info['new'];
             }
             $sqlUpd = "UPDATE productos SET ".implode(', ', $setSql)." WHERE id_producto = :id";
             $this->conn->prepare($sqlUpd)->execute($params);
@@ -311,7 +301,6 @@ class ProductoModel
             $idSucursal= !empty($d['id_sucursal']) ? (int)$d['id_sucursal'] : 1;
             $ref       = $prev['codigo'] ? ('EDIT-' . $prev['codigo']) : ('PROD-' . $id);
 
-            // Helper para registrar un "Ajuste" (cantidad 0) con motivo
             $insertAjuste = function(string $motivo) use ($id, $idSucursal, $idUsuario, $ref) {
                 $stm = $this->conn->prepare(
                     "INSERT INTO inventario_movimientos
@@ -327,7 +316,6 @@ class ProductoModel
                 ]);
             };
 
-            // 7.1 Stock: Entrada/Salida por delta
             if (isset($changes['stock_actual'])) {
                 $delta = (float)$new['stock_actual'] - (float)$prev['stock_actual'];
                 if ($delta != 0.0) {
@@ -349,48 +337,34 @@ class ProductoModel
                 }
             }
 
-            // 7.2 Ajustes por cambios de proveedor / precios
             if (isset($changes['id_proveedor'])) {
-                $insertAjuste(
-                    'Cambio de proveedor: '.
-                    (string)$changes['id_proveedor']['old'].' → '.(string)$changes['id_proveedor']['new']
-                );
+                $insertAjuste('Cambio de proveedor: '.$changes['id_proveedor']['old'].' → '.$changes['id_proveedor']['new']);
             }
             if (isset($changes['precio_proveedor'])) {
-                $insertAjuste(
-                    'Cambio de precio del proveedor: '.
-                    number_format((float)$changes['precio_proveedor']['old'], 2, '.', '').' → '.
-                    number_format((float)$changes['precio_proveedor']['new'], 2, '.', '')
-                );
+                $insertAjuste('Cambio de precio del proveedor: '.
+                    number_format((float)$changes['precio_proveedor']['old'],2,'.','').' → '.
+                    number_format((float)$changes['precio_proveedor']['new'],2,'.',''));
             }
-
-            // 7.3 Ajustes por cambios en costos/precios (provoquen o no por proveedor)
             if (isset($changes['costo_neto'])) {
-                $insertAjuste(
-                    'Cambio de costo neto: '.
-                    number_format((float)$changes['costo_neto']['old'], 2, '.', '').' → '.
-                    number_format((float)$changes['costo_neto']['new'], 2, '.', '')
-                );
+                $insertAjuste('Cambio de costo neto: '.
+                    number_format((float)$changes['costo_neto']['old'],2,'.','').' → '.
+                    number_format((float)$changes['costo_neto']['new'],2,'.',''));
             }
             if (isset($changes['precio_publico'])) {
-                $insertAjuste(
-                    'Cambio de precio público: '.
-                    number_format((float)$changes['precio_publico']['old'], 2, '.', '').' → '.
-                    number_format((float)$changes['precio_publico']['new'], 2, '.', '')
-                );
+                $insertAjuste('Cambio de precio público: '.
+                    number_format((float)$changes['precio_publico']['old'],2,'.','').' → '.
+                    number_format((float)$changes['precio_publico']['new'],2,'.',''));
             }
             if (isset($changes['precio_taller'])) {
-                $insertAjuste(
-                    'Cambio de precio taller: '.
-                    number_format((float)$changes['precio_taller']['old'], 2, '.', '').' → '.
-                    number_format((float)$changes['precio_taller']['new'], 2, '.', '')
-                );
+                $insertAjuste('Cambio de precio taller: '.
+                    number_format((float)$changes['precio_taller']['old'],2,'.','').' → '.
+                    number_format((float)$changes['precio_taller']['new'],2,'.',''));
             }
 
-            // 8) Bitácora: una línea por cada campo cambiado (TODOS)
+            // 8) Bitácora
             foreach ($changes as $campo => $info) {
                 $this->registrarBitacora(
-                    $idUsuario,
+                    (int)$idUsuario,
                     'productos',
                     'UPDATE',
                     $id,
@@ -406,9 +380,7 @@ class ProductoModel
 
         } catch (Exception $e) {
             $this->conn->rollBack();
-            try {
-                $this->registrarBitacora((int)($d['id_usuario'] ?? 0), 'productos', 'ERROR', $id, $e->getMessage());
-            } catch (\Throwable $th) {}
+            try { $this->registrarBitacora((int)($d['id_usuario'] ?? 0), 'productos', 'ERROR', $id, $e->getMessage()); } catch (\Throwable $th) {}
             return ['ok' => false, 'msg' => $e->getMessage()];
         }
     }

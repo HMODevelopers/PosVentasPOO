@@ -1,12 +1,15 @@
 <?php
-// views/private/ventas/caja.php
-// =======================================================
-// Vista: Punto de Venta (Caja)
-// - Protege sesión
-// - Carga layout base (header / breadcrumb / footer)
-// - UI: Buscador de productos (izquierda) + Orden/Carrito (derecha)
-// - JS: Manejo de carrito, búsqueda, flujo de cobro, registro de venta
-// =======================================================
+/**
+ * views/private/ventas/caja.php
+ * --------------------------------------------------------------------------
+ * Vista de Punto de Venta (POS) "Caja".
+ * - Protege la sesión (solo usuarios autenticados).
+ * - Carga el layout global (header/breadcrumb/footer).
+ * - UI: Buscador de productos + Orden/Carrito + Flujo de Cobro.
+ * - JS: Manejo de carrito, búsqueda con sugerencias, cálculo de totales,
+ *       alta de venta (AJAX) y flujo de cobro con SweetAlert2, incluyendo CRÉDITO.
+ * --------------------------------------------------------------------------
+ */
 
 $titulo    = "Ventas";
 $modulo    = "Punto de Venta";
@@ -15,7 +18,7 @@ $subtitulo = "Caja";
 session_start();
 require_once __DIR__ . '/../../../includes/config.php';
 
-// --- Guard: usuario autenticado ---
+// --- Guard: si no hay usuario en sesión, redirige al login público.
 if (!isset($_SESSION['usuario'])) {
   header('Location: ' . BASE_URL . '/views/public/index.php');
   exit();
@@ -28,18 +31,18 @@ if (!isset($_SESSION['usuario'])) {
   <title>Punto de Venta | REFASOFT-V4</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- ========== CSS núcleo del layout ========== -->
+  <!-- ================= CSS núcleo del layout ================= -->
   <link href="<?= BASE_URL ?>/assets/css/bootstrap.min.css" rel="stylesheet">
   <link href="<?= BASE_URL ?>/assets/css/icons.min.css" rel="stylesheet">
   <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet">
   <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
 
-  <!-- Toastr (notificaciones) -->
+  <!-- Notificaciones (Toastr) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css"/>
 
-  <!-- ========== Estilos locales de la vista POS ========== -->
+  <!-- ================= Estilos locales POS =================== -->
   <style>
-    /* Panel de sugerencias del buscador */
+    /* Panel flotante de sugerencias del buscador */
     .sugerencias { position:absolute; z-index:1050; width:99%; max-height:320px; overflow:auto; }
     .sugerencias .list-group-item { cursor:pointer; }
     .sugerencias .active { background:#f1f1f1; }
@@ -48,12 +51,10 @@ if (!isset($_SESSION['usuario'])) {
     /* Resumen de total */
     .total-destacado strong { font-size: 1.8rem; font-weight: 800; }
     .total-destacado { font-weight: 700; }
-
-    /* Tablas / badges */
     .table td, .table th { vertical-align: middle; }
     .badge-stock { font-weight: 600; }
 
-    /* Utilerías */
+    /* Utilidades */
     .w-70px { width: 70px; }
 
     /* Layout responsive de la pantalla POS */
@@ -64,7 +65,7 @@ if (!isset($_SESSION['usuario'])) {
       .pos-right { flex: 0 0 700px; max-width: 700px; }
     }
 
-    /* Tabla dentro de scroll, con header fijo */
+    /* Tabla del carrito dentro de scroll, con header fijo */
     .carrito-scroll { max-height: 300px; overflow-y: auto; border: 1px solid rgba(0,0,0,.075); border-radius: .25rem; }
     .carrito-scroll table { margin-bottom: 0; }
     .carrito-scroll thead th { position: sticky; top: 0; z-index: 1; background: #f8f9fa; }
@@ -72,11 +73,11 @@ if (!isset($_SESSION['usuario'])) {
 </head>
 <body>
 
-  <!-- ========== Topbar / menú global ========== -->
+  <!-- ================= Topbar / menú global ================== -->
   <?php include_once __DIR__ . '/../../../includes/header.php'; ?>
 
   <div class="wrapper">
-    <!-- Loader global del layout -->
+    <!-- Loader de toda la página (opcional) -->
     <div class="wrapper-loader fade" id="LoadingImage" style="display:none;">
       <div class="loader">
         <div class="loader__figure"></div>
@@ -85,19 +86,13 @@ if (!isset($_SESSION['usuario'])) {
     </div>
 
     <div class="container-fluid">
-      <!-- Migas de pan / navegación -->
+      <!-- Migas de pan / navegación contextual -->
       <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>
 
-      <!-- =======================================================
-           CONTENIDO POS
-           ======================================================= -->
+      <!-- ======================= CONTENIDO POS ======================= -->
       <div class="pos-layout">
 
-        <!-- =====================================================
-             Columna izquierda: Buscador de productos
-             - Input de búsqueda con sugerencias
-             - Ideal para lector de códigos/enter
-             ===================================================== -->
+        <!-- ========== Columna izquierda: Buscador de productos ========== -->
         <div class="pos-left">
           <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -105,6 +100,7 @@ if (!isset($_SESSION['usuario'])) {
             </div>
 
             <div class="card-body">
+              <!-- Input de búsqueda con panel de sugerencias -->
               <div class="row g-2 align-items-end mb-3 position-relative">
                 <div class="col-12">
                   <label class="form-label" for="txtBuscar">Buscar producto</label>
@@ -114,7 +110,7 @@ if (!isset($_SESSION['usuario'])) {
                     class="form-control"
                     placeholder="Nombre o código… (↑/↓ navega, Enter agrega)"
                     autocomplete="off">
-                  <!-- Panel de sugerencias -->
+                  <!-- Panel (dropdown) de sugerencias -->
                   <div id="panelSug" class="list-group sugerencias d-none"></div>
                 </div>
               </div>
@@ -125,18 +121,12 @@ if (!isset($_SESSION['usuario'])) {
           </div>
         </div>
 
-        <!-- =====================================================
-             Columna derecha: Orden / Carrito y Cobro
-             - Cliente, tipo de precio, fecha
-             - Carrito con cantidades, subtotal editable
-             - Selección de forma de pago, acciones
-             ===================================================== -->
+        <!-- ========== Columna derecha: Orden/Carrito y Cobro ========== -->
         <div class="pos-right">
           <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
               <h5 class="mb-0">Orden actual</h5>
-
-              <!-- Folio sugerido (informativo) -->
+              <!-- Folio sugerido (informativo; el folio real se asigna al guardar/cobrar) -->
               <span
                 class="badge bg-secondary text-white"
                 style="padding:6px 16px;border-radius:20px;min-width:82px;text-align:center;"
@@ -146,7 +136,7 @@ if (!isset($_SESSION['usuario'])) {
             </div>
 
             <div class="card-body">
-              <!-- Cliente -->
+              <!-- Selector de cliente -->
               <div class="mb-2">
                 <label class="form-label" for="selCliente">Cliente</label>
                 <select id="selCliente" class="form-control">
@@ -154,7 +144,7 @@ if (!isset($_SESSION['usuario'])) {
                 </select>
               </div>
 
-              <!-- Tipo de precio / Fecha -->
+              <!-- Tipo de precio y fecha de la venta -->
               <div class="row g-2 mb-3">
                 <div class="col-12 col-sm-6">
                   <label class="form-label" for="tpPrecio">Tipo de precio</label>
@@ -170,12 +160,12 @@ if (!isset($_SESSION['usuario'])) {
                 </div>
               </div>
 
-              <!-- Carrito vacío -->
+              <!-- Carrito: estado vacío -->
               <div id="wrapCarritoVacio" class="text-muted text-center py-4">
                 No hay productos en la orden.
               </div>
 
-              <!-- Carrito tabla -->
+              <!-- Carrito: tabla de productos -->
               <div id="wrapCarritoTabla" class="d-none">
                 <div class="carrito-scroll">
                   <table class="table align-middle mb-0" id="tablaCarrito">
@@ -194,7 +184,7 @@ if (!isset($_SESSION['usuario'])) {
 
               <hr>
 
-              <!-- Total -->
+              <!-- Total (solo display) -->
               <div class="f-s-14">
                 <div class="d-flex justify-content-between mt-2 total-destacado">
                   <strong style="font-size: 1.6rem;">Total</strong>
@@ -202,7 +192,7 @@ if (!isset($_SESSION['usuario'])) {
                 </div>
               </div>
 
-              <!-- Forma de pago -->
+              <!-- Forma de pago (se carga dinámicamente desde backend) -->
               <div class="mt-3">
                 <label class="form-label" for="selFormaPago">Forma de pago</label>
                 <select id="selFormaPago" class="form-control form-select">
@@ -210,15 +200,16 @@ if (!isset($_SESSION['usuario'])) {
                 </select>
               </div>
 
-              <!-- Acciones -->
+              <!-- Botones de acción principales -->
               <div class="mt-3 d-grid gap-2">
-                <button id="btnGuardar" class="btn btn-outline-primary">
+                <!-- Tip: type="button" evita submits si algún día se envuelve en <form> -->
+                <button id="btnGuardar" type="button" class="btn btn-outline-primary">
                   <i class="mdi mdi-content-save-outline me-1"></i> Guardar
                 </button>
-                <button id="btnCobrar" class="btn btn-success">
+                <button id="btnCobrar" type="button" class="btn btn-success">
                   <i class="mdi mdi-cash-register me-1"></i> Cobrar
                 </button>
-                <button id="btnCancelar" class="btn btn-outline-danger">
+                <button id="btnCancelar" type="button" class="btn btn-outline-danger">
                   <i class="mdi mdi-close-octagon me-1"></i> Cancelar
                 </button>
               </div>
@@ -226,18 +217,18 @@ if (!isset($_SESSION['usuario'])) {
           </div>
         </div>
       </div><!-- /pos-layout -->
-      <!-- ========================= /CONTENIDO POS ========================= -->
+      <!-- ===================== /CONTENIDO POS ===================== -->
 
-      <!-- Hidden: último id_venta para reimpresión -->
+      <!-- Guarda el último id_venta para posible reimpresión del ticket -->
       <input type="hidden" id="tk-idventa" value="">
     </div><!-- /container-fluid -->
   </div><!-- /wrapper -->
 
-  <!-- ========== Footer global ========== -->
+  <!-- ================= Footer global ================== -->
   <?php include_once __DIR__ . '/../../../includes/footer.php'; ?>
   <div class="rightbar-overlay"></div>
 
-  <!-- ========== JS núcleo del layout ========== -->
+  <!-- ================= JS núcleo del layout ================= -->
   <script>const BASE_URL = '<?= BASE_URL ?>';</script>
   <script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script>
   <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
@@ -247,53 +238,45 @@ if (!isset($_SESSION['usuario'])) {
   <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-  <!-- =======================================================
-       LÓGICA POS (Carrito, Búsqueda, Ventas)
-       ======================================================= -->
+  <!-- =================== LÓGICA POS (JS) ===================== -->
   <script>
   (() => {
-    // =====================================================
-    // Utilidades básicas de formato / conversión
-    // =====================================================
-    const BASE = BASE_URL;
+    'use strict';
+
+    // ============================================================
+    // 1) CONSTANTES & HELPERS DE FORMATO
+    // ============================================================
+    const BASE = BASE_URL; // URL base del sistema (inyectada por PHP).
     const mxn  = v => Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
     const fix2 = v => (Number(v||0)).toFixed(2);
     const num  = v => parseFloat(v ?? 0) || 0;
-    const normalize = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+    const normalize = s => (s||'').toString().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 
-    // =====================================================
-    // Estado de UI / Datos en memoria
-    // =====================================================
-    let carrito       = [];                 // Ítems en carrito
-    let idxFocus      = -1;                 // Navegación en sugerencias
-    let ultResultados = [];                 // Últimos resultados del buscador
-    let debTimer      = null;               // Debounce
-    const detalleCache = new Map();         // Cache de detalles por id_producto
-    let totalActual   = 0;                  // Total acumulado del carrito
+    // ============================================================
+    // 2) ESTADO EN MEMORIA (solo del cliente)
+    // ============================================================
+    let carrito       = [];        // Lista de ítems en carrito
+    let idxFocus      = -1;        // Índice de navegación en sugerencias
+    let ultResultados = [];        // Cache de últimos resultados del buscador (básico)
+    let debTimer      = null;      // Temporizador para debounce
+    const detalleCache = new Map();// Cache por id_producto de detalles
+    let totalActual   = 0;         // Total vigente mostrado en UI
 
-    // Comportamiento post-registro (normal / autoprint / credito / guardada)
-    let POST_BEHAVIOR = 'normal';
-
-    // =====================================================
-    // Forma de pago (derivar un "slug" legible)
-    // - Efectivo, transferencia, tarjeta, crédito
-    // =====================================================
+    // ============================================================
+    // 3) MAPEOS / LÓGICA DE NEGOCIO (precio/formapago/stock)
+    // ============================================================
     function formaPagoSlug(){
       const txt = $('#selFormaPago option:selected').text()?.trim() || '';
       const t = normalize(txt);
       if (t.includes('efectivo')) return 'efectivo';
+      if (t.includes('mixto') || t.includes('mixta')) return 'mixto';
+      if ((t.includes('credito') || t.includes('crédito')) && !t.includes('tarjeta')) return 'credito'; // Crédito a cliente (no tarjeta)
       if (t.includes('transfer')) return 'transferencia';
-      if (t.includes('tarjeta') || t.includes('debito')) return 'tarjeta';
-      if (t.includes('credito') || t.includes('crédito')) return 'credito'; // Venta a crédito (no tarjeta)
-      return 'tarjeta'; // fallback conservador
+      if (t.includes('tarjeta') || t.includes('debito') || t.includes('débito')) return 'tarjeta';
+      return 'tarjeta'; // Fallback conservador
     }
 
-    // =====================================================
-    // Precios y stock
-    // - tipoPrecioActual(): devuelve slug del select (publico/taller/proveedor)
-    // - precioDeItem(it): elige precio según slug o override_unit
-    // - vendibleDe(det)/maxVendible(it): controla no vender por debajo del stock mínimo
-    // =====================================================
     function tipoPrecioActual() { return ($('#tpPrecio').val() || 'publico'); }
 
     function precioDeItem(it){
@@ -313,28 +296,24 @@ if (!isset($_SESSION['usuario'])) {
       return Math.max(0, stock - smin);
     }
 
-    // =====================================================
-    // Folio sugerido (solo display)
-    // =====================================================
+    function mapTipoPrecioId(slug){ const m = { publico:1, taller:2, proveedor:3 }; return m[slug] || 1; }
+
+    // ============================================================
+    // 4) SERVICIOS (AJAX) PARA CARGAR DATOS A LA VISTA
+    // ============================================================
     function pintarFolioSugerido(){
       const fecha = $('#fechaVenta').val();
       $.get(`${BASE}/controllers/VentasController.php`, { accion:'folio-sugerido', fecha })
-      .done(r=>{
-        if(r?.ok && r.folio){
-          $('#codigoOrden').text(r.folio);
-          $('#codigoOrden').closest('.badge')
-            .removeClass('bg-success').addClass('bg-secondary')
-            .attr('title','Folio sugerido (aún no asignado)');
-        }
-      });
+        .done(r=>{
+          if(r?.ok && r.folio){
+            $('#codigoOrden').text(r.folio);
+            $('#codigoOrden').closest('.badge')
+              .removeClass('bg-success').addClass('bg-secondary')
+              .attr('title','Folio sugerido (aún no asignado)');
+          }
+        });
     }
 
-    // Mapeo de slug de precio a IdTipoPrecio (si lo usas en backend)
-    function mapTipoPrecioId(slug){ const m = { publico:1, taller:2, proveedor:3 }; return m[slug] || 1; }
-
-    // =====================================================
-    // Clientes (cargar lista y poblar <select>)
-    // =====================================================
     function setClientesOptions(arr){
       const sel = $('#selCliente').empty();
       sel.append(`<option value="">--Seleccione Opción--</option>`);
@@ -377,42 +356,38 @@ if (!isset($_SESSION['usuario'])) {
         });
     }
 
-    // =====================================================
-    // Formas de pago (cargar y prefijar selección)
-    // - Default: si existe “Crédito” (no tarjeta), lo selecciona
-    // =====================================================
     function cargarFormasPago(){
       $.get(`${BASE}/controllers/FormasPagoController.php`, {accion:'listar_select'})
         .done(r=>{
           const sel = $('#selFormaPago').empty();
           const arr = r?.data || (Array.isArray(r) ? r : []);
-          if (!arr.length) return sel.append(`<option value="">(sin formas de pago)</option>`);
+          if (!arr.length) {
+            sel.append(`<option value="">(sin formas de pago)</option>`);
+            return;
+          }
           let idxDefault = 0;
           arr.forEach((fp, i)=>{
             sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
-            const desc = normalize(fp.descripcion);
-            if ((desc.includes('credito') || desc.includes('crédito')) && !desc.includes('tarjeta')) {
-              idxDefault = i; // crédito preferente
-            }
+            const d = normalize(fp.descripcion);
+            // Preferir “Crédito” (a cliente) si existe; no confundir con “tarjeta de crédito”
+            if ((d.includes('credito') || d.includes('crédito')) && !d.includes('tarjeta')) idxDefault = i;
           });
           sel.prop('selectedIndex', idxDefault);
         })
         .fail(()=>{
+          // Fallback simple para no dejar vacío
           const sel = $('#selFormaPago').empty();
-          sel.append('<option value="">(sin formas de pago)</option>');
-          $('#btnCobrar').prop('disabled', true);
-          toastr.error('No se pudieron cargar las formas de pago.');
+          sel.append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option><option value="4">Crédito</option>');
         });
     }
 
-    // =====================================================
-    // Buscador de productos con sugerencias + cache de detalle
-    // =====================================================
+    // ============================================================
+    // 5) BUSCADOR DE PRODUCTOS (sugerencias + detalle diferido)
+    // ============================================================
     const $input = $('#txtBuscar'), $panel = $('#panelSug');
 
     function debounce(fn, ms){ clearTimeout(debTimer); debTimer = setTimeout(fn, ms); }
 
-    // Fila “básica” en la lista (rellena “extra” después con detalle)
     function sugHTMLBasico(p){
       return `
         <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
@@ -425,7 +400,6 @@ if (!isset($_SESSION['usuario'])) {
         </a>`;
     }
 
-    // Texto extra con detalle (precios, stock, proveedor)
     function sugHTMLDetallado(det){
       const pub  = Number(det.precio_publico ?? 0);
       const tal  = Number(det.precio_taller ?? 0);
@@ -435,7 +409,6 @@ if (!isset($_SESSION['usuario'])) {
       return { extra, sinStock: (vendibleDe(det) <= 0) };
     }
 
-    // Renderiza lista de resultados y, en paralelo, completa los detalles
     function renderSugerencias(list){
       ultResultados = (list||[]).map((p,i)=>({...p,__i:i}));
       idxFocus = -1;
@@ -443,16 +416,15 @@ if (!isset($_SESSION['usuario'])) {
 
       if(!ultResultados.length) return $panel.addClass('d-none');
 
-      // Pinta básicos
+      // 1) Dibuja filas básicas
       ultResultados.forEach(p=>$panel.append(sugHTMLBasico(p)));
       $panel.removeClass('d-none');
 
-      // Enriquecer cada fila con detalle (desde cache o AJAX)
+      // 2) Completa con detalle (cache → servidor)
       ultResultados.forEach(p=>{
         const id = p.id_producto;
         const $row = $panel.find(`[data-id="${id}"]`);
 
-        // Desde cache (inmediato)
         if(detalleCache.has(id)){
           const det = detalleCache.get(id);
           const {extra,sinStock} = sugHTMLDetallado(det);
@@ -460,7 +432,6 @@ if (!isset($_SESSION['usuario'])) {
           $row.toggleClass('disabled', sinStock).attr('aria-disabled', sinStock ? 'true' : null);
         }
 
-        // Desde servidor
         $.post(`${BASE}/controllers/ProductosController.php`, {accion:'detalle', id_producto:id})
           .done(r=>{
             const det = r?.data || {};
@@ -472,7 +443,6 @@ if (!isset($_SESSION['usuario'])) {
       });
     }
 
-    // Realiza búsqueda mínima por texto
     function buscar(q){
       if(!q || q.length < 2){ $panel.addClass('d-none').empty(); return; }
       $.post(`${BASE}/controllers/ProductosController.php`, {accion:'buscar-min', q, limite:20})
@@ -480,7 +450,6 @@ if (!isset($_SESSION['usuario'])) {
         .fail(()=> $panel.addClass('d-none').empty());
     }
 
-    // Selecciona un producto por id y lo agrega al carrito (validando stock)
     function seleccionarPorId(idProd){
       $.post(`${BASE}/controllers/ProductosController.php`, {accion:'detalle', id_producto:idProd})
         .done(r=>{
@@ -503,27 +472,24 @@ if (!isset($_SESSION['usuario'])) {
         .fail(()=> toastr.error('No se pudo obtener el detalle del producto'));
     }
 
-    // Eventos del buscador
-    $input.on('input', function(){ debounce(()=>buscar(this.value.trim()), 220); });
-    $panel.on('click','.list-group-item',function(e){
+    $('#txtBuscar').on('input', function(){ debounce(()=>buscar(this.value.trim()), 220); });
+    $('#panelSug').on('click','.list-group-item',function(e){
       e.preventDefault();
       if($(this).hasClass('disabled')) return;
       seleccionarPorId(Number($(this).data('id')));
     });
-    // Cerrar sugerencias al hacer click fuera
     $(document).on('click', e=>{
       if(!$(e.target).closest('#txtBuscar,#panelSug').length){
         $panel.addClass('d-none').empty();
       }
     });
 
-    // =====================================================
-    // Carrito: agregar, pintar, editar cantidad/subtotal, eliminar
-    // =====================================================
+    // ============================================================
+    // 6) CARRITO (agregar, pintar, editar cant/subtotal, eliminar)
+    // ============================================================
     function agregarDesdeDetalle(p){
       const idx = carrito.findIndex(x => x.id_producto == p.id_producto);
 
-      // Base del ítem con campos relevantes para la vista
       const itemBase = {
         id_producto: p.id_producto,
         codigo: p.codigo,
@@ -536,7 +502,6 @@ if (!isset($_SESSION['usuario'])) {
         proveedor: p.proveedor ?? null
       };
 
-      // No vender por debajo del stock mínimo
       const vendible = maxVendible(itemBase);
       if(vendible <= 0){ toastr.warning('Sin stock disponible para vender.'); return; }
 
@@ -549,7 +514,6 @@ if (!isset($_SESSION['usuario'])) {
       pintarCarrito();
     }
 
-    // Renderiza la tabla del carrito + total
     function pintarCarrito(){
       const $tb = $('#tablaCarrito tbody').empty();
 
@@ -569,8 +533,8 @@ if (!isset($_SESSION['usuario'])) {
       carrito.forEach((it, idx) => {
         const precio   = precioDeItem(it);
         const cantidad = Number(it.cantidad) || 0;
-        const sub      = cantidad * precio;    // <- FIX: variable const local (antes `theSubtotal` sin declaración)
-        total += sub;
+        const subtotal = cantidad * precio;
+        total += subtotal;
 
         $tb.append(`
           <tr>
@@ -589,13 +553,13 @@ if (!isset($_SESSION['usuario'])) {
             <!-- Cantidad con +/- y edición directa -->
             <td class="text-center">
               <div class="btn-group btn-group-sm" role="group">
-                <button class="btn btn-outline-danger" data-incdec="dec" data-idx="${idx}">
+                <button class="btn btn-outline-danger" data-dec="${idx}">
                   <i class="mdi mdi-minus"></i>
                 </button>
                 <input type="number" min="1" step="1"
                        class="form-control form-control-sm text-center w-70px"
                        value="${fix2(it.cantidad)}" data-qty="${idx}">
-                <button class="btn btn-outline-success" data-incdec="inc" data-idx="${idx}">
+                <button class="btn btn-outline-success" data-inc="${idx}">
                   <i class="mdi mdi-plus"></i>
                 </button>
               </div>
@@ -605,7 +569,7 @@ if (!isset($_SESSION['usuario'])) {
             <td class="text-end">
               <input type="number" min="0" step="0.01"
                      class="form-control form-control-sm text-end"
-                     value="${fix2(sub)}" data-sub="${idx}"
+                     value="${fix2(subtotal)}" data-sub="${idx}"
                      title="Editar subtotal (ajusta el precio unitario automáticamente)">
             </td>
 
@@ -623,39 +587,41 @@ if (!isset($_SESSION['usuario'])) {
       $('#resTotal').text(mxn(total));
     }
 
-    // Incremento / decremento con botones
-    $('#tablaCarrito').on('click','button[data-incdec]', function(){
-      const i = Number(this.dataset.idx);
-      if(isNaN(i) || !carrito[i]) return;
-      const vendible = maxVendible(carrito[i]);
-      const sign     = this.dataset.incdec === 'inc' ? 1 : -1;
-      const next     = Math.max(1, Math.min(vendible, Number(carrito[i].cantidad) + sign));
-      carrito[i].cantidad = next;
+    $('#tpPrecio').on('change',pintarCarrito);
+
+    $('#tablaCarrito').on('click','button[data-inc]',function(){
+      const i=Number(this.dataset.inc);
+      if(isNaN(i)||!carrito[i]) return;
+      const vendible=maxVendible(carrito[i]);
+      const next=Number(carrito[i].cantidad)+1;
+      carrito[i].cantidad = next>vendible ? (toastr.info('Se alcanzó el máximo vendible.'), vendible) : next;
       pintarCarrito();
     });
 
-    // Cambio directo en input cantidad
-    $('#tablaCarrito').on('change','input[data-qty]', function(){
-      const i = Number(this.dataset.qty);
-      if(isNaN(i) || !carrito[i]) return;
-
-      let val = Math.max(1, Number(this.value || 1));
-      const vendible = maxVendible(carrito[i]);
-      if(val > vendible){ val = vendible; toastr.info('Se ajustó a máximo vendible.'); }
-
-      carrito[i].cantidad = val;
+    $('#tablaCarrito').on('click','button[data-dec]',function(){
+      const i=Number(this.dataset.dec);
+      if(isNaN(i)||!carrito[i]) return;
+      carrito[i].cantidad=Math.max(1,Number(carrito[i].cantidad)-1);
       pintarCarrito();
     });
 
-    // Eliminar producto del carrito
-    $('#tablaCarrito').on('click','button[data-del]', function(){
-      const i = Number(this.dataset.del);
+    $('#tablaCarrito').on('change','input[data-qty]',function(){
+      const i=Number(this.dataset.qty);
+      if(isNaN(i)||!carrito[i]) return;
+      let val=Math.max(1, Number(this.value||1));
+      const vendible=maxVendible(carrito[i]);
+      if(val>vendible){ val=vendible; toastr.info('Se ajustó a máximo vendible.'); }
+      carrito[i].cantidad=val;
+      pintarCarrito();
+    });
+
+    $('#tablaCarrito').on('click','button[data-del]',function(){
+      const i=Number(this.dataset.del);
       if(isNaN(i)) return;
-      carrito.splice(i, 1);
+      carrito.splice(i,1);
       pintarCarrito();
     });
 
-    // Editar subtotal => recalcula y fija precio unitario (override_unit)
     $('#tablaCarrito').on('change','input[data-sub]', function(){
       const i = Number(this.dataset.sub);
       if (isNaN(i) || !carrito[i]) return;
@@ -666,24 +632,23 @@ if (!isset($_SESSION['usuario'])) {
       const qty  = Math.max(1, Number(carrito[i].cantidad) || 1);
       const unit = sub / qty;
 
-      carrito[i].override_unit = Number(unit.toFixed(2));
+      carrito[i].override_unit = Number(unit.toFixed(2)); // Precio unitario “forzado”
       pintarCarrito();
     });
 
-    // =====================================================
-    // Impresión de ticket por AJAX (Mike42 en servidor)
-    // =====================================================
+    // ============================================================
+    // 7) IMPRESIÓN DE TICKET (requiere script server-side Mike42)
+    // ============================================================
     function imprimirTicketAjax(idVenta){
-      if(!idVenta) return;
+      if(!idVenta){ return; }
       $.get(`${BASE}/utils/ticket_mike42.php`, { id_venta: idVenta })
         .done(resp => { console.log("Impresión:", resp); })
         .fail(xhr => { console.error("Error al imprimir:", xhr.responseText || 'Error al imprimir'); });
     }
 
-    // =====================================================
-    // Helper genérico para POST de venta
-    // - Envia JSON al controlador VentasController.php?accion=crear
-    // =====================================================
+    // ============================================================
+    // 8) HELPER AJAX PARA CREAR VENTA
+    // ============================================================
     function postVenta(payload, onOk){
       $.ajax({
         url: `${BASE}/controllers/VentasController.php?accion=crear`,
@@ -695,66 +660,49 @@ if (!isset($_SESSION['usuario'])) {
       .fail(()=> Swal.fire({icon:'error', title:'Error de comunicación', text:'No fue posible contactar al servidor.'}));
     }
 
-    // =====================================================
-    // Registrar venta
-    // - estatus: Activa / Credito / Guardada
-    // - pagos: objeto con info de cobro (efectivo/mixto/tarjeta/transferencia)
-    // =====================================================
+    // ============================================================
+    // 9) REGISTRO DE VENTA (arma payload y maneja respuesta)
+    // ============================================================
     function registrarVenta({estatus='Activa', pagos={}} = {}){
       const slugPrecio = $('#tpPrecio').val();
       const clienteVal = $('#selCliente').val();
       const idCliente  = clienteVal ? Number(clienteVal) : null;
 
-      // Payload compacto para backend
       const payload = {
         venta: {
           fecha: $('#fechaVenta').val(),
-          estatus, // respeta estatus solicitado
-          id_cliente: idCliente,
+          estatus,                         // 'Activa' | 'Guardada' | 'Credito'
+          id_cliente: idCliente,           // En crédito: requerido en frontend (validado en flujoCobro)
           id_forma_pago: estatus==='Guardada' ? null : (Number($('#selFormaPago').val()) || null),
           id_tipo_precio: mapTipoPrecioId(slugPrecio),
           tipo_precio_slug: slugPrecio,
-          ...pagos
+          ...pagos                         // { tipo:'efectivo'|'mixto'|'tarjeta'|'transferencia'|'credito', ... }
         },
         detalles: carrito.map(it => {
-          const unit = precioDeItem(it);
-          const cant = Number(it.cantidad);
-          return {
-            id_producto: it.id_producto,
-            cantidad:   cant,
-            precio_unitario: unit,
-            subtotal:   cant * unit
-          };
+          const unit = precioDeItem(it), cant = Number(it.cantidad);
+          return { id_producto: it.id_producto, cantidad: cant, precio_unitario: unit, subtotal: cant*unit };
         })
       };
 
       postVenta(payload, (r)=>{
-        if(!r?.ok){
-          return Swal.fire({icon:'error', title:'No se pudo registrar', text:(r?.msg||'Intenta de nuevo')});
-        }
+        if(!r?.ok) return Swal.fire({icon:'error', title:'No se pudo registrar', text:(r?.msg||'Intenta de nuevo')});
 
-        // Guardamos id para posible reimpresión
         $('#tk-idventa').val(r.id_venta || '');
 
-        // Mensajería / impresión según comportamiento
         if(estatus==='Guardada'){
           Swal.fire({icon:'success', title:'Venta guardada', html:`<p>Folio: <b>${r.folio}</b></p>`});
         }
-        else if (estatus==='Credito' || POST_BEHAVIOR==='credito') {
+        else if (estatus === 'Credito'){
+          // Para crédito: no imprimimos; se abonará después en Pagos Parciales
           Swal.fire({
             icon:'success',
             title:'Venta a crédito registrada',
             html:`<p><small>Folio:</small> <b>${r.folio}</b></p>
-                  <p class="mb-0">Podrás realizar <b>abonos</b> o liquidar la venta desde el módulo de <b>Pagos Parciales</b>.</p>`
+                  <p class="mb-0">Realiza abonos desde el módulo de <b>Pagos Parciales</b>.</p>`
           });
         }
-        else if (POST_BEHAVIOR==='autoprint') {
-          // Tarjeta / Transferencia: imprime directo
-          if (r.id_venta) imprimirTicketAjax(r.id_venta);
-          Swal.fire({icon:'success', title:'Venta registrada', html:`<p><small>Folio:</small> <b>${r.folio}</b></p>`});
-        }
         else {
-          // Efectivo / Mixto: pregunta si imprimir
+          // Activa (efectivo/mixto/tarjeta/transferencia)
           const cambioTxt = (typeof pagos.cambio === 'number')
             ? `<p><small>Cambio:</small> <b>${mxn(pagos.cambio)}</b></p>` : '';
           Swal.fire({
@@ -765,40 +713,36 @@ if (!isset($_SESSION['usuario'])) {
             showCancelButton: true,
             cancelButtonText: 'Cerrar'
           }).then(res=>{
-            if(res.isConfirmed && r.id_venta){ imprimirTicketAjax(r.id_venta); }
+            if(res.isConfirmed && r.id_venta){
+              imprimirTicketAjax(r.id_venta);
+            }
           });
         }
 
-        // Reset UI / Estado
+        // Reset de UI tras registrar
         carrito=[]; pintarCarrito(); $('#selCliente').val('');
-        $('#tpPrecio').val('taller'); // vuelve a "taller" por defecto
-        cargarFormasPago();           // recarga y vuelve a “Crédito” si existe
+        $('#tpPrecio').val('publico'); // valor por defecto tras venta
+        cargarFormasPago();            // recargar para refrescar default
         pintarFolioSugerido();
-        POST_BEHAVIOR = 'normal';
       });
     }
 
-    // =====================================================
-    // Flujo de cobro (según forma de pago seleccionada)
-    // - Valida cliente obligatorio en crédito
-    // - Efectivo: pide monto recibido y calcula cambio
-    // - Mixto: solicita montos
-    // - Tarjeta/Transferencia: confirma y autoprint
-    // =====================================================
+    // ============================================================
+    // 10) FLUJO DE COBRO (define la UX según forma de pago)
+    // ============================================================
     function flujoCobro(){
       if(!carrito.length){ toastr.warning('Agrega productos a la orden'); return; }
 
       const total  = totalActual;
       const fpSlug = formaPagoSlug();
 
-      // Crédito => requiere cliente
+      // ---- CRÉDITO: requiere cliente y no pide monto ----
       if (fpSlug === 'credito'){
         const idCliente = $('#selCliente').val() ? Number($('#selCliente').val()) : null;
         if (!idCliente){
           Swal.fire({icon:'warning', title:'Selecciona un cliente', text:'Para ventas a crédito es obligatorio elegir un cliente.'});
           return;
         }
-        POST_BEHAVIOR = 'credito';
         Swal.fire({
           icon:'question',
           title:'Confirmar venta a crédito',
@@ -807,14 +751,15 @@ if (!isset($_SESSION['usuario'])) {
           showCancelButton:true,
           confirmButtonText:'Registrar crédito'
         }).then(res=>{
-          if(res.isConfirmed){ registrarVenta({estatus:'Credito', pagos:{ tipo:'credito' }}); }
+          if(res.isConfirmed){
+            registrarVenta({ estatus:'Credito', pagos:{ tipo:'credito' } });
+          }
         });
         return;
       }
 
-      // Efectivo => pedir monto recibido
+      // ---- EFECTIVO: pide monto recibido y calcula cambio ----
       if(fpSlug === 'efectivo'){
-        POST_BEHAVIOR = 'normal';
         Swal.fire({
           title: 'Cobro en efectivo',
           html: `<p>Total a pagar: <b>${mxn(total)}</b></p>`,
@@ -834,9 +779,8 @@ if (!isset($_SESSION['usuario'])) {
         return;
       }
 
-      // Mixto => pedir desglose
+      // ---- MIXTO: efectivo + tarjeta; validar suma ≥ total ----
       if(fpSlug === 'mixto'){
-        POST_BEHAVIOR = 'normal';
         Swal.fire({
           title:'Cobro mixto',
           html:`<div class="text-start">
@@ -864,9 +808,8 @@ if (!isset($_SESSION['usuario'])) {
         return;
       }
 
-      // Tarjeta / Transferencia => registra y autoprint
+      // ---- TARJETA / TRANSFERENCIA: confirmar y registrar ----
       if (fpSlug === 'tarjeta' || fpSlug === 'transferencia'){
-        POST_BEHAVIOR = 'autoprint';
         Swal.fire({
           title: (fpSlug==='tarjeta'?'Cobro con tarjeta':'Cobro por transferencia'),
           html:`<p>Total a cobrar: <b>${mxn(total)}</b></p>`,
@@ -880,48 +823,34 @@ if (!isset($_SESSION['usuario'])) {
       }
     }
 
-    // =====================================================
-    // Botones principales: Cobrar / Guardar / Cancelar
-    // =====================================================
- 
+    // ============================================================
+    // 11) BINDINGS DE BOTONES (Guardar/Cobrar/Cancelar)
+    // ============================================================
+    $('#btnCobrar').on('click', flujoCobro);
+
     $('#btnGuardar').on('click', ()=>{
-      if (!carrito.length) {
-        toastr.warning('Agrega productos a la orden');
-        return;
-      }
-
-      // 🔹 Ahora ya NO validamos cliente ni forma de pago al guardar
-      POST_BEHAVIOR = 'guardada';
-
+      if(!carrito.length) return toastr.warning('Agrega productos a la orden');
       Swal.fire({
-        icon: 'question',
-        title: 'Guardar venta',
-        text: 'Se reservará inventario pero NO contará para el corte hasta que la cobres. ¿Continuar?',
-        showCancelButton: true,
-        confirmButtonText: 'Guardar'
-      }).then(res => {
-        if (res.isConfirmed) {
-          // Al guardar se manda id_forma_pago = null (ya está controlado en registrarVenta)
-          registrarVenta({ estatus: 'Guardada' });
-        }
-      });
+        icon:'question', title:'Guardar venta',
+        text:'Se reservará inventario pero NO contará para el corte hasta que la cobres. ¿Continuar?',
+        showCancelButton:true, confirmButtonText:'Guardar'
+      }).then(res=>{ if(res.isConfirmed){ registrarVenta({estatus:'Guardada'}); }});
     });
 
-    // Cancelar venta (limpia UI y resetea selectores)
     $('#btnCancelar').on('click', ()=>{
+      // Limpia carrito y controles básicos de la vista
       carrito=[]; pintarCarrito(); $('#selCliente').val(''); $('#txtBuscar').val('');
-      $('#fechaVenta').val('<?= date('Y-m-d') ?>');
-      $('#tpPrecio').val('taller'); // reset tipo de precio
-      cargarFormasPago();           // reset formas de pago (preferirá “Crédito”)
+      $('#fechaVenta').val('<?= date('Y-m-d') ?>'); // Fecha del día (servidor)
+      $('#tpPrecio').val('publico');                // Regresa a “público”
+      cargarFormasPago();                           // Refresca y aplica default (Crédito si existe)
       pintarFolioSugerido();
-      POST_BEHAVIOR='normal';
     });
 
-    // =====================================================
-    // Init de pantalla
-    // =====================================================
+    // ============================================================
+    // 12) INIT (al cargar la pantalla)
+    // ============================================================
     cargarClientes();
-    cargarFormasPago();   // intentará dejar “Crédito” seleccionado si existe
+    cargarFormasPago();
     pintarFolioSugerido();
     $('#fechaVenta').on('change', pintarFolioSugerido);
   })();

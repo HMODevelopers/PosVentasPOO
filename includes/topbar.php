@@ -86,34 +86,21 @@
             
                         <li class="dropdown d-none d-lg-block">
                             <a class="nav-link dropdown-toggle waves-effect" data-toggle="dropdown" href="#" role="button" aria-haspopup="false" aria-expanded="false">
-                                Reports
+                                Reportes
                                 <i class="mdi mdi-chevron-down"></i> 
                             </a>
                             <div class="dropdown-menu">
                                 <!-- item-->
-                                <a href="javascript:void(0);" class="dropdown-item">
-                                    Finance Report
+                                <a href="<?= BASE_URL ?>/views/private/reportes/valechalio.php" class="dropdown-item">
+                                    Reporte Creditos
                                 </a>
 
                                 <!-- item-->
-                                <a href="javascript:void(0);" class="dropdown-item">
-                                    Monthly Report
+                                <a href="<?= BASE_URL ?>/views/private/reportes/reporteUtilidad.php" class="dropdown-item">
+                                    Utilidades Productos
                                 </a>
 
-                                <!-- item-->
-                                <a href="javascript:void(0);" class="dropdown-item">
-                                    Revenue Report
-                                </a>
-
-                                <!-- item-->
-                                <a href="javascript:void(0);" class="dropdown-item">
-                                    Settings
-                                </a>
-
-                                <!-- item-->
-                                <a href="javascript:void(0);" class="dropdown-item">
-                                    Help & Support
-                                </a>
+                               
 
                             </div>
                         </li>
