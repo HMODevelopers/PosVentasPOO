@@ -298,7 +298,7 @@ if (!isset($_SESSION['usuario'])) {
         let tbody='';
 
         if (!ventas.length){
-          tbody = '<tr><td colspan="10" class="text-center">No hay ventas disponibles</td></tr>';
+          tbody = '<tr><td colspan="12" class="text-center">No hay ventas disponibles</td></tr>';
         } else {
           ventas.forEach(v=>{
            tbody += `

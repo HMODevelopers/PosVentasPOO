@@ -1,29 +1,52 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+
+/* --- Detección básica --- */
+$host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? ($_SERVER['HTTP_HOST'] ?? 'localhost');
+$host = trim($host);
+$hostOnly = explode(':', $host)[0];
+
+/* --- Si es tu dominio público, SIEMPRE usa https para BASE_URL --- */
+$forceHttpsHosts = ['refaccionariarivera.com','www.refaccionariarivera.com'];
+if (in_array(strtolower($hostOnly), array_map('strtolower',$forceHttpsHosts), true)) {
+    $scheme = 'https';
+} else {
+    // detección normal cuando no es producción
+    $xfp = strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '');
+    $xfs = strtolower($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '');
+    $isHttps = (
+        (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off')
+        || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443)
+        || ($xfp === 'https') || ($xfs === 'on')
+        || (strpos($_SERVER['HTTP_CF_VISITOR'] ?? '', '"https"') !== false)
+    );
+    $scheme = $isHttps ? 'https' : 'http';
 }
 
-// Detecta si estás en localhost o dominio
-$host = $_SERVER['HTTP_HOST'];
-
-// Detecta la carpeta raíz del proyecto sin importar desde dónde accedes
+/* --- Raíz del proyecto --- */
 $documentRoot = realpath($_SERVER['DOCUMENT_ROOT']);
-$rootFolder   = str_replace('\\', '/', str_replace($documentRoot, '', realpath(__DIR__ . '/../')));
+$projectRoot  = realpath(__DIR__ . '/../');
+$rootFolder   = str_replace('\\', '/', str_replace($documentRoot, '', $projectRoot));
+$rootFolder   = $rootFolder ?: '/';
+$rootFolder   = ($rootFolder === '/') ? '' : '/' . ltrim($rootFolder, '/');
 
-// Si da cadena vacía (en localhost raíz), forzamos "/"
-$rootFolder = $rootFolder ?: '/';
+/* --- Puerto sólo si es no estándar y no viene en host --- */
+$port = '';
+$serverPort = (int)($_SERVER['HTTP_X_FORWARDED_PORT'] ?? $_SERVER['SERVER_PORT'] ?? 0);
+if ($serverPort && !(($scheme === 'https' && $serverPort === 443) || ($scheme === 'http' && $serverPort === 80))) {
+    if (strpos($host, ':') === false) $port = ':' . $serverPort;
+}
 
-// BASE_URL se usa para rutas relativas públicas (css, js, img)
-define('BASE_URL', "http://$host$rootFolder");
-
-// APP_URL apunta a la raíz real del proyecto
-define('APP_URL', BASE_URL);
-
-// LOGIN_URL apunta al login (archivo real del login)
+/* --- BASE_URL --- */
+$baseUrl = rtrim("{$scheme}://{$host}{$port}{$rootFolder}", '/');
+define('BASE_URL', $baseUrl);
+define('APP_URL',  BASE_URL);
 define('LOGIN_URL', BASE_URL . '/views/public/index.php');
-
-// DASHBOARD_URL apunta al panel principal
 define('DASHBOARD_URL', BASE_URL . '/views/private/inicio/index.php');
 
-// Hora por defecto
-date_default_timezone_set('America/Mexico_City');
+/* --- Cookies más seguras --- */
+if ($scheme === 'https') { @ini_set('session.cookie_secure','1'); }
+@ini_set('session.cookie_httponly','1');
+@ini_set('session.use_strict_mode','1');
+
+date_default_timezone_set('America/Hermosillo');
