@@ -290,6 +290,7 @@ if (!isset($_SESSION['usuario'])) {
     }
 
     const vendibleDe = det => Math.max(0, num(det.stock_actual ?? det.existencia) - num(det.stock_minimo));
+    
     function maxVendible(it){
       const stock = Number(it.stock_actual ?? 0);
       const smin  = Number(it.stock_minimo ?? 0);
@@ -357,29 +358,37 @@ if (!isset($_SESSION['usuario'])) {
     }
 
     function cargarFormasPago(){
-      $.get(`${BASE}/controllers/FormasPagoController.php`, {accion:'listar_select'})
-        .done(r=>{
-          const sel = $('#selFormaPago').empty();
-          const arr = r?.data || (Array.isArray(r) ? r : []);
-          if (!arr.length) {
-            sel.append(`<option value="">(sin formas de pago)</option>`);
-            return;
-          }
-          let idxDefault = 0;
-          arr.forEach((fp, i)=>{
-            sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
-            const d = normalize(fp.descripcion);
-            // Preferir “Crédito” (a cliente) si existe; no confundir con “tarjeta de crédito”
-            if ((d.includes('credito') || d.includes('crédito')) && !d.includes('tarjeta')) idxDefault = i;
+        $.get(`${BASE}/controllers/FormasPagoController.php`, {accion:'listar_select'})
+          .done(r=>{
+            const sel = $('#selFormaPago').empty();
+            const arr = r?.data || (Array.isArray(r) ? r : []);
+            if (!arr.length) {
+              sel.append(`<option value="">(sin formas de pago)</option>`);
+              return;
+            }
+
+            let idxDefault = 0; // por defecto, primera opción
+            arr.forEach((fp, i)=>{
+              sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
+              const d = normalize(fp.descripcion);
+              // 🔹 Ahora preferimos “Efectivo”
+              if (d.includes('efectivo')) idxDefault = i;
+            });
+
+            sel.prop('selectedIndex', idxDefault);
+          })
+          .fail(()=>{
+            // Fallback simple para no dejar vacío
+            const sel = $('#selFormaPago').empty();
+            sel.append(`
+              <option value="1" selected>Efectivo</option>
+              <option value="2">Tarjeta</option>
+              <option value="3">Mixto</option>
+              <option value="4">Crédito</option>
+            `);
           });
-          sel.prop('selectedIndex', idxDefault);
-        })
-        .fail(()=>{
-          // Fallback simple para no dejar vacío
-          const sel = $('#selFormaPago').empty();
-          sel.append('<option value="1">Efectivo</option><option value="2">Tarjeta</option><option value="3">Mixto</option><option value="4">Crédito</option>');
-        });
     }
+
 
     // ============================================================
     // 5) BUSCADOR DE PRODUCTOS (sugerencias + detalle diferido)
