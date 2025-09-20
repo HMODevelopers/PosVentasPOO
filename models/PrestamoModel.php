@@ -292,14 +292,8 @@ class PrestamoModel
      * Registra un abono y actualiza el saldo del préstamo.
      * $idFormaPago es opcional para mantener compatibilidad con llamadas existentes.
      */
-    public function abonar(
-        int $idPrestamo,
-        float $monto,
-        string $fechaAbono,
-        ?string $refPago,
-        ?int $idUsuario = null,
-        ?int $idFormaPago = null
-    ): bool {
+    public function abonar(int $idPrestamo,float $monto,string $fechaAbono,?string $refPago,?int $idUsuario = null,?int $idFormaPago = null): bool 
+    {
         if ($monto <= 0) return false;
 
         try {

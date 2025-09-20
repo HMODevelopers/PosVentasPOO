@@ -11,6 +11,7 @@ if (!isset($_SESSION['usuario'])) {
     exit();
 }
 
+// Nota: NO fijamos $hoy en el input "Fecha" para no filtrar la carga inicial
 $hoy = date('Y-m-d');
 ?>
 <!DOCTYPE html>
@@ -89,7 +90,8 @@ $hoy = date('Y-m-d');
                   <div class="form-group">
                     <label for="Fecha" class="control-label">Fecha</label>
                     <div class="input-group">
-                      <input type="date" id="Fecha" class="form-control filtrar" value="<?= htmlspecialchars($hoy) ?>">
+                      <!-- IMPORTANTE: quitar value="<?= htmlspecialchars($hoy) ?>" para NO filtrar la carga inicial -->
+                      <input type="date" id="Fecha" class="form-control filtrar" value="">
                       <div class="input-group-append clean-filter">
                         <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" onclick="clearField('Fecha')"></i></span>
                       </div>
@@ -173,10 +175,10 @@ $hoy = date('Y-m-d');
         <!-- Nuevo -->
         <?php include_once __DIR__ . '/../prestamos/modales/agregar.php'; ?>
 
-        <!-- Abonar (debe incluir un <select name="id_forma_pago" id="selFormaPagoAbono"> o id="abono_forma_pago") -->
+        <!-- Abonar -->
         <?php include_once __DIR__ . '/../prestamos/modales/abonar.php'; ?>
 
-        <!-- Detalle (tabla de abonos con columna "Método") -->
+        <!-- Detalle -->
         <?php include_once __DIR__ . '/../prestamos/modales/detalle.php'; ?>
 
       </div> <!-- /container-fluid -->
@@ -247,17 +249,14 @@ $hoy = date('Y-m-d');
 
       // ========= Acciones por fila =========
       function accionesFila(r){
-        // Siempre permitir ver detalle
         let out = `
           <a class="dropdown-item accion-detalle" href="#" data-id="${r.id_prestamo}">
             <i class="mdi mdi-eye mr-2 text-muted font-18 vertical-middle"></i>Ver detalle
           </a>`;
 
-        // Si está Pagado o Cancelado: no mostrar nada más
         const frozen = (String(r.estatus) === 'Pagado' || String(r.estatus) === 'Cancelado');
         if (frozen) return out;
 
-        // Si es PRÉSTAMO y aún tiene saldo, habilitar "Abonar"
         if (r.tipo_operacion==='Prestamo' && Number(r.saldo)>0){
           out += `
           <a class="dropdown-item accion-abonar" href="#" data-id="${r.id_prestamo}">
@@ -265,7 +264,6 @@ $hoy = date('Y-m-d');
           </a>`;
         }
 
-        // Opción "Cancelar"
         out += `
           <a class="dropdown-item accion-cancelar" href="#" data-id="${r.id_prestamo}">
             <i class="mdi mdi-cancel mr-2 text-muted font-18 vertical-middle"></i>Cancelar
@@ -274,9 +272,10 @@ $hoy = date('Y-m-d');
         return out;
       }
 
+      // Carga del listado (si no hay filtros -> trae TODO)
       function cargarPrestamos(pagina){
         const q      = $('#Folio').val() || '';
-        const fecha  = $('#Fecha').val() || '';
+        const fecha  = $('#Fecha').val() || '';   // OJO: en la carga inicial estará vacío
         const desde  = fecha || '';
         const hasta  = fecha || '';
         const tipoop = $('#FTipoOp').val() || '';
@@ -307,7 +306,6 @@ $hoy = date('Y-m-d');
                   <td class="text-center">${badgeEstatus(r.estatus)}</td>
                   <td class="text-center">${fechaMx(r.fecha_prestamo)}</td>
                   <td class="text-center">
-                    <!-- dropleft para evitar overflow hacia la derecha -->
                     <div class="btn-group dropdown dropleft">
                       <a href="javascript:void(0);" class="table-action-btn dropdown-toggle arrow-none btn btn-light btn-sm" data-toggle="dropdown" aria-expanded="false">
                         <i class="mdi mdi-dots-horizontal"></i>
@@ -417,15 +415,12 @@ $hoy = date('Y-m-d');
         const $sel = $selAbonoFP();
         if(!$sel.length) return;
 
-        // Si conoces el/los ID(s) exactos de "Crédito", agrégalos aquí para blindar:
-        const EXCLUDE_FP_IDS = []; // p.ej. [6]
+        const EXCLUDE_FP_IDS = []; // si conoces IDs de "Crédito", colócalos aquí
 
-        // Normaliza: quita acentos, pasa a minúsculas y trimea
         const norm = (t)=> String(t||'')
           .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
           .toLowerCase().trim();
 
-        // Es "Crédito" puro (Crédito, Crédito (PPD), Crédito X...), no "Tarjeta de crédito"
         const esCreditoPuro = (desc)=>{
           const txt = norm(desc);
           return /^credito\b/.test(txt) && !/tarjeta/.test(txt);
@@ -436,7 +431,6 @@ $hoy = date('Y-m-d');
         $.get(FORMAS_PAGO_URL, {accion:'listar_select'})
           .done(r=>{
             const arr = r?.data || (Array.isArray(r)?r:[]);
-            // Filtra fuera "Crédito …" y IDs excluidos (si los agregas)
             const filtradas = arr.filter(fp => {
               const id   = Number(fp.id_forma_pago);
               const desc = fp.descripcion ?? '';
@@ -452,12 +446,10 @@ $hoy = date('Y-m-d');
                 $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
               });
 
-              // Intentar respetar "selected" si no fue filtrado
               if (selected != null && $sel.find(`option[value="${String(selected)}"]`).length){
                 $sel.val(String(selected));
               }
 
-              // Si no hay selección, elegir "Efectivo" si existe
               if(!$sel.val()){
                 const opEfe = $sel.find('option').filter(function(){
                   return norm($(this).text()) === 'efectivo';
@@ -467,7 +459,6 @@ $hoy = date('Y-m-d');
             }
           })
           .fail(()=>{
-            // Fallback sin incluir crédito
             $sel.empty()
                 .append('<option value="1">Efectivo</option>')
                 .append('<option value="2">Tarjeta de crédito</option>')
@@ -477,7 +468,7 @@ $hoy = date('Y-m-d');
           .always(()=> $sel.prop('disabled', false));
       }
 
-      // Mostrar/ocultar inputs según tipo de beneficiario (usa ids del modal agregar.php)
+      // Mostrar/ocultar inputs según tipo de beneficiario
       function toggleBenefWrappers(){
         const t = $('#tipo').val();
         const $selCli = $('#selCliente');
@@ -487,7 +478,6 @@ $hoy = date('Y-m-d');
         $('#wrapEmpleado').toggleClass('d-none', t!=='Empleado');
         $('#wrapOtro').toggleClass('d-none', t!=='Otro');
 
-        // Reglas de requerido
         $selCli.prop('required', t==='Cliente');
         $selEmp.prop('required', t==='Empleado');
 
@@ -554,10 +544,8 @@ $hoy = date('Y-m-d');
         $('#abono_id_prestamo').val(id);
         $('#abono_hint_saldo').text('');
 
-        // Cargar formas de pago del abono
         cargarFormasPagoAbono();
 
-        // Traemos el saldo actual para limitar el monto
         $.post(PRESTAMOS_URL, {accion:'detalle', id_prestamo:id}, function(resp){
           const p = resp?.data?.prestamo || null;
           const saldo = Number(p?.saldo || 0);
@@ -600,7 +588,7 @@ $hoy = date('Y-m-d');
           return;
         }
 
-        const form = $(this).serializeArray(); // incluye id_forma_pago
+        const form = $(this).serializeArray();
         form.push({name:'accion', value:'abonar'});
 
         const $btn = $('#formAbono button[type=submit]'), html=$btn.html();
@@ -638,7 +626,6 @@ $hoy = date('Y-m-d');
             return;
           }
 
-          // Encabezado
           $('#det-folio').text(p.id_prestamo);
           $('#det-tipo').text(p.tipo_operacion==='Prestamo' ? 'Préstamo' : 'Disposición');
           $('#det-estatus').text(p.estatus);
@@ -660,7 +647,6 @@ $hoy = date('Y-m-d');
           $('#det-usuario').text(p.usuario_nombre || p.usuario || (p.id_usuario ? `ID ${p.id_usuario}` : '—'));
           $('#det-sucursal').text(p.sucursal_nombre || p.sucursal || '—');
 
-          // Tabla de abonos (6 columnas: #, Fecha, Monto, Método, Referencia, Usuario)
           let tb = '';
           if(!abs.length){
             tb = '<tr><td colspan="6" class="text-center text-muted">Sin abonos</td></tr>';
@@ -685,7 +671,7 @@ $hoy = date('Y-m-d');
         });
       });
 
-      // ========= Cancelar con SweetAlert2 =========
+      // ========= Cancelar =========
       $(document).on('click','a.accion-cancelar', function(e){
         e.preventDefault();
         const id = $(this).data('id');
@@ -739,7 +725,7 @@ $hoy = date('Y-m-d');
         });
       });
 
-      /* Evitar scroll horizontal al abrir el dropdown de acciones */
+      // Evitar scroll horizontal al abrir el dropdown de acciones
       $('#tablaPrestamos')
         .on('show.bs.dropdown', '.dropdown', function(){
           $(this).closest('.table-responsive-lg, .table-responsive').css('overflow-x','visible');
@@ -749,6 +735,8 @@ $hoy = date('Y-m-d');
         });
 
       // ============== INICIO ==============
+      // Por si el navegador autocompleta la fecha, la limpiamos:
+      $('#Fecha').val('');
       cargarPrestamos(paginaActual);
     });
     </script>

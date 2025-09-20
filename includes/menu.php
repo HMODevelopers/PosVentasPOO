@@ -40,8 +40,12 @@
                                                 <a href="<?= BASE_URL ?>/views/private/productos/index.php">Productos</a>
                                             </li>
                                             <li>
+                                                <a href="<?= BASE_URL ?>/views/private/inventarios/faltantes.php">Faltantes Inventario</a>
+                                            </li>
+                                            <li>
                                                 <a href="<?= BASE_URL ?>/views/private/inventarios/index.php">Movimiento Inventario</a>
                                             </li>
+                                            
                                             
                                         </ul>
                                     </li>
