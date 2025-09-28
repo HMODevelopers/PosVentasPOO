@@ -181,6 +181,12 @@ class VentaModel
     public function obtenerVentas($pagina = 1, $limite = 10, $folio = '', $fecha = '', $estatus = '')
     {
         $offset = ($pagina - 1) * $limite;
+
+        // Normalización leve para evitar filtros indeseados con null
+        $folio   = is_string($folio)   ? trim($folio)   : '';
+        $estatus = is_string($estatus) ? trim($estatus) : '';
+        $fecha   = is_string($fecha)   ? trim($fecha)   : ($fecha ?? ''); // puede venir null
+
         $sql = "SELECT v.*,
                     c.nombre AS cliente,
                     u.nombre AS usuario,
@@ -204,9 +210,11 @@ class VentaModel
                 INNER JOIN tipo_precio tp ON v.id_tipo_precio = tp.id_tipo_precio
                 WHERE v.activo = 1";
         $params = [];
-        if ($folio !== '') { $sql .= " AND v.folio LIKE :folio"; $params[':folio'] = "%$folio%"; }
-        if ($fecha !== '') { $sql .= " AND DATE(v.fecha) = :fecha"; $params[':fecha'] = $fecha; }
-        if ($estatus !== '') { $sql .= " AND v.estatus = :estatus"; $params[':estatus'] = $estatus; }
+
+        if ($folio !== '')   { $sql .= " AND v.folio LIKE :folio";     $params[':folio']   = "%$folio%"; }
+        // CAMBIO: sólo filtrar por fecha si realmente viene una fecha no vacía
+        if (!empty($fecha))  { $sql .= " AND DATE(v.fecha) = :fecha";  $params[':fecha']   = $fecha; }
+        if ($estatus !== '') { $sql .= " AND v.estatus = :estatus";    $params[':estatus'] = $estatus; }
 
         $sql .= " ORDER BY v.id_venta DESC LIMIT :limite OFFSET :offset";
 
@@ -220,11 +228,18 @@ class VentaModel
 
     public function contarVentas($folio = '', $fecha = '', $estatus = '')
     {
+        // Normalización leve
+        $folio   = is_string($folio)   ? trim($folio)   : '';
+        $estatus = is_string($estatus) ? trim($estatus) : '';
+        $fecha   = is_string($fecha)   ? trim($fecha)   : ($fecha ?? '');
+
         $sql = "SELECT COUNT(*) FROM ventas v WHERE v.activo = 1";
         $params = [];
-        if ($folio !== '') { $sql .= " AND v.folio LIKE :folio"; $params[':folio'] = "%$folio%"; }
-        if ($fecha !== '') { $sql .= " AND DATE(v.fecha) = :fecha"; $params[':fecha'] = $fecha; }
-        if ($estatus !== '') { $sql .= " AND v.estatus = :estatus"; $params[':estatus'] = $estatus; }
+
+        if ($folio !== '')   { $sql .= " AND v.folio LIKE :folio";     $params[':folio']   = "%$folio%"; }
+        // CAMBIO: no aplicar filtro si fecha es null/'' (sólo cuando tenga valor)
+        if (!empty($fecha))  { $sql .= " AND DATE(v.fecha) = :fecha";  $params[':fecha']   = $fecha; }
+        if ($estatus !== '') { $sql .= " AND v.estatus = :estatus";    $params[':estatus'] = $estatus; }
 
         $st = $this->conn->prepare($sql);
         foreach ($params as $k=>$v) $st->bindValue($k,$v);

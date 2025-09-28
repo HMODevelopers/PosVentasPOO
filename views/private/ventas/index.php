@@ -102,12 +102,13 @@ if (!isset($_SESSION['usuario'])) {
                   </div>
                 </div>
 
-                <!-- Fecha -->
+                <!-- Fecha (SIN valor por defecto para NO filtrar de inicio) -->
                 <div class="col-md-4">
                   <div class="form-group">
                     <label for="Fecha" class="control-label">Fecha</label>
                     <div class="input-group">
-                      <input type="date" id="Fecha" class="form-control filtrar" value="<?php echo date('Y-m-d'); ?>">
+                      <!-- ANTES tenía value="<?php echo date('Y-m-d'); ?>" -->
+                      <input type="date" id="Fecha" class="form-control filtrar" value="">
                       <div class="input-group-append clean-filter">
                         <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" onclick="clearField('Fecha')"></i></span>
                       </div>
@@ -138,8 +139,8 @@ if (!isset($_SESSION['usuario'])) {
                       <th>Forma de Pago</th>
                       <th>Tipo de Precio</th>
                       <th class="text-end">Total</th>
-                      <th class="text-end">Saldo</th> <!-- NUEVA -->
-                      <th>Estatus crédito</th>         <!-- NUEVA -->
+                      <th class="text-end">Saldo</th>
+                      <th>Estatus crédito</th>
                       <th>Estatus</th>
                       <th>Cliente</th>
                       <th>Fecha</th>
@@ -190,7 +191,6 @@ if (!isset($_SESSION['usuario'])) {
     <script>
     /* ==========================================================================
        MÓDULO: Helpers y utilidades compartidas
-       - Funciones auxiliares, normalización, formateo, limpieza de campos
        ========================================================================== */
     function clearField(id){ try { $('#'+id).val('').trigger('change'); } catch(e){} }
     const norm = s => (s||'').toString().toLowerCase()
@@ -221,7 +221,6 @@ if (!isset($_SESSION['usuario'])) {
       }
     }
 
-    // Menú de acciones por venta (según estatus)
     function accionesVenta(v){
         let out = `
           <a class="dropdown-item accion-ver-detalle" href="#" data-toggle="modal" data-target="#modalDetalle" data-id="${v.id_venta}">
@@ -245,7 +244,6 @@ if (!isset($_SESSION['usuario'])) {
             </a>`;
         }
 
-        // Mostrar "Abonar" SOLO si es Crédito y el saldo > 0
         const saldo = num(v.saldo ?? (num(v.total) - num(v.abonado)));
         if (v.estatus==='Credito' && saldo > 0.0001){
           out += `
@@ -266,33 +264,34 @@ if (!isset($_SESSION['usuario'])) {
 
     function getBadgeCredito(st){
       switch(st){
-        case 'Pendiente': 
-          return '<span class="badge badge-light-danger badge-pill">Pendiente</span>';
-        case 'En Proceso': 
-          return '<span class="badge badge-light-warning badge-pill">En Proceso</span>';
-        case 'Liquidado': 
-          return '<span class="badge badge-light-success badge-pill">Liquidado</span>';
-        case 'N/A': 
-          return '<span class="badge badge-light-secondary badge-pill">N/A</span>';
-        default: 
-          return `<span class="badge badge-light-secondary badge-pill">${st||'N/A'}</span>`;
+        case 'Pendiente':  return '<span class="badge badge-light-danger badge-pill">Pendiente</span>';
+        case 'En Proceso': return '<span class="badge badge-light-warning badge-pill">En Proceso</span>';
+        case 'Liquidado':  return '<span class="badge badge-light-success badge-pill">Liquidado</span>';
+        case 'N/A':        return '<span class="badge badge-light-secondary badge-pill">N/A</span>';
+        default:           return `<span class="badge badge-light-secondary badge-pill">${st||'N/A'}</span>`;
       }
     }
 
-
     /* ==========================================================================
        MÓDULO: Listado y paginación de ventas
-       - Obtiene ventas con filtros
-       - Pinta tabla y pagina resultados
        ========================================================================== */
     let paginaActual=1; const limitePorPagina=10;
 
     function cargarVentas(pagina){
-      const folio = $('#Folio').val() || '';
-      const fecha = $('#Fecha').val() || new Date().toISOString().split('T')[0];
-      const estatus = $('#FEstatus').val() || '';
+      const folio  = $('#Folio').val() || '';
+      // *** Cambio clave: NO forzar hoy si está vacío ***
+      const fecha  = ($('#Fecha').val() || '').trim();
+      const estatus= $('#FEstatus').val() || '';
 
-      $.post(VENTAS_URL,{accion:'listar', pagina, limite:limitePorPagina, folio, fecha, estatus}, function(resp){
+      $.post(VENTAS_URL,{
+        accion:'listar',
+        pagina,
+        limite:limitePorPagina,
+        folio,
+        // *** si viene vacío, mandamos null para que el backend NO filtre por fecha ***
+        fecha: fecha || null,
+        estatus
+      }, function(resp){
         const ventas = resp?.data || [];
         const total  = parseInt(resp?.total||0,10);
         let tbody='';
@@ -309,8 +308,8 @@ if (!isset($_SESSION['usuario'])) {
                   <td class="text-center">${v.forma_pago}</td>
                   <td class="text-center">${v.tipo_precio}</td>
                   <td class="text-right"><b>${mxn(v.total)}</b></td>
-                  <td class="text-right">${mxn(v.saldo ?? (num(v.total) - num(v.abonado)))}</td>             <!-- NUEVO -->
-                  <td class="text-center">${getBadgeCredito(v.estatus_credito || 'N/A')}</td>                 <!-- NUEVO -->
+                  <td class="text-right">${mxn(v.saldo ?? (num(v.total) - num(v.abonado)))}</td>
+                  <td class="text-center">${getBadgeCredito(v.estatus_credito || 'N/A')}</td>
                   <td class="text-center">${getBadge(v.estatus)}</td>
                   <td class="text-center">${v.cliente || 'Público en general'}</td>
                   <td class="text-center">${fechaMx(v.fecha)}</td>
@@ -380,133 +379,117 @@ if (!isset($_SESSION['usuario'])) {
 
     /* ==========================================================================
        MÓDULO: Detalle de venta (modal Detalle)
-       - Abre modal
-       - Carga encabezado y renglones
        ========================================================================== */
-       $(document).on('click','a.accion-ver-detalle',function(e){
-            e.preventDefault();
-            const id=$(this).data('id'); if(!id) return;
+    $(document).on('click','a.accion-ver-detalle',function(e){
+      e.preventDefault();
+      const id=$(this).data('id'); if(!id) return;
 
-            // Reset visual
-            $('#det-error').hide(); 
-            $('#det-contenido').hide(); 
-            $('#det-loader').show();
-            $('#modalDetalle').modal('show');
+      $('#det-error').hide(); 
+      $('#det-contenido').hide(); 
+      $('#det-loader').show();
+      $('#modalDetalle').modal('show');
 
-            // Siempre ocultar campos exclusivos de crédito al inicio
-            const $wrapsCredito = $('#wrap-det-estatus-credito, #wrap-det-abonado, #wrap-det-saldo, #wrap-det-abonos, #det-btn-abonar');
-            $wrapsCredito.addClass('d-none');
+      const $wrapsCredito = $('#wrap-det-estatus-credito, #wrap-det-abonado, #wrap-det-saldo, #wrap-det-abonos, #det-btn-abonar');
+      $wrapsCredito.addClass('d-none');
 
-            $.get(VENTAS_URL,{accion:'detalle',id_venta:id},function(resp){
-              if(!resp || !resp.venta){
-                $('#det-loader').hide();
-                $('#det-error').show().text('No se encontró la venta.');
-                return;
-              }
+      $.get(VENTAS_URL,{accion:'detalle',id_venta:id},function(resp){
+        if(!resp || !resp.venta){
+          $('#det-loader').hide();
+          $('#det-error').show().text('No se encontró la venta.');
+          return;
+        }
 
-              const v       = resp.venta;
-              const dets    = resp.detalles || [];
-              const abonado = num(resp.abonado ?? v.abonado ?? 0);
-              const saldo   = num(resp.saldo   ?? v.saldo   ?? (num(v.total) - abonado));
-              const estCred = (v.estatus_credito || resp.estatus_credito || 'N/A');
+        const v       = resp.venta;
+        const dets    = resp.detalles || [];
+        const abonado = num(resp.abonado ?? v.abonado ?? 0);
+        const saldo   = num(resp.saldo   ?? v.saldo   ?? (num(v.total) - abonado));
+        const estCred = (v.estatus_credito || resp.estatus_credito || 'N/A');
 
-              // Encabezado
-              $('#det-folio').text(v.folio || '—');
-              $('#det-fecha').text(fechaMx(v.fecha));
-              $('#det-estatus').html(getBadge(v.estatus || '—'));
-              $('#det-cliente').text(v.cliente || 'Público en general');
-              $('#det-usuario').text(v.usuario || '—');
-              $('#det-caja').text(v.caja || '—');
-              $('#det-forma').text(v.forma_pago || '—');
-              $('#det-tipo').text(v.tipo_precio || '—');
+        // Encabezado
+        $('#det-folio').text(v.folio || '—');
+        $('#det-fecha').text(fechaMx(v.fecha));
+        $('#det-estatus').html(getBadge(v.estatus || '—'));
+        $('#det-cliente').text(v.cliente || 'Público en general');
+        $('#det-usuario').text(v.usuario || '—');
+        $('#det-caja').text(v.caja || '—');
+        $('#det-forma').text(v.forma_pago || '—');
+        $('#det-tipo').text(v.tipo_precio || '—');
 
-              // Productos
-              let tb='', total=0;
-              if (!dets.length){
-                tb = '<tr><td colspan="5" class="text-center text-muted">Sin productos</td></tr>';
-              } else {
-                dets.forEach(d=>{
-                  const c = Number(d.cantidad || 0);
-                  const u = Number(d.precio_unitario || 0);
-                  const s = Number(d.subtotal ?? (c * u));
-                  total += s;
-                  tb += `<tr>
-                    <td>${d.codigo || ('#'+(d.id_producto||''))}</td>
-                    <td>${d.producto || ('#'+(d.id_producto||''))}</td>
-                    <td class="text-center">${c}</td>
-                    <td class="text-right">${mxn(u)}</td>
-                    <td class="text-right">${mxn(s)}</td>
-                  </tr>`;
-                });
-              }
-              $('#det-tbody').html(tb);
-              $('#det-total').text(mxn(total || v.total || 0));
-
-              // ------ Exclusivos de crédito ------
-              if (v.estatus === 'Credito') {
-                // Mostrar wrappers
-                $('#wrap-det-estatus-credito, #wrap-det-abonado, #wrap-det-saldo, #wrap-det-abonos')
-                  .removeClass('d-none');
-
-                // Pintar datos
-                if ($('#det-estatus-credito').length) $('#det-estatus-credito').html(getBadgeCredito(estCred));
-                if ($('#det-abonado').length)         $('#det-abonado').text(mxn(abonado));
-                if ($('#det-saldo').length)           $('#det-saldo').text(mxn(saldo));
-
-                // Lista de abonos
-                if ($('#det-abonos-body').length){
-                  const $ab = $('#det-abonos-body').empty();
-                  const abonos = Array.isArray(resp.abonos) ? resp.abonos : (Array.isArray(v.abonos) ? v.abonos : []);
-                  if (!abonos.length){
-                    $ab.append('<tr><td colspan="4" class="text-center text-muted">Sin abonos</td></tr>');
-                  } else {
-                    abonos.forEach(a=>{
-                      $ab.append(`
-                        <tr>
-                          <td>${fechaMx(a.fecha_abono)}</td>
-                          <td>${a.forma_pago_desc || '—'}</td>
-                          <td class="text-right">${mxn(a.monto)}</td>
-                          <td>${a.usuario_nombre || '—'}</td>
-                        </tr>
-                      `);
-                    });
-                  }
-                }
-
-                // Botón "Abonar": visible solo con saldo > 0
-                if ($('#det-btn-abonar').length){
-                  if (saldo > 0.0001) {
-                    $('#det-btn-abonar').removeClass('d-none');
-                  } else {
-                    $('#det-btn-abonar').addClass('d-none');
-                  }
-
-                  // Click abre modal de abono existente
-                  $('#det-btn-abonar').off('click').on('click', function(){
-                    $('#modalDetalle').modal('hide');
-                    $(`a.accion-abonar-venta[data-id="${v.id_venta}"]`).trigger('click');
-                  });
-                }
-              } else {
-                // No crédito: aseguramos que permanezcan ocultos
-                $wrapsCredito.addClass('d-none');
-              }
-              // -----------------------------------
-
-              $('#det-loader').hide();
-              $('#det-contenido').show();
-
-            },'json').fail(()=>{
-              $('#det-loader').hide();
-              $('#det-error').show().text('Error al cargar el detalle.');
-            });
+        // Productos
+        let tb='', total=0;
+        if (!dets.length){
+          tb = '<tr><td colspan="5" class="text-center text-muted">Sin productos</td></tr>';
+        } else {
+          dets.forEach(d=>{
+            const c = Number(d.cantidad || 0);
+            const u = Number(d.precio_unitario || 0);
+            const s = Number(d.subtotal ?? (c * u));
+            total += s;
+            tb += `<tr>
+              <td>${d.codigo || ('#'+(d.id_producto||''))}</td>
+              <td>${d.producto || ('#'+(d.id_producto||''))}</td>
+              <td class="text-center">${c}</td>
+              <td class="text-right">${mxn(u)}</td>
+              <td class="text-right">${mxn(s)}</td>
+            </tr>`;
           });
+        }
+        $('#det-tbody').html(tb);
+        $('#det-total').text(mxn(total || v.total || 0));
 
+        // Exclusivos de crédito
+        if (v.estatus === 'Credito') {
+          $('#wrap-det-estatus-credito, #wrap-det-abonado, #wrap-det-saldo, #wrap-det-abonos').removeClass('d-none');
+
+          if ($('#det-estatus-credito').length) $('#det-estatus-credito').html(getBadgeCredito(estCred));
+          if ($('#det-abonado').length)         $('#det-abonado').text(mxn(abonado));
+          if ($('#det-saldo').length)           $('#det-saldo').text(mxn(saldo));
+
+          if ($('#det-abonos-body').length){
+            const $ab = $('#det-abonos-body').empty();
+            const abonos = Array.isArray(resp.abonos) ? resp.abonos : (Array.isArray(v.abonos) ? v.abonos : []);
+            if (!abonos.length){
+              $ab.append('<tr><td colspan="4" class="text-center text-muted">Sin abonos</td></tr>');
+            } else {
+              abonos.forEach(a=>{
+                $ab.append(`
+                  <tr>
+                    <td>${fechaMx(a.fecha_abono)}</td>
+                    <td>${a.forma_pago_desc || '—'}</td>
+                    <td class="text-right">${mxn(a.monto)}</td>
+                    <td>${a.usuario_nombre || '—'}</td>
+                  </tr>
+                `);
+              });
+            }
+          }
+
+          if ($('#det-btn-abonar').length){
+            if (saldo > 0.0001) {
+              $('#det-btn-abonar').removeClass('d-none');
+            } else {
+              $('#det-btn-abonar').addClass('d-none');
+            }
+            $('#det-btn-abonar').off('click').on('click', function(){
+              $('#modalDetalle').modal('hide');
+              $(`a.accion-abonar-venta[data-id="${v.id_venta}"]`).trigger('click');
+            });
+          }
+        } else {
+          $wrapsCredito.addClass('d-none');
+        }
+
+        $('#det-loader').hide();
+        $('#det-contenido').show();
+
+      },'json').fail(()=>{
+        $('#det-loader').hide();
+        $('#det-error').show().text('Error al cargar el detalle.');
+      });
+    });
 
     /* ==========================================================================
        MÓDULO: Ticket (modal Ticket)
-       - Renderiza renglones del ticket
-       - Dispara impresión (php Mike42)
        ========================================================================== */
     function renderTkItem({ cantidad, articulo, precio_unitario, subtotal, descripcion }){
       const cant=(Number(cantidad||0)).toFixed(2), art=(articulo||''), precio=mxn(precio_unitario), total=mxn(subtotal);
@@ -536,7 +519,6 @@ if (!isset($_SESSION['usuario'])) {
       },'json').fail(()=> alert('Error al cargar el ticket.'));
     };
 
-    // Botón imprimir (usa util php Mike42 en /utils/ticket_mike42.php)
     $(document).on('click','#btnImprimirTicket',function(){
       const id=$('#tk-idventa').val(); if(!id){ alert('No hay venta seleccionada'); return; }
       $.get(`${BASE}/utils/ticket_mike42.php`,{id_venta:id})
@@ -546,8 +528,6 @@ if (!isset($_SESSION['usuario'])) {
 
     /* ==========================================================================
        MÓDULO: Cancelación (modal Eliminar)
-       - Abre modal de confirmación
-       - Llama a eliminar y refresca listado
        ========================================================================== */
     $(document).on('click','a.accion-eliminar',function(e){
       e.preventDefault();
@@ -568,22 +548,14 @@ if (!isset($_SESSION['usuario'])) {
 
     /* ==========================================================================
        MÓDULO: Activar venta guardada (modal Activar)
-       - Carga detalle + formas de pago
-       - Si forma de pago es Crédito (id=99 o texto), cliente es obligatorio
-       - Envía activar-guardada
        ========================================================================== */
-    // === Estado del modal "Activar venta" ===
-    let AC_TIENE_CLIENTE = false;   // true si la venta ya trae un id_cliente en BD
-    let AC_FP_CREDITO_ID = 21;      // ID por defecto de "Crédito (PPD)" en tu BD (antes asumías 99)
-    let AC_CLIENTES_CARGADOS = false; // Evita recargar clientes innecesariamente
+    let AC_TIENE_CLIENTE = false;
+    let AC_FP_CREDITO_ID = 21;
+    let AC_CLIENTES_CARGADOS = false;
 
-    /**
-     * Carga opciones de clientes en el <select>, con preselección opcional.
-     * @param {number|string|null} preselectId ID de cliente a preseleccionar (si viene de la venta)
-     */
     function ac_cargarClientes(preselectId) {
       const $sel = $('#ac-selCliente');
-      if (AC_CLIENTES_CARGADOS && !preselectId) return; // ya cargado y no se pidió preselección
+      if (AC_CLIENTES_CARGADOS && !preselectId) return;
 
       $.post(CLIENTES_URL, {accion:'listar-min', limite:200})
         .done(r=>{
@@ -602,28 +574,16 @@ if (!isset($_SESSION['usuario'])) {
         });
     }
 
-    /**
-     * Determina si la forma de pago seleccionada corresponde a "Crédito (PPD)".
-     * Regla:
-     *  1) Si conocemos el ID de crédito (AC_FP_CREDITO_ID), comparamos por value (robusto).
-     *  2) Fallback: si el texto incluye "credito" y NO incluye "tarjeta", lo consideramos crédito.
-     */
     function ac_esCreditoSeleccionado(){
       const $sel = $('#ac-selFormaPago');
       const val  = ($sel.val() ?? '').toString().trim();
 
-      // Comparación por ID conocido (más confiable)
       if (AC_FP_CREDITO_ID != null && val === String(AC_FP_CREDITO_ID)) return true;
 
-      // Fallback por texto (por si no llegó el catálogo o cambió el ID)
       const txt = norm($sel.find('option:selected').text());
       return txt.includes('credito') && !txt.includes('tarjeta');
     }
 
-    /**
-     * Muestra/oculta el bloque de selección de cliente en función de si es crédito.
-     * Además refresca el catálogo de clientes cuando sea necesario.
-     */
     function ac_toggleClienteRequired(){
       const $wrap = $('#ac-wrapCliente');
       const $help = $('#ac-helpCliente');
@@ -640,37 +600,31 @@ if (!isset($_SESSION['usuario'])) {
       }
     }
 
-    // === Abrir modal "Activar" ===
     $(document).on('click','a.accion-activar', function(e){
       e.preventDefault();
       const id = $(this).data('id');
       const folio = $(this).data('folio') || '—';
       if (!id) return;
 
-      // Reset estado UI
       $('#ac-id-venta').val(id);
       $('#ac-folio').text(folio);
       $('#ac-error').addClass('d-none').empty();
       $('#ac-fechaAhora').prop('checked', true);
       AC_TIENE_CLIENTE = false;
-      // AC_FP_CREDITO_ID se queda con 21 como valor por defecto (BD)
       $('#ac-wrapCliente').addClass('d-none').hide();
 
-      // 1) Traer detalle de venta (para saber si tiene cliente y preseleccionarlo)
       $.get(VENTAS_URL, {accion:'detalle', id_venta:id})
         .done(r=>{
           const v = r?.venta || {};
           AC_TIENE_CLIENTE = !!(v.id_cliente);
           const preIdCliente = v.id_cliente || '';
 
-          // 2) Cargar formas de pago y detectar el ID real de Crédito (PPD)
           $.get(FORMASPAGO_URL, {accion:'listar_select'})
             .done(rr=>{
               const arr = rr?.data || (Array.isArray(rr)?rr:[]);
               const $sel = $('#ac-selFormaPago').empty();
 
               if (!arr.length){
-                // Fallback mínimo coherente con tu BD: Crédito (PPD) = 21
                 $sel.append(
                   '<option value="1">Efectivo</option>'+
                   '<option value="2">Tarjeta</option>'+
@@ -683,31 +637,26 @@ if (!isset($_SESSION['usuario'])) {
                   const opt = $('<option/>', { value: fp.id_forma_pago, text: fp.descripcion });
                   $sel.append(opt);
 
-                  // Detecta "Crédito (PPD)" SIN confundir "Tarjeta de crédito"
                   const t = norm(fp.descripcion || '');
                   if (t.includes('credito') && !t.includes('tarjeta')) {
-                    AC_FP_CREDITO_ID = fp.id_forma_pago; // p. ej., 21 en tu BD
+                    AC_FP_CREDITO_ID = fp.id_forma_pago;
                   }
                 });
 
-                // Selecciona Efectivo por defecto si existe
                 const $ef = $sel.find('option').filter(function(){
                   return norm($(this).text()).includes('efectivo');
                 });
                 if ($ef.length) $ef.prop('selected', true);
               }
 
-              // Si la venta ya tenía cliente, recárgalo cuando cambie a crédito
               if (AC_TIENE_CLIENTE) {
                 $(document).one('change','#ac-selFormaPago', () => ac_cargarClientes(preIdCliente));
               }
 
-              // Evaluar si mostrar el selector de cliente de entrada
               ac_toggleClienteRequired();
               $('#modalActivarVenta').modal('show');
             })
             .fail(()=>{
-              // Fallback cuando el endpoint de formas de pago falla
               const $sel = $('#ac-selFormaPago').empty();
               $sel.append(
                 '<option value="1">Efectivo</option>'+
@@ -726,15 +675,10 @@ if (!isset($_SESSION['usuario'])) {
         });
     });
 
-    // Cuando cambia la forma de pago, recalcular si se requiere cliente
     $(document)
       .off('change.acfp', '#ac-selFormaPago')
       .on('change.acfp',  '#ac-selFormaPago', ac_toggleClienteRequired);
 
-    /**
-     * Confirmar "Activar": valida requisitos y llama al backend.
-     * - Si es crédito y la venta no traía cliente, obliga a elegir uno.
-     */
     $(document)
       .off('click','#btnConfirmarActivar')
       .on('click','#btnConfirmarActivar', function(){
@@ -751,18 +695,15 @@ if (!isset($_SESSION['usuario'])) {
         const esCredito = ac_esCreditoSeleccionado();
         const idClienteSel = $('#ac-selCliente').val() ? Number($('#ac-selCliente').val()) : null;
 
-        // Si se va a activar como Crédito y la venta no tenía cliente, obligar selección
         if (esCredito && !AC_TIENE_CLIENTE && !idClienteSel){
           $('#ac-error').removeClass('d-none').text('Para activar como Crédito debes seleccionar un cliente.');
           return;
         }
 
-        // UI: spinner en botón
         const $btn = $(this);
         const html = $btn.html();
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Activando...');
 
-        // Llamada al backend
         $.post(VENTAS_URL, {
           accion:'activar-guardada',
           id_venta:idVenta,
@@ -786,13 +727,8 @@ if (!isset($_SESSION['usuario'])) {
         });
     });
 
-
     /* ==========================================================================
        MÓDULO: Editor de venta (modal Editar)
-       - Busca productos con sugerencias
-       - Maneja carrito editable (cantidades, precios, subtotales)
-       - Valida crédito -> cliente obligatorio
-       - Guarda actualización de venta
        ========================================================================== */
     const $modalEd = $('#modalEditarVenta');
     const $edFolio = $('#ed-folio');
@@ -895,7 +831,6 @@ if (!isset($_SESSION['usuario'])) {
       return !txtN.includes('tarjeta') && /^\s*credito(?:\s*\(.*\))?\s*$/.test(txtN);
     }
 
-    // Sugerencias (UI rápida con datos básicos + enrich async)
     function sugHTMLBasico(p){
       return `
         <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
@@ -914,7 +849,6 @@ if (!isset($_SESSION['usuario'])) {
       arr.forEach(p=>$sug.append(sugHTMLBasico(p)));
       $sug.show();
 
-      // Enriquecer cada ítem con precios/stock
       $sug.find('a.list-group-item').each(function(){
         const id=Number($(this).data('id')), $row=$(this);
         $.post(PRODUCTOS_URL,{accion:'detalle', id_producto:id})
@@ -963,7 +897,6 @@ if (!isset($_SESSION['usuario'])) {
        .fail(()=> toastr.error('No se pudo obtener el detalle del producto'));
     }
 
-    // Carrito (agregar desde detalle)
     function agregarDesdeDetalle(p, originalCant=0){
       const idx = carrito.findIndex(x=>x.id_producto==p.id_producto);
       const itemBase = {
@@ -988,7 +921,6 @@ if (!isset($_SESSION['usuario'])) {
       pintarCarrito();
     }
 
-    // Determina precio unitario efectivo
     function precioDeItemCarrito(it){
       if (typeof it.override_unit === 'number' && !isNaN(it.override_unit)) return Number(it.override_unit);
       const t = $tpPrecio.val() || 'publico';
@@ -997,7 +929,6 @@ if (!isset($_SESSION['usuario'])) {
       return Number(it.precio_publico||0);
     }
 
-    // Redibuja tabla del carrito y total
     function pintarCarrito(){
       const tb=$tbody.empty();
       if(!carrito.length){
@@ -1053,7 +984,6 @@ if (!isset($_SESSION['usuario'])) {
       $totalEd.text(mxn(total));
     }
 
-    // Controles de cantidad / subtotal / borrar
     $tbody.on('click','button[data-ed-inc]', function(){
       const i=Number(this.dataset.edInc); if(isNaN(i)||!carrito[i]) return;
       const vendible=Math.max(0, Number(carrito[i].stock_actual) - Number(carrito[i].stock_minimo));
@@ -1088,7 +1018,6 @@ if (!isset($_SESSION['usuario'])) {
 
     $tpPrecio.on('change', pintarCarrito);
 
-    // Guardar edición de la venta
     $('#btnGuardarEdicion').on('click', function(){
       if (!edVentaId){ toastr.error('No hay venta cargada.'); return; }
       if (!carrito.length){ toastr.warning('Agrega productos a la orden'); return; }
@@ -1138,7 +1067,6 @@ if (!isset($_SESSION['usuario'])) {
         .always(()=> $b.prop('disabled',false).html(txt));
     });
 
-    // Abrir modal de edición (carga venta + carrito con control de stock máx vendible)
     window.abrirEditarVenta = function(idVenta){
       if(!idVenta) return;
       edVentaId = Number(idVenta);
@@ -1203,25 +1131,19 @@ if (!isset($_SESSION['usuario'])) {
 
     /* ==========================================================================
        MÓDULO: Abonos a ventas (modal Abono)
-       - Carga formas de pago
-       - Muestra saldo disponible
-       - Valida y guarda abono
        ========================================================================== */
     function cargarFormasPagoAbono(selected){
       const $sel = $('#ab-forma');
       if (!$sel.length) return;
 
-      // Si conoces IDs exactos a excluir, ponlos aquí (opcional)
-      const EXCLUDE_FP_IDS = []; // ej. [6]
+      const EXCLUDE_FP_IDS = [];
 
-      // Normaliza texto: quita acentos y pasa a minúsculas
-      const norm = (t)=> String(t||'')
+      const normTxt = (t)=> String(t||'')
         .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
         .toLowerCase().trim();
 
-      // Detecta "Crédito", "Crédito (PPD)", etc. (no coincide con "Tarjeta de crédito")
       const esCreditoPuro = (desc)=>{
-        const txt = norm(desc);
+        const txt = normTxt(desc);
         return /^credito\b/.test(txt) && !/tarjeta/.test(txt);
       };
 
@@ -1230,8 +1152,6 @@ if (!isset($_SESSION['usuario'])) {
       $.get(FORMASPAGO_URL, {accion:'listar_select'})
         .done(r=>{
           const arr = r?.data || (Array.isArray(r)?r:[]);
-
-          // Filtra fuera "Crédito …" y los IDs excluidos (si los agregas)
           const filtradas = arr.filter(fp => {
             const id   = Number(fp.id_forma_pago);
             const desc = fp.descripcion ?? '';
@@ -1247,22 +1167,19 @@ if (!isset($_SESSION['usuario'])) {
               $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
             });
 
-            // Respetar selected si existe tras el filtrado
             if (selected != null && $sel.find(`option[value="${String(selected)}"]`).length){
               $sel.val(String(selected));
             }
 
-            // Si aún no hay selección, intenta con "Efectivo"
             if(!$sel.val()){
               const opEfe = $sel.find('option').filter(function(){
-                return norm($(this).text()) === 'efectivo';
+                return normTxt($(this).text()) === 'efectivo';
               }).first().val();
               if(opEfe) $sel.val(opEfe);
             }
           }
         })
         .fail(()=>{
-          // Fallback sin incluir "Crédito"
           $sel.empty()
               .append('<option value="1">Efectivo</option>')
               .append('<option value="2">Tarjeta de crédito</option>')
@@ -1272,7 +1189,6 @@ if (!isset($_SESSION['usuario'])) {
         .always(()=> $sel.prop('disabled', false));
     }
 
-    // Abrir modal Abono: carga saldo y formas de pago
     $(document).on('click','a.accion-abonar-venta', function(e){
       e.preventDefault();
       const id = Number($(this).data('id'));
@@ -1299,7 +1215,6 @@ if (!isset($_SESSION['usuario'])) {
       }, 'json').fail(()=> toastr.error('No se pudo obtener el saldo.'));
     });
 
-    // Guardar abono
     $('#formAbonoVenta').on('submit', function(e){
       e.preventDefault();
       const id_venta = Number($('#ab-id-venta').val());
@@ -1342,7 +1257,8 @@ if (!isset($_SESSION['usuario'])) {
        MÓDULO: Inicialización
        ========================================================================== */
     $(function(){
-      cargarVentas(paginaActual); // primer render del listado
+      // Con el input de fecha vacío y el post mandando null, listará TODO por defecto
+      cargarVentas(paginaActual);
     });
     </script>
   </body>

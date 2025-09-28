@@ -1,23 +1,22 @@
 <?php
-// Detectar entorno según el hostname
+// Detectar si estamos en local o en el servidor
 $isLocal = in_array($_SERVER['HTTP_HOST'], ['localhost', '127.0.0.1']);
 
-// Configuración según entorno
+// Configuración dinámica según el entorno
 if ($isLocal) {
-    // 🖥️ Entorno local (XAMPP, Laragon, etc.)
+    // Configuración local
     define('DB_HOST', 'localhost');
     define('DB_NAME', 'punto_venta_db');
     define('DB_USER', 'root');
-    define('DB_PASS', '');
+    define('DB_PASS', '123456789$');
 } else {
-    // 🌐 Producción (cPanel)
-    define('DB_HOST', 'localhost');        // o el host MySQL del cPanel, a veces es distinto
-    define('DB_NAME', 'USUARIOCPANEL_punto_venta_db');
-    define('DB_USER', 'USUARIOCPANEL_root');
-    define('DB_PASS', 'TU_PASSWORD_AQUI');
+    // Configuración para servidor (CPanel)
+    define('DB_HOST', 'localhost');
+    define('DB_NAME', 'refacc26_ventas_db');
+    define('DB_USER', 'refacc26_root');
+    define('DB_PASS', 'REFACCIONARIA123456789');
 }
 
-// Charset
 define('DB_CHARSET', 'utf8mb4');
 
 // Opciones de PDO seguras
@@ -30,7 +29,6 @@ $options = [
 try {
     $dsn = "mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=".DB_CHARSET;
     $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
-
 } catch (PDOException $e) {
     if (ini_get('display_errors')) {
         die("Error de conexión: " . $e->getMessage());
@@ -39,3 +37,4 @@ try {
         die("Ocurrió un problema al conectar con la base de datos.");
     }
 }
+?>
