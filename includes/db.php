@@ -8,7 +8,7 @@ if ($isLocal) {
     define('DB_HOST', 'localhost');
     define('DB_NAME', 'punto_venta_db');
     define('DB_USER', 'root');
-    define('DB_PASS', '123456789$');
+    define('DB_PASS', '');
 } else {
     // Configuración para servidor (CPanel)
     define('DB_HOST', 'localhost');

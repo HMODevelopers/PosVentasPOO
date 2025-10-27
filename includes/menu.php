@@ -59,7 +59,6 @@
                                 </ul>
                             </li>
 
-
                             <li class="has-submenu">
                                 <a href="#">
                                     <i class=" la la-folder"></i>Catalogos <div class="arrow-down"></div></a>
@@ -78,6 +77,18 @@
                                     </li>
                                     <li>
                                         <a href="<?= BASE_URL ?>/views/private/catalogos/cajas.php">Cajas</a>
+                                    </li>
+                                </ul>
+                            </li>
+
+                             <li class="has-submenu">
+                                <a href="#"> <i class="la la-car ms-1"></i>Talleres <div class="arrow-down"></div></a>
+                                <ul class="submenu">
+                                    <li>
+                                        <a href="<?= BASE_URL ?>/views/private/talleres/listasproductos.php">Lista de productos</a>
+                                    </li>
+                                    <li>
+                                        <a href="<?= BASE_URL ?>/views/private/talleres/miscompras.php">Mis compras</a>
                                     </li>
                                 </ul>
                             </li>

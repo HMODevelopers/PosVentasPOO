@@ -1,4 +1,5 @@
 <?php
+require('../assets/libs/phpSpreadsheet/vendor/autoload.php'); // Incluye PhpSpreadsheet
 header('Content-Type: application/json; charset=UTF-8');
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -75,6 +76,8 @@ switch ($accion) {
         $ok = $proveedorModel->eliminar($id, $idUsuario);
         echo json_encode(['ok' => (bool)$ok]);
     break;
+
+
 
     default:
         echo json_encode(['error' => 'Acción no válida']);
