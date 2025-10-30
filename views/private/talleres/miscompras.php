@@ -51,8 +51,106 @@ if (!isset($_SESSION['usuario'])) {
       <!-- Fin Loader -->
 
       <div class="container-fluid">
-        <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>
+       <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>
+        <div class="card-header" style="border-color:darkgray; border-style:dotted;">
+                        <h5>Filtros</h5>
 
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <div class="row">
+
+                                    <!-- Filtro por Código -->
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label for="Codigo" class="control-label">Código</label>
+                                            <div class="input-group">
+                                                <input type="text" id="Codigo" name="Codigo" class="form-control filtrar">
+                                                <div class="input-group-append clean-filter">
+                                                    <span class="input-group-text">
+                                                        <i class="mdi mdi-close-circle text-danger" onclick="clearField('Codigo')"></i>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Filtro por Descripción -->
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label for="Descripcion" class="control-label">Descripción</label>
+                                            <div class="input-group">
+                                                <input type="text" id="Descripcion" name="Descripcion" class="form-control filtrar">
+                                                <div class="input-group-append clean-filter">
+                                                    <span class="input-group-text">
+                                                        <i class="mdi mdi-close-circle text-danger" onclick="clearField('Descripcion')"></i>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Filtro por Fecha -->
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label for="FechaVenta" class="control-label">Fecha de Venta</label>
+                                            <div class="input-group">
+                                                <input type="date" id="FechaVenta" name="FechaVenta" class="form-control filtrar" value="<?php echo date('Y-m-d'); ?>">
+                                                <div class="input-group-append clean-filter">
+                                                    <span class="input-group-text">
+                                                        <i class="mdi mdi-close-circle text-danger" onclick="clearField('FechaVenta')"></i>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    
+                                    
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <div class="card-box">
+                                
+                                
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-striped" id="ventas-table">
+                                        <thead>
+                                            <tr>
+                                                <th>No Tiket</th>
+                                                <th>Código</th>
+                                                <th>Descripción</th>
+                                                <th>Cantidad</th>
+                                                <th>Precio</th>
+                                                <th>Total</th>
+                                                <th>Fecha Venta</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Los datos se llenarán aquí con jQuery -->
+                                        </tbody>
+                                    </table>
+                                </div> <!-- end .table-responsive -->
+                                
+                                <div class="row">
+                                    <div class="col col-md-4">
+                                          <!-- Total de ventas -->    
+                                        <h4>Total compras del día:</h4> <h5><span id="total-venta"><strong> $ 0.00</strong></span></h5>
+                                    </div>
+                                    <div class="col col-md-8">
+                                        <nav aria-label="Page navigation example">
+                                            <ul id="pagination" class="pagination justify-content-end"></ul>
+                                        </nav>
+                                    </div>
+                                </div>
+
+                            </div> <!-- end card-box -->
+                        </div> <!-- end col -->
+                    </div>
        
         </div><!-- container-fluid -->
     </div><!-- wrapper -->

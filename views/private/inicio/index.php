@@ -115,6 +115,23 @@ $hoy = date('Y-m-d');
                     </div>
                 </div>
 
+                <!-- Crédito del día -->
+                <div class="col-xl-3 col-md-6">
+                    <div class="card kpi-card bg-soft-info">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <div class="kpi-titulo">Crédito del día</div>
+                                    <div id="ventaCredito" class="kpi-valor">$0.00</div>
+                                    <div class="kpi-sub">Ventas a crédito</div>
+                                </div>
+                                <i class="icon mdi mdi-account-cash-outline text-info"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Checadas -->
                 <div class="col-xl-3 col-md-6">
                     <div class="card kpi-card bg-soft-secondary">
                         <div class="card-body">
@@ -130,6 +147,7 @@ $hoy = date('Y-m-d');
                     </div>
                 </div>
 
+                <!-- Préstamos del día -->
                 <div class="col-xl-3 col-md-6">
                     <div class="card kpi-card bg-soft-warning">
                         <div class="card-body">
@@ -145,14 +163,19 @@ $hoy = date('Y-m-d');
                     </div>
                 </div>
 
+                <!-- Abonos a PRÉSTAMOS -->
                 <div class="col-xl-3 col-md-6">
                     <div class="card kpi-card bg-soft-primary">
                         <div class="card-body">
                             <div class="d-flex justify-content-between">
                                 <div>
-                                    <div class="kpi-titulo">Pagos o Abonos</div>
+                                    <div class="kpi-titulo">Pagos/Abonos (Préstamos)</div>
                                     <div id="abonosDia" class="kpi-valor">$0.00</div>
-                                    <div class="kpi-sub">Abonos a préstamos</div>
+                                    <div class="kpi-sub">
+                                        Abonos a préstamos
+                                        <span class="badge bg-light text-dark ms-2" id="pill-abono-ef">Ef: $0.00</span>
+                                        <span class="badge bg-light text-dark ms-1" id="pill-abono-tj">TJ/TR: $0.00</span>
+                                    </div>
                                 </div>
                                 <i class="icon mdi mdi-cash-refund text-primary"></i>
                             </div>
@@ -160,6 +183,27 @@ $hoy = date('Y-m-d');
                     </div>
                 </div>
 
+                <!-- NUEVO: Abonos a VENTAS a CRÉDITO -->
+                <div class="col-xl-3 col-md-6">
+                  <div class="card kpi-card bg-soft-info">
+                    <div class="card-body">
+                      <div class="d-flex justify-content-between">
+                        <div>
+                          <div class="kpi-titulo">Abonos a crédito</div>
+                          <div id="abonosCreditoDia" class="kpi-valor">$0.00</div>
+                          <div class="kpi-sub">
+                            Pagos a ventas a crédito
+                            <span class="badge bg-light text-dark ms-2" id="pill-abono-cred-ef">Ef: $0.00</span>
+                            <span class="badge bg-light text-dark ms-1" id="pill-abono-cred-tj">TJ/TR: $0.00</span>
+                          </div>
+                        </div>
+                        <i class="icon mdi mdi-cash-check text-info"></i>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Efectivo en caja -->
                 <div class="col-xl-3 col-md-6">
                     <div class="card kpi-card bg-soft-success">
                         <div class="card-body">
@@ -167,7 +211,7 @@ $hoy = date('Y-m-d');
                                 <div>
                                     <div class="kpi-titulo">Efectivo en caja</div>
                                     <div id="efectivoEnCaja" class="kpi-valor">$0.00</div>
-                                    <div class="kpi-sub">Efectivo + Abonos − Préstamos</div>
+                                    <div class="kpi-sub">VEF + APEF + ACEF − PEF</div>
                                 </div>
                                 <i class="icon mdi mdi-safe-square-outline text-success"></i>
                             </div>
@@ -175,6 +219,7 @@ $hoy = date('Y-m-d');
                     </div>
                 </div>
 
+                <!-- Venta Total (según regla definida) -->
                 <div class="col-xl-3 col-md-6">
                     <div class="card kpi-card bg-soft-danger">
                         <div class="card-body">
@@ -182,7 +227,7 @@ $hoy = date('Y-m-d');
                                 <div>
                                     <div class="kpi-titulo">Venta Total</div>
                                     <div id="ventaTotal" class="kpi-valor">$0.00</div>
-                                    <div class="kpi-sub">Efectivo + Tarjeta − Checadas</div>
+                                    <div class="kpi-sub">Efectivo + Tarjeta + Crédito</div>
                                 </div>
                                 <i class="icon mdi mdi-chart-areaspline text-danger"></i>
                             </div>
@@ -205,7 +250,7 @@ $hoy = date('Y-m-d');
                 <div class="col-xl-6">
                     <div class="card">
                         <div class="card-body">
-                            <h5 class="mb-3">Top 10 productos del mes con mas ventas</h5>
+                            <h5 class="mb-3">Top 10 productos del mes con más ventas</h5>
                             <div id="chart-top-prod"></div>
                         </div>
                     </div>
@@ -273,14 +318,45 @@ $hoy = date('Y-m-d');
                     return;
                 }
                 const d = resp.data || {};
+
+                // == Ventas y checadas ==
                 setText('ventaDia',        d.venta_dia);
                 setText('ventaEfectivo',   d.venta_efectivo);
                 setText('ventaTarjeta',    d.venta_tarjeta);
+                setText('ventaCredito',    d.venta_credito);
                 setText('checadas',        d.importe_chkda);
-                setText('prestamosDia',    d.prestamos_dia);
-                setText('abonosDia',       d.abonos_dia);
+
+                // == Préstamos ==
+                if (d.prestamos && d.prestamos.prestamos_disposiciones_total != null) {
+                    setText('prestamosDia', d.prestamos.prestamos_disposiciones_total);
+                } else {
+                    setText('prestamosDia', d.prestamos_dia);
+                }
+
+                // == Abonos a PRÉSTAMOS ==
+                setText('abonosDia', (d.abonos && d.abonos.total != null) ? d.abonos.total : d.abonos_dia);
+                if (d.abonos) {
+                    const elEf = document.getElementById('pill-abono-ef');
+                    const elTj = document.getElementById('pill-abono-tj');
+                    if (elEf) elEf.textContent = 'Ef: ' + mxn(d.abonos.efectivo || 0);
+                    if (elTj) elTj.textContent = 'TJ/TR: ' + mxn(d.abonos.tarjeta_transfer || 0);
+                }
+
+                // == NUEVO: Abonos a VENTAS a CRÉDITO ==
+                if (d.abonos_credito) {
+                  setText('abonosCreditoDia', d.abonos_credito.total || 0);
+                  const elEfC = document.getElementById('pill-abono-cred-ef');
+                  const elTjC = document.getElementById('pill-abono-cred-tj');
+                  if (elEfC) elEfC.textContent = 'Ef: ' + mxn(d.abonos_credito.efectivo || 0);
+                  if (elTjC) elTjC.textContent = 'TJ/TR: ' + mxn(d.abonos_credito.tarjeta_transfer || 0);
+                }
+
+                // == Efectivo en caja (nuevo cálculo del modelo) ==
                 setText('efectivoEnCaja',  d.efectivo_en_caja);
-                setText('ventaTotal',      d.venta_total);
+
+                // == Venta Total (si viene la real, úsala) ==
+                const vt = (typeof d.venta_total_real !== 'undefined') ? d.venta_total_real : d.venta_total;
+                setText('ventaTotal', vt);
             })
             .fail(function(err){
                 console.error(err);
@@ -314,7 +390,7 @@ $hoy = date('Y-m-d');
                     labels: { formatter: v => v.toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }
                 },
                 plotOptions: { bar: { horizontal: true, barHeight:'70%', distributed: true } },
-                colors: colors, // <- distinto por cada barra
+                colors: colors,
                 tooltip: {
                     x: { formatter: (val, {dataPointIndex}) => labels[dataPointIndex] },
                     y: { formatter: v => v.toLocaleString('es-MX',{style:'currency',currency:'MXN'}) }

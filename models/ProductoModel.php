@@ -1,31 +1,42 @@
 <?php
-// Incluir conexión PDO
+// Incluir conexión PDO (debe exponer $pdo)
 include_once '../includes/db.php';
 
 class ProductoModel
 {
+    /** @var PDO */
     private $conn;
 
     public function __construct()
     {
+        // $pdo viene de ../includes/db.php
         global $pdo;
         $this->conn = $pdo;
     }
 
-    // ================== LISTADO + CONTAR ==================
-    public function listar(int $pagina = 1,int $limite = 10,string $codigo = '',string $descripcion = '',?int $idProveedor = null, ?int $idGrupo = null) 
-    {
+    /* ============================================================
+     * LISTADO + CONTAR
+     * ============================================================ */
+
+    public function listar(
+        int $pagina = 1,
+        int $limite = 10,
+        string $codigo = '',
+        string $descripcion = '',
+        ?int $idProveedor = null,
+        ?int $idGrupo = null
+    ) {
         $offset = ($pagina - 1) * $limite;
 
         $sql = "SELECT
                     p.*,
-                    pr.nombre       AS proveedor,
-                    u.descripcion   AS unidad_sat,
-                    g.nombre_grupo  AS grupo       -- NUEVO (expuesto si lo necesitas en front)
+                    pr.nombre      AS proveedor,
+                    u.descripcion  AS unidad_sat,
+                    g.nombre_grupo AS grupo
                 FROM productos p
-                LEFT JOIN proveedores  pr ON p.id_proveedor   = pr.id_proveedor
-                LEFT JOIN unidades_sat u  ON p.id_unidad_sat  = u.id_unidad_sat
-                LEFT JOIN cat_grupos   g  ON g.id_grupo       = p.id_grupo   -- NUEVO
+                LEFT JOIN proveedores  pr ON p.id_proveedor  = pr.id_proveedor
+                LEFT JOIN unidades_sat u  ON p.id_unidad_sat = u.id_unidad_sat
+                LEFT JOIN cat_grupos   g  ON p.id_grupo      = g.id_grupo
                 WHERE p.activo = 1";
         $params = [];
 
@@ -41,13 +52,13 @@ class ProductoModel
             $sql .= " AND p.id_proveedor = :idprov";
             $params[':idprov'] = (int)$idProveedor;
         }
-        if (!empty($idGrupo)) {                        // NUEVO
+        if (!empty($idGrupo)) {
             $sql .= " AND p.id_grupo = :idg";
             $params[':idg'] = (int)$idGrupo;
         }
 
         $sql .= " ORDER BY p.id_producto DESC
-                LIMIT :limite OFFSET :offset";
+                  LIMIT :limite OFFSET :offset";
 
         $st = $this->conn->prepare($sql);
         foreach ($params as $k => $v) {
@@ -60,8 +71,12 @@ class ProductoModel
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function contar(string $codigo = '',string $descripcion = '',?int $idProveedor = null,?int $idGrupo = null ) 
-    {
+    public function contar(
+        string $codigo = '',
+        string $descripcion = '',
+        ?int $idProveedor = null,
+        ?int $idGrupo = null
+    ) {
         $sql = "SELECT COUNT(*) AS total
                 FROM productos p
                 WHERE p.activo = 1";
@@ -79,7 +94,7 @@ class ProductoModel
             $sql .= " AND p.id_proveedor = :idprov";
             $params[':idprov'] = (int)$idProveedor;
         }
-        if (!is_null($idGrupo)) {                      // NUEVO
+        if (!is_null($idGrupo)) {
             $sql .= " AND p.id_grupo = :idg";
             $params[':idg'] = (int)$idGrupo;
         }
@@ -93,18 +108,21 @@ class ProductoModel
         return (int)($st->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
     }
 
-    // ================== CRUD ==================
+    /* ============================================================
+     * CRUD BÁSICO
+     * ============================================================ */
+
     public function obtenerPorId(int $id)
     {
         $sql = "SELECT
                     p.*,
-                    pr.nombre       AS proveedor,
-                    u.descripcion   AS unidad_sat,
-                    g.nombre_grupo  AS grupo      -- NUEVO: nombre del grupo para detalle
+                    pr.nombre      AS proveedor,
+                    u.descripcion  AS unidad_sat,
+                    g.nombre_grupo AS grupo
                 FROM productos p
                 LEFT JOIN proveedores  pr ON pr.id_proveedor = p.id_proveedor
                 LEFT JOIN unidades_sat u  ON u.id_unidad_sat = p.id_unidad_sat
-                LEFT JOIN cat_grupos   g  ON g.id_grupo      = p.id_grupo     -- NUEVO
+                LEFT JOIN cat_grupos   g  ON g.id_grupo      = p.id_grupo
                 WHERE p.id_producto = :id
                 LIMIT 1";
         $st = $this->conn->prepare($sql);
@@ -114,13 +132,12 @@ class ProductoModel
     }
 
     /**
-     * CREAR producto + inventario + bitácora (estilo Compras)
-     * $d debe incluir: 'id_usuario' (int). 'id_sucursal' opcional (default 1).
-     * Retorna: ['ok'=>true, 'id_producto'=>ID] | ['ok'=>false,'msg'=>error]
+     * CREAR producto + (si aplica) movimiento de inventario + bitácora
+     * $d: requiere id_usuario; id_sucursal opcional (default 1)
      */
     public function crear(array $d)
     {
-        // Compatibilidad: mapear peldano -> peldaño si viene así desde el front
+        // compat: peldano -> peldaño
         if (!array_key_exists('peldaño', $d) && array_key_exists('peldano', $d)) {
             $d['peldaño'] = $d['peldano'];
         }
@@ -144,8 +161,8 @@ class ProductoModel
             $st->execute([
                 ':idprov' => $d['id_proveedor']            ?? null,
                 ':iduni'  => $d['id_unidad_sat']           ?? null,
-                ':idg'    => $d['id_grupo']                ?? null,     // NUEVO
-                ':clave'  => $d['clave_prod_serv_sat']     ?? '01010101',  // NOT NULL
+                ':idg'    => $d['id_grupo']                ?? null,
+                ':clave'  => $d['clave_prod_serv_sat']     ?? '01010101',
                 ':cod'    => $d['codigo']                  ?? null,
                 ':des'    => trim($d['descripcion'] ?? ''),
 
@@ -170,7 +187,7 @@ class ProductoModel
             $ref          = $d['codigo'] ?? ('PROD-' . $idProducto);
             $stockInicial = (float)($d['stock_actual'] ?? 0);
 
-            // Movimiento de inventario si stock inicial > 0
+            // si stock inicial > 0, registrar entrada
             if ($stockInicial > 0) {
                 $stMov = $this->conn->prepare(
                     "INSERT INTO inventario_movimientos
@@ -187,7 +204,7 @@ class ProductoModel
                 ]);
             }
 
-            // Bitácora
+            // bitácora
             $this->registrarBitacora(
                 $idUsuario,
                 'productos',
@@ -206,20 +223,17 @@ class ProductoModel
 
         } catch (Exception $e) {
             $this->conn->rollBack();
-            try {
-                $this->registrarBitacora((int)($d['id_usuario'] ?? 0), 'productos', 'ERROR', 0, $e->getMessage());
-            } catch (\Throwable $th) {}
+            try { $this->registrarBitacora((int)($d['id_usuario'] ?? 0), 'productos', 'ERROR', 0, $e->getMessage()); } catch (\Throwable $th) {}
             return ['ok' => false, 'msg' => $e->getMessage()];
         }
     }
 
     /**
-     * ACTUALIZAR producto + inventario (delta) + bitácora (estilo Compras)
-     * $d puede incluir: 'stock_actual' (para calcular delta), 'id_usuario', 'id_sucursal'
+     * ACTUALIZAR producto + movimientos por delta de stock + bitácora
      */
-   public function actualizar(int $id, array $d)
-{
-        // Compat: peldano -> peldaño (input sin acento)
+    public function actualizar(int $id, array $d)
+    {
+        // compat: peldano -> peldaño
         if (!array_key_exists('peldaño', $d) && array_key_exists('peldano', $d)) {
             $d['peldaño'] = $d['peldano'];
         }
@@ -227,15 +241,12 @@ class ProductoModel
         try {
             $this->conn->beginTransaction();
 
-            // 1) Estado previo con lock
+            // estado previo (lock)
             $stPrev = $this->conn->prepare("SELECT * FROM productos WHERE id_producto = :id FOR UPDATE");
             $stPrev->execute([':id' => $id]);
             $prev = $stPrev->fetch(PDO::FETCH_ASSOC);
-            if (!$prev) {
-                throw new Exception('Producto no encontrado.');
-            }
+            if (!$prev) throw new Exception('Producto no encontrado.');
 
-            // 2) Definición de campos
             $numericFields = [
                 'costo_neto','precio_publico','precio_taller','precio_proveedor',
                 'stock_actual','stock_maximo','stock_minimo','piso','pasillo','estante','peldaño'
@@ -243,60 +254,48 @@ class ProductoModel
             $keyFields  = ['id_proveedor','id_unidad_sat','id_grupo','activo'];
             $textFields = ['clave_prod_serv_sat','codigo','descripcion'];
 
-            // 3) Normaliza nuevos valores tomando lo que venga en $d o lo previo
             $new = [];
-            foreach ($keyFields as $f) {
-                $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f];
-            }
-            foreach ($textFields as $f) {
-                $new[$f] = array_key_exists($f,$d) ? (($f==='descripcion') ? trim($d[$f]) : $d[$f]) : $prev[$f];
-            }
-            foreach ($numericFields as $f) {
-                $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f];
-            }
+            foreach ($keyFields as $f)  { $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f]; }
+            foreach ($textFields as $f) { $new[$f] = array_key_exists($f,$d) ? (($f==='descripcion')? trim($d[$f]) : $d[$f]) : $prev[$f]; }
+            foreach ($numericFields as $f) { $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f]; }
 
-            // 4) Detectar cambios
             $changes = [];
             $isDiff = function($old, $new, $numeric = false) {
                 if ($numeric) return (float)$old != (float)$new;
                 return (string)$old !== (string)$new;
             };
-            foreach ($keyFields as $f)     if ($isDiff($prev[$f], $new[$f], false)) $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
-            foreach ($textFields as $f)    if ($isDiff($prev[$f], $new[$f], false)) $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
-            foreach ($numericFields as $f) if ($isDiff($prev[$f], $new[$f], true))  $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>true];
+            foreach ($keyFields as $f)     if ($isDiff($prev[$f], $new[$f]))            $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
+            foreach ($textFields as $f)    if ($isDiff($prev[$f], $new[$f]))            $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>false];
+            foreach ($numericFields as $f) if ($isDiff($prev[$f], $new[$f], true))      $changes[$f] = ['old'=>$prev[$f], 'new'=>$new[$f], 'numeric'=>true];
 
-            // 5) Sin cambios
             if (empty($changes)) {
                 $this->conn->commit();
                 return ['ok' => true, 'id_producto' => $id, 'msg' => 'Sin cambios'];
             }
 
-            // Helpers para ident y placeholder seguros
+            // helpers para nombres seguros
             $quoteIdent = function(string $name): string {
-                // protege backticks en el nombre (raro, pero seguro)
                 return '`' . str_replace('`','``',$name) . '`';
             };
             $paramNameFor = function(string $field): string {
-                // reemplaza todo lo que no sea [a-zA-Z0-9_] por _
                 $ascii = preg_replace('/[^a-zA-Z0-9_]/', '_', $field);
-                // si inicia con número, prefija _
                 if ($ascii === '' || ctype_digit($ascii[0])) $ascii = '_' . $ascii;
                 return ':' . $ascii;
             };
 
-            // 6) UPDATE solo de campos cambiados (ASCII placeholders)
+            // UPDATE solo de campos cambiados
             $setSql = [];
             $params = [':id' => $id];
             foreach ($changes as $field => $info) {
-                $col   = $quoteIdent($field);        // `peldaño` OK
-                $pname = $paramNameFor($field);      // :pelda_o  (ASCII)
-                $setSql[]        = "$col = $pname";
-                $params[$pname]  = $info['new'];
+                $col   = $quoteIdent($field);       // soporta `peldaño`
+                $pname = $paramNameFor($field);     // :pelda_o
+                $setSql[]       = "$col = $pname";
+                $params[$pname] = $info['new'];
             }
             $sqlUpd = "UPDATE productos SET ".implode(', ', $setSql)." WHERE id_producto = :id";
             $this->conn->prepare($sqlUpd)->execute($params);
 
-            // 7) Movimientos de inventario
+            // movimientos por delta de stock
             $idUsuario = (int)($d['id_usuario']   ?? 0);
             $idSucursal= !empty($d['id_sucursal']) ? (int)$d['id_sucursal'] : 1;
             $ref       = $prev['codigo'] ? ('EDIT-' . $prev['codigo']) : ('PROD-' . $id);
@@ -304,8 +303,8 @@ class ProductoModel
             $insertAjuste = function(string $motivo) use ($id, $idSucursal, $idUsuario, $ref) {
                 $stm = $this->conn->prepare(
                     "INSERT INTO inventario_movimientos
-                    (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
-                    VALUES (:idp, 'Ajuste', 0, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+                     (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
+                     VALUES (:idp, 'Ajuste', 0, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
                 );
                 $stm->execute([
                     ':idp'   => $id,
@@ -322,8 +321,8 @@ class ProductoModel
                     $tipo = $delta > 0 ? 'Entrada' : 'Salida';
                     $stm = $this->conn->prepare(
                         "INSERT INTO inventario_movimientos
-                        (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
-                        VALUES (:idp, :tipo, :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
+                         (id_producto, tipo, cantidad, id_sucursal, id_usuario, referencia, motivo, fecha, activo)
+                         VALUES (:idp, :tipo, :cant, :idsuc, :idusr, :ref, :mot, NOW(), 1)"
                     );
                     $stm->execute([
                         ':idp'   => $id,
@@ -337,31 +336,13 @@ class ProductoModel
                 }
             }
 
-            if (isset($changes['id_proveedor'])) {
-                $insertAjuste('Cambio de proveedor: '.$changes['id_proveedor']['old'].' → '.$changes['id_proveedor']['new']);
-            }
-            if (isset($changes['precio_proveedor'])) {
-                $insertAjuste('Cambio de precio del proveedor: '.
-                    number_format((float)$changes['precio_proveedor']['old'],2,'.','').' → '.
-                    number_format((float)$changes['precio_proveedor']['new'],2,'.',''));
-            }
-            if (isset($changes['costo_neto'])) {
-                $insertAjuste('Cambio de costo neto: '.
-                    number_format((float)$changes['costo_neto']['old'],2,'.','').' → '.
-                    number_format((float)$changes['costo_neto']['new'],2,'.',''));
-            }
-            if (isset($changes['precio_publico'])) {
-                $insertAjuste('Cambio de precio público: '.
-                    number_format((float)$changes['precio_publico']['old'],2,'.','').' → '.
-                    number_format((float)$changes['precio_publico']['new'],2,'.',''));
-            }
-            if (isset($changes['precio_taller'])) {
-                $insertAjuste('Cambio de precio taller: '.
-                    number_format((float)$changes['precio_taller']['old'],2,'.','').' → '.
-                    number_format((float)$changes['precio_taller']['new'],2,'.',''));
-            }
+            if (isset($changes['id_proveedor']))   $insertAjuste('Cambio de proveedor: '.$changes['id_proveedor']['old'].' → '.$changes['id_proveedor']['new']);
+            if (isset($changes['precio_proveedor'])) $insertAjuste('Cambio de precio del proveedor: '.number_format((float)$changes['precio_proveedor']['old'],2,'.','').' → '.number_format((float)$changes['precio_proveedor']['new'],2,'.',''));
+            if (isset($changes['costo_neto']))       $insertAjuste('Cambio de costo neto: '.number_format((float)$changes['costo_neto']['old'],2,'.','').' → '.number_format((float)$changes['costo_neto']['new'],2,'.',''));
+            if (isset($changes['precio_publico']))   $insertAjuste('Cambio de precio público: '.number_format((float)$changes['precio_publico']['old'],2,'.','').' → '.number_format((float)$changes['precio_publico']['new'],2,'.',''));
+            if (isset($changes['precio_taller']))    $insertAjuste('Cambio de precio taller: '.number_format((float)$changes['precio_taller']['old'],2,'.','').' → '.number_format((float)$changes['precio_taller']['new'],2,'.',''));
 
-            // 8) Bitácora
+            // bitácora por campo
             foreach ($changes as $campo => $info) {
                 $this->registrarBitacora(
                     (int)$idUsuario,
@@ -385,66 +366,22 @@ class ProductoModel
         }
     }
 
-    /* ==== Helpers (déjalos si aún no los tienes en la clase) ==== */
-    private function normalizeIncoming(string $field, $value) {
-        if ($value === null) return null;
-        switch ($field) {
-            case 'id_proveedor':
-            case 'id_unidad_sat':
-            case 'id_grupo':
-            case 'stock_actual':
-            case 'stock_maximo':
-            case 'stock_minimo':
-            case 'piso':
-            case 'pasillo':
-            case 'estante':
-            case 'peldaño':
-            case 'activo':
-                return ($value === '' ? null : (int)$value);
-            case 'costo_neto':
-            case 'precio_publico':
-            case 'precio_taller':
-            case 'precio_proveedor':
-                $v = is_string($value) ? str_replace(',', '.', $value) : $value;
-                return ($v === '' ? null : (float)$v);
-            default:
-                return trim((string)$value);
-        }
-    }
-
-    private function valuesEqual($a, $b, string $type): bool {
-        if ($a === null && $b === null) return true;
-        if ($a === null || $b === null) return false;
-        switch ($type) {
-            case 'int':   return (int)$a === (int)$b;
-            case 'float': return (float)$a == (float)$b;
-            case 'bool':  return (bool)$a === (bool)$b;
-            default:      return (string)trim((string)$a) === (string)trim((string)$b);
-        }
-    }
-
-
     /**
-     * ELIMINAR (soft-delete) + salida inventario + bitácora (estilo Compras::cancelarCompra)
-     * Firma al estilo Compras: $idProducto, $idSucursal, $idUsuario, $motivo (opcional)
+     * ELIMINAR (soft-delete) + salida inventario + bitácora
      */
     public function eliminar(int $idProducto, int $idSucursal, int $idUsuario, string $motivo = 'Desactivación de producto')
     {
         try {
             $this->conn->beginTransaction();
 
-            // Lock y datos previos
             $st = $this->conn->prepare("SELECT codigo, stock_actual FROM productos WHERE id_producto = :id FOR UPDATE");
             $st->execute([':id' => (int)$idProducto]);
             $prev = $st->fetch(PDO::FETCH_ASSOC);
-            if (!$prev) {
-                throw new Exception('Producto no encontrado.');
-            }
+            if (!$prev) throw new Exception('Producto no encontrado.');
 
             $stock = (float)$prev['stock_actual'];
             $ref   = $prev['codigo'] ?? ('PROD-' . $idProducto);
 
-            // Si hay stock, salida y poner a 0
             if ($stock > 0) {
                 $stMov = $this->conn->prepare(
                     "INSERT INTO inventario_movimientos
@@ -460,15 +397,13 @@ class ProductoModel
                     ':mot'   => $motivo,
                 ]);
 
-                $stUpd = $this->conn->prepare("UPDATE productos SET stock_actual = 0 WHERE id_producto = :id");
-                $stUpd->execute([':id' => (int)$idProducto]);
+                $this->conn->prepare("UPDATE productos SET stock_actual = 0 WHERE id_producto = :id")
+                           ->execute([':id' => (int)$idProducto]);
             }
 
-            // Soft delete
-            $stDel = $this->conn->prepare("UPDATE productos SET activo = 0 WHERE id_producto = :id");
-            $stDel->execute([':id' => (int)$idProducto]);
+            $this->conn->prepare("UPDATE productos SET activo = 0 WHERE id_producto = :id")
+                       ->execute([':id' => (int)$idProducto]);
 
-            // Bitácora
             $this->registrarBitacora(
                 (int)$idUsuario,
                 'productos',
@@ -484,45 +419,42 @@ class ProductoModel
 
         } catch (Exception $e) {
             $this->conn->rollBack();
-            try {
-                $this->registrarBitacora((int)$idUsuario, 'productos', 'ERROR', (int)$idProducto, $e->getMessage());
-            } catch (\Throwable $th) {}
+            try { $this->registrarBitacora((int)$idUsuario, 'productos', 'ERROR', (int)$idProducto, $e->getMessage()); } catch (\Throwable $th) {}
             return ['ok' => false, 'msg' => $e->getMessage()];
         }
     }
 
-    // ================== PARA SELECTS/AUTOCOMPLETE ==================
+    /* ============================================================
+     * SELECTS / AUTOCOMPLETE
+     * ============================================================ */
+
     public function buscarMin(string $q = '', int $limite = 50)
     {
         $lim = max(1, (int)$limite);
 
-        $sql = "SELECT id_producto,
-                    codigo,
-                    descripcion,
-                    precio_proveedor
+        $sql = "SELECT id_producto, codigo, descripcion, precio_proveedor
                 FROM productos
                 WHERE activo = 1";
-
         $useQ = ($q !== '');
         if ($useQ) {
             $sql .= " AND (codigo LIKE :q1 OR descripcion LIKE :q2)";
         }
-
         $sql .= " ORDER BY descripcion ASC LIMIT {$lim}";
 
         $st = $this->conn->prepare($sql);
-
         if ($useQ) {
             $like = "%{$q}%";
             $st->bindValue(':q1', $like, PDO::PARAM_STR);
             $st->bindValue(':q2', $like, PDO::PARAM_STR);
         }
-
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // ================== UTILIDADES (autocálculo) ==================
+    /* ============================================================
+     * UTILIDADES – Cálculo de precios
+     * ============================================================ */
+
     public function simularPrecios(?int $idProveedor, float $precioProveedor): array
     {
         $nomProv = $this->obtenerNombreProveedor($idProveedor);
@@ -546,7 +478,7 @@ class ProductoModel
         $nom = strtolower(trim($provNombre));
         $IVA = 1.16;
 
-        // Defaults
+        // defaults
         $CN = $ppv * $IVA;
         $PB = ($ppv * 1.8) * $IVA;
         $PT = $PB * 0.8;
@@ -561,7 +493,7 @@ class ProductoModel
             case 'apymsa':
                 $CN = $ppv * 1.044;
                 $PB = $ppv * 1.70694;
-                $PT = $ppv * 1.365552; // (= PB / 1.25)
+                $PT = $ppv * 1.365552;
                 break;
 
             case 'bdh':
@@ -592,7 +524,58 @@ class ProductoModel
         return [round($CN, 2), round($PB, 2), round($PT, 2)];
     }
 
-    // ================== BITÁCORA ==================
+    /* ============================================================
+     * EXPORTACIÓN – Listado sin paginar para Excel
+     * ============================================================ */
+
+    public function listarParaExportar($codigo = '', $descripcion = '', $idProveedor = null, $idGrupo = null)
+    {
+        $sql = "SELECT 
+                    p.id_producto,
+                    p.codigo,
+                    p.descripcion,
+                    p.stock_actual,
+                    p.precio_publico,
+                    p.precio_taller,
+                    pr.nombre       AS proveedor,
+                    g.nombre_grupo  AS grupo
+                FROM productos p
+                LEFT JOIN proveedores pr ON pr.id_proveedor = p.id_proveedor
+                LEFT JOIN cat_grupos g   ON g.id_grupo     = p.id_grupo
+                WHERE p.activo = 1";
+        $params = [];
+
+        if ($codigo !== '') {
+            $sql .= " AND p.codigo LIKE :codigo";
+            $params[':codigo'] = "%$codigo%";
+        }
+        if ($descripcion !== '') {
+            $sql .= " AND p.descripcion LIKE :descripcion";
+            $params[':descripcion'] = "%$descripcion%";
+        }
+        if (!is_null($idProveedor)) {
+            $sql .= " AND p.id_proveedor = :idProv";
+            $params[':idProv'] = (int)$idProveedor;
+        }
+        if (!is_null($idGrupo)) {
+            $sql .= " AND p.id_grupo = :idGrupo";
+            $params[':idGrupo'] = (int)$idGrupo;
+        }
+
+        $sql .= " ORDER BY p.descripcion ASC";
+
+        $stmt = $this->conn->prepare($sql);
+        foreach ($params as $k => $v) {
+            $stmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /* ============================================================
+     * BITÁCORA
+     * ============================================================ */
+
     private function registrarBitacora(
         $idUsuario,
         string $tabla,

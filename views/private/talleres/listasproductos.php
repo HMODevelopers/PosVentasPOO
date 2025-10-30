@@ -517,7 +517,21 @@ if (!isset($_SESSION['usuario'])) {
     }
 
    
-    
+    // ===== Exportar a Excel =====
+  $('#btnExportarExcel').on('click', function () {
+    const params = new URLSearchParams({
+      accion: 'exportar-excel',
+      // mismos nombres que usa tu controller para filtros:
+      codigo: $('#Codigo').val() || '',
+      descripcion: $('#Descripcion').val() || '',
+      id_proveedor: $('#Proveedor').val() || '',
+      id_grupo: $('#Grupo').val() || ''
+    });
+
+    // Dispara la descarga (GET)
+    const url = '<?= BASE_URL ?>/controllers/ProductosController.php?' + params.toString();
+    window.location.href = url;
+  });
 
 
     
