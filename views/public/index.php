@@ -106,8 +106,5 @@ if (isset($_SESSION['usuario'])) {
     <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/pages/login.js"></script>
 
-
-   
-
 </body>
 </html>

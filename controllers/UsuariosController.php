@@ -14,17 +14,15 @@ switch ($accion) {
         $pagina = max(1, (int)($_GET['pagina'] ?? $_POST['pagina'] ?? 1));
         $limite = max(1, (int)($_GET['limite'] ?? $_POST['limite'] ?? 10));
 
-        // Filtros
         $filtros = [
-            'q'        => trim($_REQUEST['q']        ?? ''),
-            'nombre'   => trim($_REQUEST['nombre']   ?? ''),
-            'usuario'  => trim($_REQUEST['usuario']  ?? ''),
-            'correo'   => trim($_REQUEST['correo']   ?? ''),
-            'telefono' => trim($_REQUEST['telefono'] ?? ''),
-            'id_rol'   => (isset($_REQUEST['id_rol']) && $_REQUEST['id_rol'] !== '') ? (int)$_REQUEST['id_rol'] : null,
-            'activo'   => (isset($_REQUEST['activo']))
-                          ? (($_REQUEST['activo'] === '') ? '' : (int)$_REQUEST['activo'])
-                          : 1,
+            'q'          => trim($_REQUEST['q']          ?? ''),
+            'nombre'     => trim($_REQUEST['nombre']     ?? ''),
+            'usuario'    => trim($_REQUEST['usuario']    ?? ''),
+            'correo'     => trim($_REQUEST['correo']     ?? ''),
+            'telefono'   => trim($_REQUEST['telefono']   ?? ''),
+            'id_rol'     => (isset($_REQUEST['id_rol'])     && $_REQUEST['id_rol']     !== '') ? (int)$_REQUEST['id_rol']     : null,
+            'id_cliente' => (isset($_REQUEST['id_cliente']) && $_REQUEST['id_cliente'] !== '') ? (int)$_REQUEST['id_cliente'] : null,
+            'activo'     => (isset($_REQUEST['activo'])) ? (($_REQUEST['activo'] === '') ? '' : (int)$_REQUEST['activo']) : 1,
         ];
 
         $data  = $usuarioModel->listar($pagina, $limite, $filtros);
@@ -53,28 +51,30 @@ switch ($accion) {
 
     // ===== CREAR =====
     case 'crear':
-        session_start();
         $payload = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         if (!is_array($payload)) $payload = [];
 
-        // Asegura id_usuario operador desde sesión (igual que Productos)
+        // Operador en bitácora (si está en sesión)
         if (empty($payload['id_usuario'])) {
             $payload['id_usuario'] = $_SESSION['usuario']['id_usuario']
                                   ?? $_SESSION['usuario']['id']
                                   ?? $_SESSION['id_usuario']
-                                  ?? null;
-        }
-        if (empty($payload['id_usuario'])) {
-            echo json_encode(['ok'=>false,'msg'=>'Falta id_usuario (sesión).'], JSON_UNESCAPED_UNICODE);
-            break;
+                                  ?? 0;
         }
 
-        // Normaliza rol vacío a null
+        // Normaliza rol
         if (!array_key_exists('id_rol', $payload) || $payload['id_rol'] === '' || $payload['id_rol'] === null) {
             $payload['id_rol'] = null;
         } else {
             $payload['id_rol'] = (int)$payload['id_rol'];
         }
+
+        // Normaliza y exige id_cliente
+        if (!array_key_exists('id_cliente', $payload) || $payload['id_cliente'] === '' || $payload['id_cliente'] === null) {
+            echo json_encode(['ok'=>false,'msg'=>'Debe seleccionar el Cliente/Taller.'], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+        $payload['id_cliente'] = (int)$payload['id_cliente'];
 
         $resp = $usuarioModel->crear($payload);
         echo json_encode($resp, JSON_UNESCAPED_UNICODE);
@@ -82,7 +82,6 @@ switch ($accion) {
 
     // ===== ACTUALIZAR =====
     case 'actualizar':
-        session_start();
         $payload = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         if (!is_array($payload)) $payload = [];
 
@@ -93,11 +92,7 @@ switch ($accion) {
             $payload['id_usuario'] = $_SESSION['usuario']['id_usuario']
                                   ?? $_SESSION['usuario']['id']
                                   ?? $_SESSION['id_usuario']
-                                  ?? null;
-        }
-        if (empty($payload['id_usuario'])) {
-            echo json_encode(['ok'=>false,'msg'=>'Falta id_usuario (sesión).'], JSON_UNESCAPED_UNICODE);
-            break;
+                                  ?? 0;
         }
 
         if (!array_key_exists('id_rol', $payload) || $payload['id_rol'] === '' || $payload['id_rol'] === null) {
@@ -106,27 +101,32 @@ switch ($accion) {
             $payload['id_rol'] = (int)$payload['id_rol'];
         }
 
+        if (!array_key_exists('id_cliente', $payload) || $payload['id_cliente'] === '' || $payload['id_cliente'] === null) {
+            echo json_encode(['ok'=>false,'msg'=>'Debe seleccionar el Cliente/Taller.'], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+        $payload['id_cliente'] = (int)$payload['id_cliente'];
+
         $resp = $usuarioModel->actualizar($id, $payload);
         echo json_encode($resp, JSON_UNESCAPED_UNICODE);
     break;
 
     // ===== ELIMINAR (lógico) =====
     case 'eliminar':
-        session_start();
         $id = (int)($_POST['id_usuario'] ?? 0);
         $motivo = trim($_POST['motivo'] ?? 'Baja de usuario');
 
-        $idUsuario = $_SESSION['usuario']['id_usuario']
-                  ?? $_SESSION['usuario']['id']
-                  ?? $_SESSION['id_usuario']
-                  ?? null;
+        $idOper = $_SESSION['usuario']['id_usuario']
+               ?? $_SESSION['usuario']['id']
+               ?? $_SESSION['id_usuario']
+               ?? 0;
 
-        if ($id <= 0 || empty($idUsuario)) {
+        if ($id <= 0 || empty($idOper)) {
             echo json_encode(['ok'=>false,'msg'=>'Faltan datos: id_usuario del registro / usuario de sesión.'], JSON_UNESCAPED_UNICODE);
             break;
         }
 
-        $resp = $usuarioModel->eliminar((int)$id, (int)$idUsuario, $motivo);
+        $resp = $usuarioModel->eliminar((int)$id, (int)$idOper, $motivo);
         echo json_encode($resp, JSON_UNESCAPED_UNICODE);
     break;
 

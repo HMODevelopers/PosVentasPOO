@@ -22,12 +22,15 @@ class UsuarioModel
         $limite = max(1, (int)$limite);
         $offset = ($pagina - 1) * $limite;
 
-       $sql = "SELECT u.id_usuario, u.nombre, u.usuario, u.correo, u.telefono,
-               u.id_rol, r.nombre AS nombre_rol, 
-               u.activo, u.fecha_creacion
-        FROM usuarios u
-        LEFT JOIN roles r ON u.id_rol = r.id_rol
-        WHERE 1=1";
+        $sql = "SELECT 
+                    u.id_usuario, u.nombre, u.usuario, u.correo, u.telefono,
+                    u.id_rol, r.nombre AS nombre_rol,
+                    u.id_cliente, c.nombre AS nombre_cliente,
+                    u.activo, u.fecha_creacion
+                FROM usuarios u
+                LEFT JOIN roles r     ON u.id_rol = r.id_rol
+                LEFT JOIN clientes c  ON u.id_cliente = c.id_cliente
+                WHERE 1=1";
         $params = [];
 
         $q        = trim($filtros['q']        ?? '');
@@ -35,7 +38,8 @@ class UsuarioModel
         $usuario  = trim($filtros['usuario']  ?? '');
         $correo   = trim($filtros['correo']   ?? '');
         $telefono = trim($filtros['telefono'] ?? '');
-        $idRol    = isset($filtros['id_rol']) && $filtros['id_rol'] !== '' ? (int)$filtros['id_rol'] : null;
+        $idRol    = isset($filtros['id_rol'])     && $filtros['id_rol']     !== '' ? (int)$filtros['id_rol']     : null;
+        $idCli    = isset($filtros['id_cliente']) && $filtros['id_cliente'] !== '' ? (int)$filtros['id_cliente'] : null;
         $activo   = array_key_exists('activo', $filtros)
                     ? ($filtros['activo'] === '' ? null : (int)$filtros['activo'])
                     : 1;
@@ -51,11 +55,14 @@ class UsuarioModel
         if ($correo   !== '') { $sql .= " AND u.correo   LIKE :cor"; $params[':cor']="%{$correo}%"; }
         if ($telefono !== '') { $sql .= " AND u.telefono LIKE :tel"; $params[':tel']="%{$telefono}%"; }
         if ($idRol !== null)  { $sql .= " AND u.id_rol = :idrol";   $params[':idrol']=$idRol; }
+        if ($idCli !== null)  { $sql .= " AND u.id_cliente = :idcli"; $params[':idcli']=$idCli; }
 
         $sql .= " ORDER BY u.nombre ASC, u.id_usuario ASC LIMIT {$limite} OFFSET {$offset}";
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k => $v) $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
         $st->execute();
 
         return $st->fetchAll(PDO::FETCH_ASSOC);
@@ -63,7 +70,9 @@ class UsuarioModel
 
     public function contar(array $filtros = []): int
     {
-        $sql = "SELECT COUNT(*) AS total FROM usuarios u WHERE 1=1";
+        $sql = "SELECT COUNT(*) AS total
+                FROM usuarios u
+                WHERE 1=1";
         $params = [];
 
         $q        = trim($filtros['q']        ?? '');
@@ -71,13 +80,13 @@ class UsuarioModel
         $usuario  = trim($filtros['usuario']  ?? '');
         $correo   = trim($filtros['correo']   ?? '');
         $telefono = trim($filtros['telefono'] ?? '');
-        $idRol    = isset($filtros['id_rol']) && $filtros['id_rol'] !== '' ? (int)$filtros['id_rol'] : null;
+        $idRol    = isset($filtros['id_rol'])     && $filtros['id_rol']     !== '' ? (int)$filtros['id_rol']     : null;
+        $idCli    = isset($filtros['id_cliente']) && $filtros['id_cliente'] !== '' ? (int)$filtros['id_cliente'] : null;
         $activo   = array_key_exists('activo', $filtros)
                     ? ($filtros['activo'] === '' ? null : (int)$filtros['activo'])
                     : 1;
 
         if ($activo !== null) { $sql .= " AND u.activo = :act"; $params[':act'] = $activo; }
-
         if ($q !== '') {
             $sql .= " AND (u.nombre LIKE :q1 OR u.usuario LIKE :q2 OR u.correo LIKE :q3 OR u.telefono LIKE :q4)";
             $like = "%{$q}%"; $params[':q1']=$like; $params[':q2']=$like; $params[':q3']=$like; $params[':q4']=$like;
@@ -87,9 +96,12 @@ class UsuarioModel
         if ($correo   !== '') { $sql .= " AND u.correo   LIKE :cor"; $params[':cor']="%{$correo}%"; }
         if ($telefono !== '') { $sql .= " AND u.telefono LIKE :tel"; $params[':tel']="%{$telefono}%"; }
         if ($idRol !== null)  { $sql .= " AND u.id_rol = :idrol";   $params[':idrol']=$idRol; }
+        if ($idCli !== null)  { $sql .= " AND u.id_cliente = :idcli"; $params[':idcli']=$idCli; }
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k => $v) $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
         $st->execute();
 
         return (int)($st->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
@@ -97,7 +109,13 @@ class UsuarioModel
 
     public function obtenerPorId(int $id)
     {
-        $st = $this->conn->prepare("SELECT u.* FROM usuarios u WHERE u.id_usuario = :id LIMIT 1");
+        $st = $this->conn->prepare("
+            SELECT u.*, c.nombre AS nombre_cliente
+            FROM usuarios u
+            LEFT JOIN clientes c ON c.id_cliente = u.id_cliente
+            WHERE u.id_usuario = :id
+            LIMIT 1
+        ");
         $st->bindValue(':id', $id, PDO::PARAM_INT);
         $st->execute();
         return $st->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -111,15 +129,29 @@ class UsuarioModel
 
             // hash de contraseña (usa 123456789 si no viene)
             $pwdIn = trim((string)($d['contrasena'] ?? ''));
-            if ($pwdIn !== '') {
-                $pwdHash = preg_match('/^\$2[aby]\$/', $pwdIn) ? $pwdIn : password_hash($pwdIn, PASSWORD_BCRYPT, ['cost' => 10]);
-            } else {
-                $pwdHash = password_hash(self::DEFAULT_PASSWORD_PLAIN, PASSWORD_BCRYPT, ['cost' => 10]);
+            $pwdHash = $pwdIn !== ''
+                ? (preg_match('/^\$2[aby]\$/', $pwdIn) ? $pwdIn : password_hash($pwdIn, PASSWORD_BCRYPT, ['cost' => 10]))
+                : password_hash(self::DEFAULT_PASSWORD_PLAIN, PASSWORD_BCRYPT, ['cost' => 10]);
+
+            $idRol = isset($d['id_rol']) && $d['id_rol'] !== '' ? (int)$d['id_rol'] : null;
+            $idCli = isset($d['id_cliente']) && $d['id_cliente'] !== '' ? (int)$d['id_cliente'] : null;
+
+            // Regla del módulo: siempre debe venir id_cliente
+            if (!$idCli) { throw new Exception('Debe seleccionar el Cliente/Taller (id_cliente).'); }
+
+            // Si el rol es Taller/Cliente, reforzar
+            if ($idRol) {
+                $q = $this->conn->prepare("SELECT LOWER(nombre) FROM roles WHERE id_rol=:r LIMIT 1");
+                $q->execute([':r' => $idRol]);
+                $rolNombre = (string)$q->fetchColumn();
+                if (in_array($rolNombre, ['taller','cliente'], true) && !$idCli) {
+                    throw new Exception('Para roles Taller/Cliente, id_cliente es obligatorio.');
+                }
             }
 
             $sql = "INSERT INTO usuarios
-                    (nombre, usuario, contrasena, correo, telefono, id_rol, activo, fecha_creacion)
-                    VALUES (:nom, :usr, :pwd, :cor, :tel, :rol, 1, NOW())";
+                    (nombre, usuario, contrasena, correo, telefono, id_rol, id_cliente, activo, fecha_creacion)
+                    VALUES (:nom, :usr, :pwd, :cor, :tel, :rol, :cli, 1, NOW())";
             $st = $this->conn->prepare($sql);
             $st->execute([
                 ':nom' => trim($d['nombre']  ?? ''),
@@ -127,17 +159,16 @@ class UsuarioModel
                 ':pwd' => $pwdHash,
                 ':cor' => $d['correo']   ?? null,
                 ':tel' => $d['telefono'] ?? null,
-                ':rol' => isset($d['id_rol']) && $d['id_rol'] !== '' ? (int)$d['id_rol'] : null,
+                ':rol' => $idRol,
+                ':cli' => $idCli,
             ]);
 
             $idUsuarioNuevo = (int)$this->conn->lastInsertId();
 
-            // Bitácora (como Productos)
+            // Bitácora mínima
             $this->registrarBitacora(
                 (int)($d['id_usuario'] ?? 0),
-                'usuarios',
-                'INSERT',
-                $idUsuarioNuevo,
+                'usuarios','INSERT',$idUsuarioNuevo,
                 'Alta de usuario',
                 null,
                 json_encode([
@@ -145,7 +176,8 @@ class UsuarioModel
                     'usuario' => trim($d['usuario'] ?? ''),
                     'correo'  => $d['correo']   ?? null,
                     'telefono'=> $d['telefono'] ?? null,
-                    'id_rol'  => isset($d['id_rol']) && $d['id_rol'] !== '' ? (int)$d['id_rol'] : null,
+                    'id_rol'  => $idRol,
+                    'id_cliente' => $idCli,
                     'activo'  => 1
                 ], JSON_UNESCAPED_UNICODE)
             );
@@ -155,10 +187,8 @@ class UsuarioModel
 
         } catch (\Exception $e) {
             $this->conn->rollBack();
-            // intenta registrar error (no debe romper)
             try { $this->registrarBitacora((int)($d['id_usuario'] ?? 0), 'usuarios', 'ERROR', 0, $e->getMessage()); } catch (\Throwable $th) {}
-
-            // mensaje amigable si es duplicado
+            // duplicate friendly
             $msg = $e->getMessage();
             if ($e instanceof PDOException && isset($e->errorInfo[0]) && $e->errorInfo[0] === '23000') {
                 if (strpos($msg, 'usuario') !== false) $msg = 'El usuario ya existe.';
@@ -182,15 +212,28 @@ class UsuarioModel
             if (!$prev) { throw new Exception('Usuario no encontrado.'); }
 
             $nuevo = [
-                'nombre'   => trim($d['nombre']  ?? $prev['nombre']),
-                'usuario'  => trim($d['usuario'] ?? $prev['usuario']),
-                'correo'   => array_key_exists('correo',$d)   ? $d['correo']   : $prev['correo'],
-                'telefono' => array_key_exists('telefono',$d) ? $d['telefono'] : $prev['telefono'],
-                'id_rol'   => array_key_exists('id_rol',$d)   ? ($d['id_rol'] === '' ? null : $d['id_rol']) : $prev['id_rol'],
+                'nombre'     => trim($d['nombre']  ?? $prev['nombre']),
+                'usuario'    => trim($d['usuario'] ?? $prev['usuario']),
+                'correo'     => array_key_exists('correo',$d)   ? $d['correo']   : $prev['correo'],
+                'telefono'   => array_key_exists('telefono',$d) ? $d['telefono'] : $prev['telefono'],
+                'id_rol'     => array_key_exists('id_rol',$d)   ? ($d['id_rol'] === '' ? null : (int)$d['id_rol']) : $prev['id_rol'],
+                'id_cliente' => array_key_exists('id_cliente',$d) ? ($d['id_cliente']===''? null : (int)$d['id_cliente']) : $prev['id_cliente'],
             ];
 
+            if (!$nuevo['id_cliente']) { throw new Exception('Debe seleccionar el Cliente/Taller (id_cliente).'); }
+
+            // Validación para roles Taller/Cliente
+            if ($nuevo['id_rol']) {
+                $q = $this->conn->prepare("SELECT LOWER(nombre) FROM roles WHERE id_rol=:r LIMIT 1");
+                $q->execute([':r'=>$nuevo['id_rol']]);
+                $rolNombre = (string)$q->fetchColumn();
+                if (in_array($rolNombre, ['taller','cliente'], true) && !$nuevo['id_cliente']) {
+                    throw new Exception('Para roles Taller/Cliente, id_cliente es obligatorio.');
+                }
+            }
+
             // detectar cambios
-            $campos = ['nombre','usuario','correo','telefono','id_rol'];
+            $campos = ['nombre','usuario','correo','telefono','id_rol','id_cliente'];
             $changes = [];
             foreach ($campos as $c) {
                 $old = $prev[$c];
@@ -200,32 +243,28 @@ class UsuarioModel
                 }
             }
 
-            if (empty($changes)) {
-                $this->conn->commit();
-                return ['ok'=>true,'id_usuario'=>$id,'msg'=>'Sin cambios'];
-            }
+            if (!empty($changes)) {
+                $set = []; $params = [':id'=>$id];
+                foreach ($changes as $campo => $info) {
+                    $set[] = "$campo = :$campo";
+                    $params[":$campo"] = $info['new'];
+                }
+                $sql = "UPDATE usuarios SET ".implode(',', $set)." WHERE id_usuario = :id";
+                $this->conn->prepare($sql)->execute($params);
 
-            // update solo de lo que cambió
-            $set = []; $params = [':id'=>$id];
-            foreach ($changes as $campo => $info) {
-                $set[] = "$campo = :$campo";
-                $params[":$campo"] = $info['new'];
-            }
-            $sql = "UPDATE usuarios SET ".implode(',', $set)." WHERE id_usuario = :id";
-            $this->conn->prepare($sql)->execute($params);
-
-            // bitácora por campo
-            foreach ($changes as $campo => $info) {
-                $this->registrarBitacora(
-                    (int)($d['id_usuario'] ?? 0),
-                    'usuarios',
-                    'UPDATE',
-                    $id,
-                    'Actualización de usuario',
-                    is_null($info['old']) ? null : (string)$info['old'],
-                    is_null($info['new']) ? null : (string)$info['new'],
-                    $campo
-                );
+                // bitácora por campo
+                foreach ($changes as $campo => $info) {
+                    $this->registrarBitacora(
+                        (int)($d['id_usuario'] ?? 0),
+                        'usuarios',
+                        'UPDATE',
+                        $id,
+                        'Actualización de usuario',
+                        is_null($info['old']) ? null : (string)$info['old'],
+                        is_null($info['new']) ? null : (string)$info['new'],
+                        $campo
+                    );
+                }
             }
 
             $this->conn->commit();
@@ -256,9 +295,7 @@ class UsuarioModel
             if (!$prev) { throw new Exception('Usuario no encontrado.'); }
 
             if ((string)$prev['activo'] === '0') {
-                // ya estaba inactivo
-                $this->registrarBitacora(
-                    $idUsuario, 'usuarios', 'DELETE', $id,
+                $this->registrarBitacora($idUsuario, 'usuarios', 'DELETE', $id,
                     'Borrado lógico ya aplicado',
                     json_encode(['activo'=>0], JSON_UNESCAPED_UNICODE),
                     json_encode(['activo'=>0], JSON_UNESCAPED_UNICODE)
@@ -267,7 +304,8 @@ class UsuarioModel
                 return ['ok'=>true,'msg'=>'Sin cambios (ya estaba inactivo).'];
             }
 
-            $this->conn->prepare("UPDATE usuarios SET activo = 0 WHERE id_usuario = :id")->execute([':id'=>$id]);
+            $this->conn->prepare("UPDATE usuarios SET activo = 0 WHERE id_usuario = :id")
+                       ->execute([':id'=>$id]);
 
             $this->registrarBitacora(
                 $idUsuario, 'usuarios', 'DELETE', $id,

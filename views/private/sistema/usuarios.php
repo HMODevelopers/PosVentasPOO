@@ -130,6 +130,8 @@ if (!isset($_SESSION['usuario'])) {
                 </div>
               </div>
 
+              <!-- NOTA: Eliminado filtro Cliente/Taller a petición -->
+
             </div><!--/row-->
           </div>
         </div>
@@ -154,6 +156,7 @@ if (!isset($_SESSION['usuario'])) {
                     <th>Usuario</th>
                     <th>Correo</th>
                     <th>Teléfono</th>
+                    <!-- NOTA: Se quitó la columna Cliente/Taller -->
                     <th class="text-center" style="width:90px;">Rol</th>
                     <th class="text-center" style="width:110px;">Estatus</th>
                     <th class="text-center" style="width:170px;">Creado</th>
@@ -226,10 +229,18 @@ if (!isset($_SESSION['usuario'])) {
 
             <!-- fila 3 -->
             <div class="form-row mb-3">
-              <div class="col-md-12">
+              <div class="col-md-6">
                 <label class="form-label required" for="id_rol">Rol</label>
                 <select class="form-control" id="id_rol" name="id_rol" required>
                   <option value="">Seleccione un rol...</option>
+                </select>
+              </div>
+
+              <!-- Cliente/Taller (solo visible si rol es Taller/Cliente) -->
+              <div class="col-md-6" id="grupoCliente" style="display:none;">
+                <label class="form-label required" for="id_cliente">Cliente</label>
+                <select class="form-control" id="id_cliente" name="id_cliente">
+                  <option value="">Seleccione cliente...</option>
                 </select>
               </div>
             </div>
@@ -289,12 +300,13 @@ if (!isset($_SESSION['usuario'])) {
     $(function(){
       let paginaActual = 1;
       const limitePorPagina = 10;
-      const URL_CTRL  = '<?= BASE_URL ?>/controllers/UsuariosController.php';
-      const URL_ROLES = '<?= BASE_URL ?>/controllers/RolesController.php';
+      const URL_CTRL      = '<?= BASE_URL ?>/controllers/UsuariosController.php';
+      const URL_ROLES     = '<?= BASE_URL ?>/controllers/RolesController.php';
+      const URL_CLIENTES  = '<?= BASE_URL ?>/controllers/ClientesController.php';
 
       // Inicial
       cargarUsuarios(paginaActual);
-      // Cargar opciones de roles en el filtro (con opción "Todos")
+      // Cargar opciones de roles (filtro)
       cargarRolesEnSelect('FiltroRolId', '', true).then(() => {
         const $f = $('#FiltroRolId');
         if ($f.val()) $f.closest('.input-group, .form-group').find(".clean-filter").css({display:'flex'});
@@ -310,47 +322,80 @@ if (!isset($_SESSION['usuario'])) {
         return isNaN(d.getTime()) ? dt : d.toLocaleString('es-MX');
       }
       const badgeActivo = (v) => {
-        const on = String(v) === '1';
+        const on = String(v) === '1' || String(v) === 'true';
         return `<span class="badge badge-${on?'success':'secondary'} badge-pill">${on?'Activo':'Inactivo'}</span>`;
       };
 
-      // ===== Función: Cargar roles en cualquier select (usa listar-min) =====
+      // ===== Cargar roles (select genérico) =====
       function cargarRolesEnSelect(selectId, selectedId = '', incluirTodos = false) {
         return $.ajax({
           url: URL_ROLES,
           method: 'POST',
           dataType: 'json',
-          data: { accion: 'listar-min', limite: 200 } // <- usa tu acción para selects
+          data: { accion: 'listar-min', limite: 200 }
         })
         .done(function(resp){
           const $sel = $('#' + selectId);
           $sel.empty();
-
           if (incluirTodos) {
             $sel.append('<option value="">Todos</option>');
           } else {
             $sel.append('<option value="">Seleccione un rol...</option>');
           }
-
-          // Tu controller devuelve { data: [ { id_rol, nombre, nombre_mostrar? } ] }
           const arr = Array.isArray(resp?.data) ? resp.data : [];
           arr.forEach(r => {
             const text = r.nombre_mostrar || r.nombre || ('Rol ' + r.id_rol);
             const opt  = $('<option/>', { value: r.id_rol, text });
             $sel.append(opt);
           });
-
           if (selectedId !== '' && selectedId != null) {
             $sel.val(String(selectedId));
           }
         })
-        .fail(function(xhr){
-          console.error('Error cargando roles', xhr);
-          (typeof toastr !== 'undefined' && toastr.error)
-            ? toastr.error('No se pudieron cargar los roles')
-            : alert('No se pudieron cargar los roles');
+        .fail(function(){
+          toastr.error('No se pudieron cargar los roles');
         });
       }
+
+      // ===== Cargar clientes SOLO para el modal =====
+      function cargarClientesEnModal(selectedId = '') {
+        return $.ajax({
+          url: URL_CLIENTES,
+          method: 'POST',
+          dataType: 'json',
+          data: { accion: 'listar-min', limite: 1000 }
+        })
+        .done(function(resp){
+          const $sel = $('#id_cliente').empty();
+          $sel.append('<option value="">Seleccione cliente...</option>');
+          const arr = Array.isArray(resp?.data) ? resp.data : [];
+          arr.forEach(c => {
+            const text = c.nombre_mostrar || c.nombre || ('Cliente ' + c.id_cliente);
+            $sel.append(new Option(text, c.id_cliente));
+          });
+          if (selectedId) $sel.val(String(selectedId));
+        })
+        .fail(function(){
+          toastr.error('No se pudieron cargar los clientes');
+        });
+      }
+
+      // ===== Mostrar/ocultar Cliente según rol =====
+      function toggleClientePorRol(){
+        const rolTxt = ($('#id_rol option:selected').text() || '').toLowerCase();
+        const esTallerOCliente = rolTxt.includes('taller') || rolTxt.includes('cliente');
+        if (esTallerOCliente) {
+          $('#grupoCliente').show();
+          // carga si está vacío
+          if (!$('#id_cliente option[value!=""]').length) {
+            cargarClientesEnModal();
+          }
+        } else {
+          $('#grupoCliente').hide();
+          $('#id_cliente').val('');
+        }
+      }
+      $(document).on('change', '#id_rol', toggleClientePorRol);
 
       // ===== Filtros =====
       $(".filtrar")
@@ -384,13 +429,11 @@ if (!isset($_SESSION['usuario'])) {
           accion: 'listar',
           pagina,
           limite: limitePorPagina,
-          q:        $('#FiltroQ').val(),
           nombre:   $('#FiltroNombre').val(),
           usuario:  $('#FiltroUsuarioLogin').val(),
-          correo:   $('#FiltroCorreo').val(),
-          telefono: $('#FiltroTelefono').val(),
           id_rol:   $('#FiltroRolId').val() || '',
           activo:   $('#FiltroActivo').val()
+          // NOTA: no enviamos id_cliente (el filtro fue eliminado)
         };
 
         $.ajax({
@@ -420,10 +463,8 @@ if (!isset($_SESSION['usuario'])) {
       function renderizarTabla(rows){
         let tbody = '';
         if (!rows.length){
-          $('#emptyState').removeClass('d-none');
           tbody = '<tr><td colspan="9" class="text-center text-muted">— No hay registros —</td></tr>';
         } else {
-          $('#emptyState').addClass('d-none');
           rows.forEach(v => {
             const id   = v.id_usuario;
             const nom  = v.nombre || '—';
@@ -497,50 +538,7 @@ if (!isset($_SESSION['usuario'])) {
         });
       }
 
-      // ===== Detalle =====
-      $(document).on('click', 'a.accion-ver', function(e){
-        e.preventDefault();
-        const id = $(this).data('id');
-        if (!id) return;
-
-        $.ajax({
-          url: URL_CTRL, method: 'GET', dataType: 'json',
-          data: { accion: 'detalle', id_usuario: id }
-        })
-        .done(function(resp){
-          const v = resp?.data || null;
-          if (!v){ toastr.error('No se encontró el usuario.'); return; }
-
-          $('#id_usuario').val(v.id_usuario ?? '');
-          $('#nombre').val(v.nombre || '');
-          $('#usuario').val(v.usuario || '');
-          $('#correo').val(v.correo || '');
-          $('#telefono').val(v.telefono || '');
-
-          $('#tituloModal').text('Detalle de usuario');
-          $('#btnGuardar').hide();
-
-          cargarRolesEnSelect('id_rol', v.id_rol).then(() => {
-            $('#modalUsuario').modal('show');
-          });
-        })
-        .fail(function(){ toastr.error('Error al cargar el detalle.'); });
-      });
-
-      // ===== Nuevo =====
-      $('#btnNuevo').on('click', function(){
-        $('#formUsuario')[0].reset();
-        $('#id_usuario').val('');
-        $('#tituloModal').text('Nuevo usuario');
-        $('#btnGuardar').show();
-
-        // Cargar roles y luego abrir modal
-        cargarRolesEnSelect('id_rol').then(() => {
-          $('#modalUsuario').modal('show');
-        });
-      });
-
-      // ===== Editar =====
+      // ===== Detalle (para editar) =====
       $(document).on('click', 'a.accion-editar', function(e){
         e.preventDefault();
         const id = $(this).data('id');
@@ -562,12 +560,38 @@ if (!isset($_SESSION['usuario'])) {
           $('#tituloModal').text('Editar usuario');
           $('#btnGuardar').show();
 
-          // Cargar roles y preseleccionar
-          cargarRolesEnSelect('id_rol', r.id_rol).then(() => {
+          $.when(
+            cargarRolesEnSelect('id_rol', r.id_rol)
+          ).then(() => {
+            // decide si mostrar cliente
+            const rolTxt = ($('#id_rol option:selected').text() || '').toLowerCase();
+            const esTallerOCliente = rolTxt.includes('taller') || rolTxt.includes('cliente');
+            if (esTallerOCliente) {
+              $('#grupoCliente').show();
+              cargarClientesEnModal(r.id_cliente || '');
+            } else {
+              $('#grupoCliente').hide();
+              $('#id_cliente').val('');
+            }
             $('#modalUsuario').modal('show');
           });
         })
         .fail(function(){ toastr.error('Error al obtener el detalle.'); });
+      });
+
+      // ===== Nuevo =====
+      $('#btnNuevo').on('click', function(){
+        $('#formUsuario')[0].reset();
+        $('#id_usuario').val('');
+        $('#tituloModal').text('Nuevo usuario');
+        $('#btnGuardar').show();
+        $('#grupoCliente').hide();
+        $('#id_cliente').val('');
+
+        // Cargar roles y luego abrir modal
+        cargarRolesEnSelect('id_rol').then(() => {
+          $('#modalUsuario').modal('show');
+        });
       });
 
       // ===== Guardar (crear/actualizar) =====
@@ -582,10 +606,22 @@ if (!isset($_SESSION['usuario'])) {
           telefono: $('#telefono').val().trim() || null,
           id_rol: $('#id_rol').val() !== '' ? Number($('#id_rol').val()) : null
         };
+
         if (!payload.nombre || !payload.usuario){
           toastr.warning('Los campos Nombre y Usuario son obligatorios.');
           return;
         }
+
+        // Cliente solo si el grupo está visible (rol Taller/Cliente)
+        if ($('#grupoCliente').is(':visible')) {
+          const idCli = $('#id_cliente').val();
+          if (!idCli) {
+            toastr.warning('Selecciona el Cliente.');
+            return;
+          }
+          payload.id_cliente = Number(idCli);
+        }
+
         const accion = id ? 'actualizar' : 'crear';
         $.ajax({
           url: URL_CTRL + '?accion=' + accion,
