@@ -649,10 +649,11 @@ if (!isset($_SESSION['usuario'])) {
     // 7) IMPRESIÓN DE TICKET (requiere script server-side Mike42)
     // ============================================================
     function imprimirTicketAjax(idVenta){
-      if(!idVenta){ return; }
-      $.get(`${BASE}/utils/ticket_mike42.php`, { id_venta: idVenta })
-        .done(resp => { console.log("Impresión:", resp); })
-        .fail(xhr => { console.error("Error al imprimir:", xhr.responseText || 'Error al imprimir'); });
+       if (!idVenta) return false;
+        const url = `${BASE}/utils/ticket_pdf.php?id_venta=${encodeURIComponent(idVenta)}`;
+        const win = window.open(url, '_blank');
+        if (win) win.focus();
+        return true; // por si alguien lo "await"
     }
 
     // ============================================================
