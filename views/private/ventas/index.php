@@ -186,6 +186,9 @@ if (!isset($_SESSION['usuario'])) {
     <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <!-- QZ Tray (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.5/qz-tray.js"></script>
+
 
     <!-- ========================= APP JS: ORGANIZADO POR MÓDULOS ========================= -->
     <script>
@@ -519,11 +522,17 @@ if (!isset($_SESSION['usuario'])) {
       },'json').fail(()=> alert('Error al cargar el ticket.'));
     };
 
-    $(document).on('click','#btnImprimirTicket',function(){
+    /*$(document).on('click','#btnImprimirTicket',function(){
       const id=$('#tk-idventa').val(); if(!id){ alert('No hay venta seleccionada'); return; }
       $.get(`${BASE}/utils/ticket_mike42.php`,{id_venta:id})
         .done(r=>console.log('Impresión:',r))
         .fail(xhr=>console.error('Error al imprimir:',xhr.responseText||'Error'));
+    });*/
+
+   $(document).on('click','#btnImprimirTicket', function(){
+      const id = $('#tk-idventa').val();
+      if(!id){ toastr.error('No hay venta seleccionada'); return; }
+      window.open(`${BASE_URL}/utils/ticket_pdf.php?id_venta=${encodeURIComponent(id)}`, '_blank');
     });
 
     /* ==========================================================================
