@@ -63,18 +63,16 @@ switch ($accion) {
         }
 
         // Normaliza rol
-        if (!array_key_exists('id_rol', $payload) || $payload['id_rol'] === '' || $payload['id_rol'] === null) {
-            $payload['id_rol'] = null;
-        } else {
-            $payload['id_rol'] = (int)$payload['id_rol'];
-        }
+        $payload['id_rol'] = (array_key_exists('id_rol',$payload) && $payload['id_rol']!=='')
+                                ? (int)$payload['id_rol']
+                                : null;
 
-        // Normaliza y exige id_cliente
-        if (!array_key_exists('id_cliente', $payload) || $payload['id_cliente'] === '' || $payload['id_cliente'] === null) {
-            echo json_encode(['ok'=>false,'msg'=>'Debe seleccionar el Cliente/Taller.'], JSON_UNESCAPED_UNICODE);
-            break;
+        /** CAMBIO: NO exigir id_cliente aquí; dejar que el modelo valide por rol */
+        if (!array_key_exists('id_cliente', $payload) || $payload['id_cliente'] === '') {
+            $payload['id_cliente'] = null;
+        } else {
+            $payload['id_cliente'] = (int)$payload['id_cliente'];
         }
-        $payload['id_cliente'] = (int)$payload['id_cliente'];
 
         $resp = $usuarioModel->crear($payload);
         echo json_encode($resp, JSON_UNESCAPED_UNICODE);
@@ -95,17 +93,16 @@ switch ($accion) {
                                   ?? 0;
         }
 
-        if (!array_key_exists('id_rol', $payload) || $payload['id_rol'] === '' || $payload['id_rol'] === null) {
-            $payload['id_rol'] = null;
-        } else {
-            $payload['id_rol'] = (int)$payload['id_rol'];
-        }
+        $payload['id_rol'] = (array_key_exists('id_rol',$payload) && $payload['id_rol']!=='')
+                                ? (int)$payload['id_rol']
+                                : null;
 
-        if (!array_key_exists('id_cliente', $payload) || $payload['id_cliente'] === '' || $payload['id_cliente'] === null) {
-            echo json_encode(['ok'=>false,'msg'=>'Debe seleccionar el Cliente/Taller.'], JSON_UNESCAPED_UNICODE);
-            break;
+        /** CAMBIO: NO forzar id_cliente; lo valida el modelo según el rol */
+        if (!array_key_exists('id_cliente', $payload) || $payload['id_cliente'] === '') {
+            $payload['id_cliente'] = null;
+        } else {
+            $payload['id_cliente'] = (int)$payload['id_cliente'];
         }
-        $payload['id_cliente'] = (int)$payload['id_cliente'];
 
         $resp = $usuarioModel->actualizar($id, $payload);
         echo json_encode($resp, JSON_UNESCAPED_UNICODE);

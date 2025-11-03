@@ -1,53 +1,54 @@
 <?php
 // includes/acl.php
 if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/db.php'; // $pdo
 
 /**
- * Devuelve true si el rol actual puede ver la clave del menú.
- * Edita el array $ACL para ajustar quién ve qué.
- *
- * Roles según tu catálogo (ajústalo si cambian los IDs):
- * 1 Administrador, 2 Cajero, 3 Almacén, 4 Supervisor, 5 Vendedor,
- * 6 Invitado, 8 Taller, 9 Cliente
+ * Carga y cachea en $_SESSION los permisos por rol desde BD.
  */
-function can(string $key): bool {
-  static $ACL = [
-    'menu.inicio'              => [1,2,3,4,5,6,8,9],
+function acl_bootstrap(): void {
+  if (!isset($_SESSION['usuario']['id_rol'])) return;
 
-    'ventas.menu'              => [1,2,5],
-    'ventas.historial'         => [1,2,4,5],
-    'ventas.prestamos'         => [1,2],
-    'ventas.pos'               => [1,2,5],
+  $idRol = (int)$_SESSION['usuario']['id_rol'];
+  if (isset($_SESSION['acl_cache']['rol']) && $_SESSION['acl_cache']['rol'] === $idRol) {
+    return; // ya cacheado
+  }
 
-    'compras.menu'             => [1,3],
-    'compras.gestion'          => [1,3],
-
-    'inventarios.menu'         => [1,3,4],
-    'inventarios.productos'    => [1,3,4],
-    'inventarios.faltantes'    => [1,3,4],
-    'inventarios.movimientos'  => [1,3,4],
-
-    'utilidades.menu'          => [1,3,4],
-    'utilidades.comparador'    => [1,3,4],
-
-    'catalogos.menu'           => [1,3,4],
-    'catalogos.proveedores'    => [1,3,4],
-    'catalogos.clientes'       => [1,3,4,2,5],
-    'catalogos.unidades'       => [1,3],
-    'catalogos.sucursales'     => [1,3],
-    'catalogos.cajas'          => [1],
-
-    'talleres.menu'            => [1,8],
-    'talleres.lista'           => [1,8],
-    'talleres.miscompras'      => [1,8],
-
-    'sistema.menu'             => [1,4],
-    'sistema.bitacora'         => [1,4],
-    'sistema.usuarios'         => [1],
-    'sistema.roles'            => [1],
+  $_SESSION['acl_cache'] = [
+    'rol'       => $idRol,
+    'permisos'  => [],
+    'startPath' => '/views/private/inicio/index.php'
   ];
 
-  // **Clave:** lee el id_rol desde tu estructura actual
-  $rol = (int)($_SESSION['usuario']['id_rol'] ?? 0);
-  return isset($ACL[$key]) && in_array($rol, $ACL[$key], true);
+  // Permisos del rol
+  try {
+    $stmt = $GLOBALS['pdo']->prepare("SELECT clave FROM acl_rol_permiso WHERE id_rol = ?");
+    $stmt->execute([$idRol]);
+    $_SESSION['acl_cache']['permisos'] = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'clave');
+
+    // Página de inicio por rol (si la hay)
+    $stmt2 = $GLOBALS['pdo']->prepare("SELECT start_path FROM acl_rol_inicio WHERE id_rol = ?");
+    $stmt2->execute([$idRol]);
+    if ($row = $stmt2->fetch(PDO::FETCH_ASSOC)) {
+      $_SESSION['acl_cache']['startPath'] = $row['start_path'] ?: '/views/private/inicio/index.php';
+    }
+  } catch (Throwable $e) {
+    // fallback silencioso si las tablas aún no existen
+  }
+}
+
+/**
+ * Verifica si el rol actual tiene el permiso $key.
+ * Si no hay BD/tables, puedes añadir aquí un fallback de emergencia (opcional).
+ */
+function can(string $key): bool {
+  acl_bootstrap();
+  $perms = $_SESSION['acl_cache']['permisos'] ?? [];
+  return in_array($key, $perms, true);
+}
+
+/** Devuelve la página de inicio para el rol actual (ruta relativa SIN BASE_URL). */
+function acl_start_path_for_current_role(): string {
+  acl_bootstrap();
+  return $_SESSION['acl_cache']['startPath'] ?? '/views/private/inicio/index.php';
 }

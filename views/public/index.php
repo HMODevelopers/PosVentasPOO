@@ -7,6 +7,12 @@ if (isset($_SESSION['usuario'])) {
     header('Location: ' . BASE_URL . '/views/private/inicio/index.php');
     exit;
 }
+
+/* ===== Bust de caché para login.js =====
+   Cambia el querystring ?v= cada vez que el archivo se edita,
+   obligando al navegador a descargar la versión nueva. */
+$LOGIN_JS_PATH = __DIR__ . '/../../assets/js/pages/login.js'; // ruta en disco
+$LOGIN_JS_VER  = @filemtime($LOGIN_JS_PATH) ?: time();
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -64,12 +70,7 @@ if (isset($_SESSION['usuario'])) {
                                     <input type="password" name="contrasena" id="contrasena" class="form-control" required placeholder="Ingresa tu contraseña">
                                 </div>
 
-                                <div class="form-group mb-3">
-                                    <div class="custom-control custom-checkbox checkbox-info">
-                                        <input type="checkbox" class="custom-control-input" id="checkbox-signin">
-                                        <label class="custom-control-label" for="checkbox-signin">Recordarme</label>
-                                    </div>
-                                </div>
+                               
 
                                 <div class="form-group mb-0 text-center">
                                     <button class="btn btn-danger btn-block" type="submit"> Iniciar sesión </button>
@@ -78,7 +79,7 @@ if (isset($_SESSION['usuario'])) {
                             </form>
 
                             <div class="text-center mt-3">
-                                <small class="text-muted">¿Olvidaste tu contraseña?</small>
+                                
                             </div>
 
                         </div>
@@ -86,7 +87,7 @@ if (isset($_SESSION['usuario'])) {
 
                     <div class="row mt-3">
                         <div class="col-12 text-center">
-                            <p class="text-muted">¿No tienes una cuenta? <a href="#" class="text-muted ml-1"><b>Regístrate</b></a></p>
+                            
                         </div>
                     </div>
 
@@ -102,9 +103,10 @@ if (isset($_SESSION['usuario'])) {
     <!-- Scripts -->
     <script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- OJO: quitamos jQuery CDN porque ya viene en vendor.min.js -->
     <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
-    <script src="<?= BASE_URL ?>/assets/js/pages/login.js"></script>
 
+    <!-- login.js con bust de caché -->
+    <script src="<?= BASE_URL ?>/assets/js/pages/login.js?v=<?= $LOGIN_JS_VER ?>"></script>
 </body>
 </html>

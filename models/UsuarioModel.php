@@ -8,6 +8,9 @@ class UsuarioModel
     private $conn;
     private const DEFAULT_PASSWORD_PLAIN = '123456789';
 
+    /** CAMBIO: centralizamos qué roles requieren cliente */
+    private const ROLES_REQUIEREN_CLIENTE = [8, 9]; // 8=Taller, 9=Cliente
+
     public function __construct()
     {
         global $pdo;
@@ -70,9 +73,7 @@ class UsuarioModel
 
     public function contar(array $filtros = []): int
     {
-        $sql = "SELECT COUNT(*) AS total
-                FROM usuarios u
-                WHERE 1=1";
+        $sql = "SELECT COUNT(*) AS total FROM usuarios u WHERE 1=1";
         $params = [];
 
         $q        = trim($filtros['q']        ?? '');
@@ -134,34 +135,31 @@ class UsuarioModel
                 : password_hash(self::DEFAULT_PASSWORD_PLAIN, PASSWORD_BCRYPT, ['cost' => 10]);
 
             $idRol = isset($d['id_rol']) && $d['id_rol'] !== '' ? (int)$d['id_rol'] : null;
-            $idCli = isset($d['id_cliente']) && $d['id_cliente'] !== '' ? (int)$d['id_cliente'] : null;
+            $idCli = (array_key_exists('id_cliente',$d) && $d['id_cliente']!=='')
+                        ? (int)$d['id_cliente']
+                        : null;
 
-            // Regla del módulo: siempre debe venir id_cliente
-            if (!$idCli) { throw new Exception('Debe seleccionar el Cliente/Taller (id_cliente).'); }
-
-            // Si el rol es Taller/Cliente, reforzar
-            if ($idRol) {
-                $q = $this->conn->prepare("SELECT LOWER(nombre) FROM roles WHERE id_rol=:r LIMIT 1");
-                $q->execute([':r' => $idRol]);
-                $rolNombre = (string)$q->fetchColumn();
-                if (in_array($rolNombre, ['taller','cliente'], true) && !$idCli) {
-                    throw new Exception('Para roles Taller/Cliente, id_cliente es obligatorio.');
-                }
+            /** CAMBIO: solo exigir cliente si el rol lo requiere */
+            $requiereCliente = ($idRol !== null) && in_array($idRol, self::ROLES_REQUIEREN_CLIENTE, true);
+            if ($requiereCliente && !$idCli) {
+                throw new Exception('Para este rol, debe seleccionar el Cliente/Taller.');
+            }
+            if (!$requiereCliente) {
+                $idCli = null; // forzamos NULL si no aplica
             }
 
             $sql = "INSERT INTO usuarios
                     (nombre, usuario, contrasena, correo, telefono, id_rol, id_cliente, activo, fecha_creacion)
                     VALUES (:nom, :usr, :pwd, :cor, :tel, :rol, :cli, 1, NOW())";
             $st = $this->conn->prepare($sql);
-            $st->execute([
-                ':nom' => trim($d['nombre']  ?? ''),
-                ':usr' => trim($d['usuario'] ?? ''),
-                ':pwd' => $pwdHash,
-                ':cor' => $d['correo']   ?? null,
-                ':tel' => $d['telefono'] ?? null,
-                ':rol' => $idRol,
-                ':cli' => $idCli,
-            ]);
+            $st->bindValue(':nom', trim($d['nombre']  ?? ''));
+            $st->bindValue(':usr', trim($d['usuario'] ?? ''));
+            $st->bindValue(':pwd', $pwdHash);
+            $st->bindValue(':cor', ($d['correo']   ?? null) ?: null, $d['correo']   ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $st->bindValue(':tel', ($d['telefono'] ?? null) ?: null, $d['telefono'] ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $st->bindValue(':rol', $idRol, $idRol !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+            $st->bindValue(':cli', $idCli, $idCli !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+            $st->execute();
 
             $idUsuarioNuevo = (int)$this->conn->lastInsertId();
 
@@ -220,16 +218,13 @@ class UsuarioModel
                 'id_cliente' => array_key_exists('id_cliente',$d) ? ($d['id_cliente']===''? null : (int)$d['id_cliente']) : $prev['id_cliente'],
             ];
 
-            if (!$nuevo['id_cliente']) { throw new Exception('Debe seleccionar el Cliente/Taller (id_cliente).'); }
-
-            // Validación para roles Taller/Cliente
-            if ($nuevo['id_rol']) {
-                $q = $this->conn->prepare("SELECT LOWER(nombre) FROM roles WHERE id_rol=:r LIMIT 1");
-                $q->execute([':r'=>$nuevo['id_rol']]);
-                $rolNombre = (string)$q->fetchColumn();
-                if (in_array($rolNombre, ['taller','cliente'], true) && !$nuevo['id_cliente']) {
-                    throw new Exception('Para roles Taller/Cliente, id_cliente es obligatorio.');
-                }
+            /** CAMBIO: regla de cliente por rol */
+            $requiereCliente = ($nuevo['id_rol'] !== null) && in_array((int)$nuevo['id_rol'], self::ROLES_REQUIEREN_CLIENTE, true);
+            if ($requiereCliente && !$nuevo['id_cliente']) {
+                throw new Exception('Para este rol, debe seleccionar el Cliente/Taller.');
+            }
+            if (!$requiereCliente) {
+                $nuevo['id_cliente'] = null;
             }
 
             // detectar cambios
@@ -250,7 +245,12 @@ class UsuarioModel
                     $params[":$campo"] = $info['new'];
                 }
                 $sql = "UPDATE usuarios SET ".implode(',', $set)." WHERE id_usuario = :id";
-                $this->conn->prepare($sql)->execute($params);
+                $stmt = $this->conn->prepare($sql);
+                // CAMBIO: bind NULL correctamente
+                foreach ($params as $k => $v) {
+                    $stmt->bindValue($k, ($v === null ? null : $v), $v === null ? PDO::PARAM_NULL : (is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR));
+                }
+                $stmt->execute();
 
                 // bitácora por campo
                 foreach ($changes as $campo => $info) {
