@@ -1,5 +1,4 @@
 <?php
-// models/FaltantesModel.php
 require_once __DIR__ . '/../includes/db.php';
 
 class FaltantesModel
@@ -12,13 +11,7 @@ class FaltantesModel
         $this->conn = $pdo;
     }
 
-    /**
-     * Faltantes basados en ventas:
-     *  - modo = 'rango'  -> usa fecha entre [desde, hasta]
-     *  - modo = 'lunes'  -> filtra por DAYOFWEEK = 2
-     *  - modo = 'mar-sab'-> filtra DAYOFWEEK entre 3 y 7
-     *  Fechas se usan SOLO en modo 'rango'.
-     */
+    /** ================= Paginado ================= */
     public function faltantesPaginado(array $f, int $pagina=1, int $limite=10): array
     {
         $pagina = max(1, (int)$pagina);
@@ -39,7 +32,6 @@ class FaltantesModel
 
         $filtroDia = '';
         if ($modo === 'mar-sab') {
-            // MySQL DAYOFWEEK: 1=Dom, 2=Lun, 3=Mar, ... 7=Sab
             $filtroDia = " AND DAYOFWEEK(v.fecha) BETWEEN 3 AND 7 ";
         } elseif ($modo === 'lunes') {
             $filtroDia = " AND DAYOFWEEK(v.fecha) = 2 ";
@@ -47,24 +39,16 @@ class FaltantesModel
 
         $filtroEstatus = " AND v.estatus IN ('Activa','Credito') ";
 
-        /* ===================== COUNT ===================== */
+        // COUNT
         $sqlCount = "
           SELECT COUNT(*) FROM (
             SELECT p.id_producto
             FROM ventas_detalle vd
-            JOIN ventas v        ON v.id_venta    = vd.id_venta
-            JOIN productos p     ON p.id_producto = vd.id_producto
-            LEFT JOIN unidades_sat us ON us.id_unidad_sat = p.id_unidad_sat
-            LEFT JOIN proveedores pr   ON pr.id_proveedor  = p.id_proveedor
-            WHERE v.activo=1
-              AND (vd.activo=1 OR vd.activo IS NULL)
-              {$filtroEstatus}
-              {$filtroFechas}
-              {$filtroDia}
-            GROUP BY 
-              p.id_producto, p.codigo, p.descripcion, 
-              p.stock_actual, p.stock_minimo,
-              us.descripcion, pr.nombre
+            JOIN ventas v ON v.id_venta = vd.id_venta
+            JOIN productos p ON p.id_producto = vd.id_producto
+            WHERE v.activo=1 AND (vd.activo=1 OR vd.activo IS NULL)
+              {$filtroEstatus} {$filtroFechas} {$filtroDia}
+            GROUP BY p.id_producto
             HAVING SUM(vd.cantidad) > 0
           ) t
         ";
@@ -74,34 +58,57 @@ class FaltantesModel
         $total = (int)$stC->fetchColumn();
         if ($total === 0) return ['data'=>[], 'total'=>0];
 
-        /* ===================== DATA ===================== */
+        // DATA: última venta por producto y, si fue crédito, nombre del cliente
         $sql = "
+          WITH ventas_filtradas AS (
+            SELECT 
+              vd.id_producto,
+              v.id_venta,
+              v.fecha,
+              v.estatus,
+              v.id_cliente,
+              vd.cantidad
+            FROM ventas_detalle vd
+            JOIN ventas v ON v.id_venta = vd.id_venta
+            WHERE v.activo = 1
+              AND (vd.activo=1 OR vd.activo IS NULL)
+              {$filtroEstatus} {$filtroFechas} {$filtroDia}
+          ),
+          ultima_venta AS (
+            SELECT
+              id_producto,
+              id_venta,
+              estatus,
+              id_cliente,
+              fecha,
+              ROW_NUMBER() OVER (PARTITION BY id_producto ORDER BY fecha DESC, id_venta DESC) AS rn
+            FROM ventas_filtradas
+          )
           SELECT 
             p.id_producto,
             p.codigo,
-            us.descripcion         AS unidad,
+            us.descripcion AS unidad,
             p.descripcion,
-            SUM(vd.cantidad)       AS cantidad,
-            MAX(v.fecha)           AS fecha_venta,
-            pr.nombre              AS proveedor,
-            p.stock_actual         AS inventario,
-            GREATEST(SUM(vd.cantidad) - p.stock_actual, 0) AS faltante_sobre_ventas,
-            GREATEST(p.stock_minimo - p.stock_actual, 0)   AS faltante_vs_minimo
-          FROM ventas_detalle vd
-          JOIN ventas v            ON v.id_venta    = vd.id_venta
-          JOIN productos p         ON p.id_producto = vd.id_producto
+            SUM(vf.cantidad)                         AS cantidad,
+            MAX(vf.fecha)                            AS fecha_venta,
+            pr.nombre                                 AS proveedor,
+            p.stock_actual                            AS inventario,
+            GREATEST(SUM(vf.cantidad) - p.stock_actual, 0) AS faltante_sobre_ventas,
+            GREATEST(p.stock_minimo - p.stock_actual, 0)   AS faltante_vs_minimo,
+            CASE WHEN uv.estatus = 'Credito' 
+                 THEN COALESCE(c.nombre, '') 
+                 ELSE '' END                          AS compro_credito
+          FROM productos p
+          JOIN ventas_filtradas vf ON vf.id_producto = p.id_producto
           LEFT JOIN unidades_sat us ON us.id_unidad_sat = p.id_unidad_sat
           LEFT JOIN proveedores pr   ON pr.id_proveedor  = p.id_proveedor
-          WHERE v.activo=1
-            AND (vd.activo=1 OR vd.activo IS NULL)
-            {$filtroEstatus}
-            {$filtroFechas}
-            {$filtroDia}
+          LEFT JOIN ultima_venta uv  ON uv.id_producto = p.id_producto AND uv.rn = 1
+          LEFT JOIN clientes c       ON c.id_cliente = uv.id_cliente
           GROUP BY 
-            p.id_producto, p.codigo, p.descripcion,
-            p.stock_actual, p.stock_minimo,
-            us.descripcion, pr.nombre
-          HAVING SUM(vd.cantidad) > 0
+            p.id_producto, p.codigo, us.descripcion, p.descripcion,
+            p.stock_actual, p.stock_minimo, pr.nombre,
+            uv.estatus, c.nombre
+          HAVING SUM(vf.cantidad) > 0
           ORDER BY faltante_sobre_ventas DESC, cantidad DESC
           LIMIT :limite OFFSET :offset
         ";
@@ -115,21 +122,13 @@ class FaltantesModel
         return ['data'=>$rows, 'total'=>$total];
     }
 
-    /**
-     * Productos con inventario negativo (sin fechas).
-     * (toma unidad y proveedor por LEFT JOIN)
-     */
     public function negativosPaginado(array $f=[], int $pagina=1, int $limite=10): array
     {
         $pagina = max(1, (int)$pagina);
         $limite = max(1, (int)$limite);
         $offset = ($pagina - 1) * $limite;
 
-        $sqlCount = "
-          SELECT COUNT(*)
-          FROM productos p
-          WHERE p.activo=1 AND p.stock_actual < 0
-        ";
+        $sqlCount = "SELECT COUNT(*) FROM productos p WHERE p.activo=1 AND p.stock_actual < 0";
         $total = (int)$this->conn->query($sqlCount)->fetchColumn();
         if ($total === 0) return ['data'=>[], 'total'=>0];
 
@@ -137,14 +136,15 @@ class FaltantesModel
           SELECT
             p.id_producto,
             p.codigo,
-            us.descripcion  AS unidad,
+            us.descripcion AS unidad,
             p.descripcion,
             0               AS cantidad,
             NULL            AS fecha_venta,
             pr.nombre       AS proveedor,
             p.stock_actual  AS inventario,
             0               AS faltante_sobre_ventas,
-            GREATEST(p.stock_minimo - p.stock_actual, 0) AS faltante_vs_minimo
+            GREATEST(p.stock_minimo - p.stock_actual, 0) AS faltante_vs_minimo,
+            NULL            AS compro_credito
           FROM productos p
           LEFT JOIN unidades_sat us ON us.id_unidad_sat = p.id_unidad_sat
           LEFT JOIN proveedores pr   ON pr.id_proveedor  = p.id_proveedor
@@ -159,5 +159,113 @@ class FaltantesModel
         $rows = $st->fetchAll(\PDO::FETCH_ASSOC);
 
         return ['data'=>$rows, 'total'=>$total];
+    }
+
+    /** ================= Sin paginar (exportar) ================= */
+    public function faltantesAll(array $f): array
+    {
+        $modo  = trim((string)($f['modo'] ?? 'rango'));
+        $desde = trim((string)($f['desde'] ?? ''));
+        $hasta = trim((string)($f['hasta'] ?? ''));
+
+        $params = [];
+        $filtroFechas = '';
+        if ($modo === 'rango' && $desde !== '' && $hasta !== '') {
+            $filtroFechas = " AND v.fecha >= :desde AND v.fecha < DATE_ADD(:hasta, INTERVAL 1 DAY) ";
+            $params[':desde'] = $desde;
+            $params[':hasta'] = $hasta;
+        }
+
+        $filtroDia = '';
+        if ($modo === 'mar-sab') {
+            $filtroDia = " AND DAYOFWEEK(v.fecha) BETWEEN 3 AND 7 ";
+        } elseif ($modo === 'lunes') {
+            $filtroDia = " AND DAYOFWEEK(v.fecha) = 2 ";
+        }
+
+        $filtroEstatus = " AND v.estatus IN ('Activa','Credito') ";
+
+        $sql = "
+          WITH ventas_filtradas AS (
+            SELECT 
+              vd.id_producto,
+              v.id_venta,
+              v.fecha,
+              v.estatus,
+              v.id_cliente,
+              vd.cantidad
+            FROM ventas_detalle vd
+            JOIN ventas v ON v.id_venta = vd.id_venta
+            WHERE v.activo = 1
+              AND (vd.activo=1 OR vd.activo IS NULL)
+              {$filtroEstatus} {$filtroFechas} {$filtroDia}
+          ),
+          ultima_venta AS (
+            SELECT
+              id_producto,
+              id_venta,
+              estatus,
+              id_cliente,
+              fecha,
+              ROW_NUMBER() OVER (PARTITION BY id_producto ORDER BY fecha DESC, id_venta DESC) AS rn
+            FROM ventas_filtradas
+          )
+          SELECT 
+            p.id_producto,
+            p.codigo,
+            us.descripcion AS unidad,
+            p.descripcion,
+            SUM(vf.cantidad)                         AS cantidad,
+            MAX(vf.fecha)                            AS fecha_venta,
+            pr.nombre                                 AS proveedor,
+            p.stock_actual                            AS inventario,
+            GREATEST(SUM(vf.cantidad) - p.stock_actual, 0) AS faltante_sobre_ventas,
+            GREATEST(p.stock_minimo - p.stock_actual, 0)   AS faltante_vs_minimo,
+            CASE WHEN uv.estatus = 'Credito' 
+                 THEN COALESCE(c.nombre, '') 
+                 ELSE '' END                          AS compro_credito
+          FROM productos p
+          JOIN ventas_filtradas vf ON vf.id_producto = p.id_producto
+          LEFT JOIN unidades_sat us ON us.id_unidad_sat = p.id_unidad_sat
+          LEFT JOIN proveedores pr   ON pr.id_proveedor  = p.id_proveedor
+          LEFT JOIN ultima_venta uv  ON uv.id_producto = p.id_producto AND uv.rn = 1
+          LEFT JOIN clientes c       ON c.id_cliente = uv.id_cliente
+          GROUP BY 
+            p.id_producto, p.codigo, us.descripcion, p.descripcion,
+            p.stock_actual, p.stock_minimo, pr.nombre,
+            uv.estatus, c.nombre
+          HAVING SUM(vf.cantidad) > 0
+          ORDER BY faltante_sobre_ventas DESC, cantidad DESC
+        ";
+        $st = $this->conn->prepare($sql);
+        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        $st->execute();
+        return $st->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function negativosAll(): array
+    {
+        $sql = "
+          SELECT
+            p.id_producto,
+            p.codigo,
+            us.descripcion  AS unidad,
+            p.descripcion,
+            0               AS cantidad,
+            NULL            AS fecha_venta,
+            pr.nombre       AS proveedor,
+            p.stock_actual  AS inventario,
+            0               AS faltante_sobre_ventas,
+            GREATEST(p.stock_minimo - p.stock_actual, 0) AS faltante_vs_minimo,
+            NULL            AS compro_credito
+          FROM productos p
+          LEFT JOIN unidades_sat us ON us.id_unidad_sat = p.id_unidad_sat
+          LEFT JOIN proveedores pr   ON pr.id_proveedor  = p.id_proveedor
+          WHERE p.activo=1 AND p.stock_actual < 0
+          ORDER BY p.stock_actual ASC
+        ";
+        $st = $this->conn->prepare($sql);
+        $st->execute();
+        return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 }

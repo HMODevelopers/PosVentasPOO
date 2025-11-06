@@ -16,14 +16,11 @@ if (!isset($_SESSION['usuario'])) {
   <meta charset="utf-8" />
   <title>Faltantes Inventario | REFASOFT-V4</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- App css -->
   <link href="<?= BASE_URL ?>/assets/css/bootstrap.min.css" rel="stylesheet" />
   <link href="<?= BASE_URL ?>/assets/css/icons.min.css" rel="stylesheet" />
   <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet" />
   <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
-
   <style>
     .clean-filter .input-group-text{ cursor:pointer; }
     .table td, .table th{ vertical-align: middle; }
@@ -32,27 +29,20 @@ if (!isset($_SESSION['usuario'])) {
 </head>
 <body>
   <?php include_once __DIR__ . '/../../../includes/header.php'; ?>
-
   <div class="wrapper">
-    <!-- Loader -->
     <div class="wrapper-loader fade" id="LoadingImage" style="display:none;">
-      <div class="loader">
-        <div class="loader__figure"></div>
-        <p class="loader__label">Cargando...</p>
-      </div>
+      <div class="loader"><div class="loader__figure"></div><p class="loader__label">Cargando...</p></div>
     </div>
 
     <div class="container-fluid">
       <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>
 
-      <!-- =================== Filtros (Modo / Desde / Hasta) =================== -->
+      <!-- Filtros -->
       <div class="card-header" style="border-color:darkgray; border-style:dotted;">
         <h5>Filtros</h5>
         <div class="row">
           <div class="col-lg-12">
             <div class="row">
-
-              <!-- Modo -->
               <div class="col-md-4">
                 <div class="form-group">
                   <label for="Modo" class="control-label">Modo</label>
@@ -64,49 +54,44 @@ if (!isset($_SESSION['usuario'])) {
                   </select>
                 </div>
               </div>
-
-              <!-- Desde -->
               <div class="col-md-4">
                 <div class="form-group">
                   <label for="Desde" class="control-label">Desde</label>
                   <div class="input-group">
                     <input type="date" id="Desde" class="form-control filtrar" placeholder="dd/mm/aaaa">
                     <div class="input-group-append clean-filter" style="display:none;">
-                      <span class="input-group-text">
-                        <i class="mdi mdi-close-circle text-danger" title="Limpiar" onclick="clearField('Desde')"></i>
-                      </span>
+                      <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" title="Limpiar" onclick="clearField('Desde')"></i></span>
                     </div>
                   </div>
                 </div>
               </div>
-
-              <!-- Hasta -->
               <div class="col-md-4">
                 <div class="form-group">
                   <label for="Hasta" class="control-label">Hasta</label>
                   <div class="input-group">
                     <input type="date" id="Hasta" class="form-control filtrar" placeholder="dd/mm/aaaa">
                     <div class="input-group-append clean-filter" style="display:none;">
-                      <span class="input-group-text">
-                        <i class="mdi mdi-close-circle text-danger" title="Limpiar" onclick="clearField('Hasta')"></i>
-                      </span>
+                      <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" title="Limpiar" onclick="clearField('Hasta')"></i></span>
                     </div>
                   </div>
                 </div>
               </div>
-
             </div><!--/row-->
           </div>
         </div>
       </div>
-      <!-- =================== /Filtros =================== -->
+      <!-- /Filtros -->
 
-      <!-- =================== Tabla =================== -->
+      <!-- Tabla -->
       <div class="row">
         <div class="col-12">
           <div class="card-box">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h4 class="header-title">Listado de Faltantes</h4>
+              <button id="btnExportar"  type="button"
+                          class="btn btn-success btn-sm waves-effect waves-light">
+                  <i class="mdi mdi-file-excel"></i> Exportar Excel
+                </button>
             </div>
 
             <div class="table-responsive">
@@ -118,6 +103,7 @@ if (!isset($_SESSION['usuario'])) {
                     <th>DESCRIPCIÓN</th>
                     <th class="text-right">VENDIDO</th>
                     <th class="text-center">ÚLTIMA VENTA</th>
+                    <th>COMPRÓ (si crédito)</th> <!-- NUEVO -->
                     <th>PROVEEDOR</th>
                     <th class="text-right">INVENTARIO</th>
                     <th class="text-right">FALTANTE vs VENTAS</th>
@@ -129,22 +115,17 @@ if (!isset($_SESSION['usuario'])) {
             </div>
 
             <div class="row align-items-center justify-content-between mt-2">
-              <div class="col-md-6">
-                <div id="infoFalt" class="dataTables_info"></div>
-              </div>
+              <div class="col-md-6"><div id="infoFalt" class="dataTables_info"></div></div>
               <div class="col-md-6 d-flex justify-content-end">
-                <nav aria-label="Page navigation">
-                  <ul id="pagination" class="pagination justify-content-end mb-0"></ul>
-                </nav>
+                <nav aria-label="Page navigation"><ul id="pagination" class="pagination justify-content-end mb-0"></ul></nav>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <!-- =================== /Tabla =================== -->
-
-    </div><!--/container-->
-  </div><!--/wrapper-->
+      <!-- /Tabla -->
+    </div>
+  </div>
 
   <?php include_once __DIR__ . '/../../../includes/footer.php'; ?>
   <div class="rightbar-overlay"></div>
@@ -163,7 +144,6 @@ if (!isset($_SESSION['usuario'])) {
       toggleFechas();
       cargarFaltantes(1);
 
-      // Helpers
       function clearField(id){
         const $el = $('#'+id);
         $el.val('');
@@ -184,9 +164,8 @@ if (!isset($_SESSION['usuario'])) {
         const modo = $('#Modo').val();
         const usarFechas = (modo === 'rango');
         $('#Desde,#Hasta').prop('disabled', !usarFechas);
-
         $('#Desde,#Hasta').each(function(){
-          if (!usarFechas) $(this).val(''); // limpiar si no aplica
+          if (!usarFechas) $(this).val('');
           const $wrap = $(this).closest('.input-group').find('.clean-filter');
           $wrap.toggle(usarFechas && !!$(this).val());
         });
@@ -206,7 +185,7 @@ if (!isset($_SESSION['usuario'])) {
         };
 
         if (usarFechas && (!filtros.Desde || !filtros.Hasta)){
-          $('#tbodyFaltantes').html('<tr><td colspan="9" class="text-center text-muted">Selecciona un rango de fechas.</td></tr>');
+          $('#tbodyFaltantes').html('<tr><td colspan="10" class="text-center text-muted">Selecciona un rango de fechas.</td></tr>');
           $('#infoFalt').text('');
           $('#pagination').empty().closest('nav').hide();
           return;
@@ -223,7 +202,7 @@ if (!isset($_SESSION['usuario'])) {
 
           let tbody = '';
           if (!rows.length){
-            tbody = '<tr><td colspan="9" class="text-center">Sin resultados</td></tr>';
+            tbody = '<tr><td colspan="10" class="text-center">Sin resultados</td></tr>';
           } else {
             rows.forEach(r=>{
               tbody += `
@@ -233,6 +212,7 @@ if (!isset($_SESSION['usuario'])) {
                   <td>${r.descripcion || ''}</td>
                   <td class="text-right">${fmt2(r.cantidad)}</td>
                   <td class="text-center">${fmtDT(r.fecha_venta)}</td>
+                  <td>${r.compro_credito || '—'}</td> <!-- NUEVO -->
                   <td>${r.proveedor || '—'}</td>
                   <td class="text-right">${fmt2(r.inventario)}</td>
                   <td class="text-right">${fmt2(r.faltante_sobre_ventas)}</td>
@@ -285,7 +265,6 @@ if (!isset($_SESSION['usuario'])) {
         });
       }
 
-      // Eventos
       $("#Modo").on('change', function(){
         toggleFechas();
         setTimeout(()=>cargarFaltantes(1), 150);
@@ -304,6 +283,28 @@ if (!isset($_SESSION['usuario'])) {
         .on('keypress', function(e){
           if (e.charCode === 13) cargarFaltantes(1);
         });
+
+      // Exportar Excel
+      $('#btnExportar').on('click', function(){
+        const modo = $('#Modo').val() || 'rango';
+        const usarFechas = (modo === 'rango');
+        const desde = $('#Desde').val() || '';
+        const hasta = $('#Hasta').val() || '';
+
+        if (usarFechas && (!desde || !hasta)) {
+          toastr.warning('Selecciona el rango de fechas para exportar.');
+          return;
+        }
+
+        const params = new URLSearchParams({
+          accion: 'exportar-excel',
+          Modo: modo,
+          Desde: usarFechas ? desde : '',
+          Hasta: usarFechas ? hasta : ''
+        });
+
+        window.location = `${BASE_URL}/controllers/FaltantesController.php?${params.toString()}`;
+      });
     });
   </script>
 </body>
