@@ -2,7 +2,11 @@
 header('Content-Type: application/json; charset=UTF-8');
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-include_once '../models/UsuarioModel.php';
+if (!defined('BASE_URL')) {
+  include_once __DIR__ . '/../includes/config.php';
+}
+
+include_once __DIR__ . '/../models/UsuarioModel.php';
 $usuarioModel = new UsuarioModel();
 
 $accion = $_REQUEST['accion'] ?? '';
@@ -54,7 +58,6 @@ switch ($accion) {
         $payload = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         if (!is_array($payload)) $payload = [];
 
-        // Operador en bitácora (si está en sesión)
         if (empty($payload['id_usuario'])) {
             $payload['id_usuario'] = $_SESSION['usuario']['id_usuario']
                                   ?? $_SESSION['usuario']['id']
@@ -62,12 +65,10 @@ switch ($accion) {
                                   ?? 0;
         }
 
-        // Normaliza rol
         $payload['id_rol'] = (array_key_exists('id_rol',$payload) && $payload['id_rol']!=='')
                                 ? (int)$payload['id_rol']
                                 : null;
 
-        /** CAMBIO: NO exigir id_cliente aquí; dejar que el modelo valide por rol */
         if (!array_key_exists('id_cliente', $payload) || $payload['id_cliente'] === '') {
             $payload['id_cliente'] = null;
         } else {
@@ -97,7 +98,6 @@ switch ($accion) {
                                 ? (int)$payload['id_rol']
                                 : null;
 
-        /** CAMBIO: NO forzar id_cliente; lo valida el modelo según el rol */
         if (!array_key_exists('id_cliente', $payload) || $payload['id_cliente'] === '') {
             $payload['id_cliente'] = null;
         } else {
@@ -125,6 +125,54 @@ switch ($accion) {
 
         $resp = $usuarioModel->eliminar((int)$id, (int)$idOper, $motivo);
         echo json_encode($resp, JSON_UNESCAPED_UNICODE);
+    break;
+
+    // ===== CAMBIAR CONTRASEÑA =====
+    case 'cambiar-password':
+        $idSesion = (int)($_SESSION['usuario']['id_usuario'] ?? $_SESSION['id_usuario'] ?? 0);
+        if ($idSesion <= 0) { echo json_encode(['ok'=>false,'msg'=>'Sesión no válida.']); break; }
+
+        // CSRF (si lo usas)
+        $csrf = $_POST['csrf_token'] ?? '';
+        if (!empty($_SESSION['csrf_token'])) {
+            if (!$csrf || !hash_equals($_SESSION['csrf_token'], $_SESSION['csrf_token'])) {
+                echo json_encode(['ok'=>false,'msg'=>'Token inválido. Recarga la página.']); break;
+            }
+        }
+
+        $actual    = trim($_POST['actual']    ?? '');
+        $nueva     = trim($_POST['nueva']     ?? '');
+        $confirmar = trim($_POST['confirmar'] ?? '');
+
+        if ($actual === '' || $nueva === '' || $confirmar === '') {
+            echo json_encode(['ok'=>false,'msg'=>'Completa todos los campos.']); break;
+        }
+        if ($nueva !== $confirmar) {
+            echo json_encode(['ok'=>false,'msg'=>'La confirmación no coincide.']); break;
+        }
+        if (strlen($nueva) < 8) {
+            echo json_encode(['ok'=>false,'msg'=>'La nueva contraseña debe tener mínimo 8 caracteres.']); break;
+        }
+
+        try {
+            $resp = $usuarioModel->cambiarPassword($idSesion, $actual, $nueva, $idSesion);
+            if (!$resp['ok']) { echo json_encode($resp, JSON_UNESCAPED_UNICODE); break; }
+
+            // Cerrar sesión en servidor
+            $_SESSION = [];
+            if (ini_get('session.use_cookies')) {
+                $p = session_get_cookie_params();
+                setcookie(session_name(), '', time()-42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+            }
+            session_destroy();
+
+            echo json_encode([
+                'ok'=>true,
+                'logout_url'=>(defined('BASE_URL') ? BASE_URL : '..') . '/controllers/LogoutController.php'
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            echo json_encode(['ok'=>false,'msg'=>'Error inesperado al cambiar la contraseña.'], JSON_UNESCAPED_UNICODE);
+        }
     break;
 
     default:

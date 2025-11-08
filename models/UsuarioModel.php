@@ -1,6 +1,6 @@
 <?php
 // Incluir conexión PDO
-include_once '../includes/db.php';
+include_once __DIR__ . '/../includes/db.php';
 
 class UsuarioModel
 {
@@ -139,7 +139,6 @@ class UsuarioModel
                         ? (int)$d['id_cliente']
                         : null;
 
-            /** CAMBIO: solo exigir cliente si el rol lo requiere */
             $requiereCliente = ($idRol !== null) && in_array($idRol, self::ROLES_REQUIEREN_CLIENTE, true);
             if ($requiereCliente && !$idCli) {
                 throw new Exception('Para este rol, debe seleccionar el Cliente/Taller.');
@@ -186,7 +185,6 @@ class UsuarioModel
         } catch (\Exception $e) {
             $this->conn->rollBack();
             try { $this->registrarBitacora((int)($d['id_usuario'] ?? 0), 'usuarios', 'ERROR', 0, $e->getMessage()); } catch (\Throwable $th) {}
-            // duplicate friendly
             $msg = $e->getMessage();
             if ($e instanceof PDOException && isset($e->errorInfo[0]) && $e->errorInfo[0] === '23000') {
                 if (strpos($msg, 'usuario') !== false) $msg = 'El usuario ya existe.';
@@ -218,7 +216,6 @@ class UsuarioModel
                 'id_cliente' => array_key_exists('id_cliente',$d) ? ($d['id_cliente']===''? null : (int)$d['id_cliente']) : $prev['id_cliente'],
             ];
 
-            /** CAMBIO: regla de cliente por rol */
             $requiereCliente = ($nuevo['id_rol'] !== null) && in_array((int)$nuevo['id_rol'], self::ROLES_REQUIEREN_CLIENTE, true);
             if ($requiereCliente && !$nuevo['id_cliente']) {
                 throw new Exception('Para este rol, debe seleccionar el Cliente/Taller.');
@@ -246,7 +243,6 @@ class UsuarioModel
                 }
                 $sql = "UPDATE usuarios SET ".implode(',', $set)." WHERE id_usuario = :id";
                 $stmt = $this->conn->prepare($sql);
-                // CAMBIO: bind NULL correctamente
                 foreach ($params as $k => $v) {
                     $stmt->bindValue($k, ($v === null ? null : $v), $v === null ? PDO::PARAM_NULL : (is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR));
                 }
@@ -355,6 +351,66 @@ class UsuarioModel
         return $rows;
     }
 
+    // ================== PASSWORD ==================
+    public function getPasswordHashById(int $idUsuario): ?string {
+        $st = $this->conn->prepare("SELECT contrasena FROM usuarios WHERE id_usuario = ? LIMIT 1");
+        $st->execute([$idUsuario]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        return $row['contrasena'] ?? null;
+    }
+
+    public function updatePasswordHash(int $idUsuario, string $hash): bool {
+        $st = $this->conn->prepare("UPDATE usuarios SET contrasena = ? WHERE id_usuario = ? LIMIT 1");
+        return $st->execute([$hash, $idUsuario]);
+    }
+
+    /**
+     * Cambia la contraseña verificando la actual y registrando en bitácora.
+     * @param int $idUsuario   usuario afectado (el de sesión)
+     * @param string $actual   contraseña actual en texto
+     * @param string $nueva    nueva contraseña en texto
+     * @param int $idOperador  quien realiza la acción (normalmente el mismo)
+     */
+    public function cambiarPassword(int $idUsuario, string $actual, string $nueva, int $idOperador): array {
+        // obtener hash actual
+        $hashActual = $this->getPasswordHashById($idUsuario);
+        if (!$hashActual || !password_verify($actual, $hashActual)) {
+            return ['ok'=>false,'msg'=>'La contraseña actual es incorrecta.'];
+        }
+        if (password_verify($nueva, $hashActual)) {
+            return ['ok'=>false,'msg'=>'La nueva contraseña no puede ser igual a la actual.'];
+        }
+
+        $hashNuevo = password_hash($nueva, PASSWORD_DEFAULT);
+
+        try {
+            $this->conn->beginTransaction();
+
+            if (!$this->updatePasswordHash($idUsuario, $hashNuevo)) {
+                throw new Exception('No fue posible actualizar la contraseña.');
+            }
+
+            // Bitácora (no guardar valores de contraseñas)
+            $this->registrarBitacora(
+                (int)$idOperador,
+                'usuarios',
+                'PASSWORD',
+                (int)$idUsuario,
+                'Cambio de contraseña',
+                null,
+                null,
+                null
+            );
+
+            $this->conn->commit();
+            return ['ok'=>true];
+        } catch (\Throwable $e) {
+            $this->conn->rollBack();
+            try { $this->registrarBitacora((int)$idOperador, 'usuarios', 'ERROR', (int)$idUsuario, 'Error al cambiar contraseña: '.$e->getMessage()); } catch (\Throwable $th) {}
+            return ['ok'=>false,'msg'=>'Error inesperado al cambiar la contraseña.'];
+        }
+    }
+
     // ================== BITÁCORA ==================
     private function registrarBitacora(
         int $idUsuario,
@@ -378,7 +434,7 @@ class UsuarioModel
         $st->execute([
             ':usr'     => (int)$idUsuario,
             ':tbl'     => $tabla,
-            ':acc'     => $accion,   // INSERT|UPDATE|DELETE|ERROR
+            ':acc'     => $accion,   // INSERT|UPDATE|DELETE|ERROR|PASSWORD
             ':rid'     => (int)$registroId,
             ':campo'   => $campoModificado,
             ':val_ant' => $valorAnterior,
