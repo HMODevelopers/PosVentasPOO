@@ -16,7 +16,7 @@ function mmPorDot(int $dpi = 203): float { return 25.4 / $dpi; }
 // Alinea medidas al grid de dots (evita reescalado/antialias)
 function snapMM(float $mm, int $dpi = 203): float { $step = mmPorDot($dpi); return round($mm / $step) * $step; }
 
-// Estimar líneas con fuente actual (para medir alto)
+// Estimar líneas con la fuente actual (para medir alto)
 function contarLineasFPDF(FPDF $pdf, string $texto, float $ancho_mm): int {
   $texto = trim($texto);
   if ($texto === '') return 0;
@@ -28,6 +28,44 @@ function contarLineasFPDF(FPDF $pdf, string $texto, float $ancho_mm): int {
     if ($w + $pw > $ancho_mm) { $lineas++; $w = $pw; } else { $w += $pw; }
   }
   return $lineas;
+}
+
+/* ========= helpers para limitar y armar "[CODIGO] - Descripción" ========= */
+define('MAX_ART_CHARS', 60); // <-- Ajusta aquí el límite global de caracteres
+
+function limitarTexto(string $texto, int $maxChars): string {
+  $texto = trim($texto);
+  if ($texto === '' || $maxChars <= 0) return $texto;
+
+  if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+    if (mb_strlen($texto, 'UTF-8') <= $maxChars) return $texto;
+    $cut = mb_substr($texto, 0, max(1, $maxChars - 1), 'UTF-8');
+    // Evita cortar la última palabra
+    $cut = preg_replace('/\s+\S*$/u', '', $cut);
+    return rtrim($cut) . '…';
+  } else {
+    if (strlen($texto) <= $maxChars) return $texto;
+    $cut = substr($texto, 0, max(1, $maxChars - 1));
+    $cut = preg_replace('/\s+\S*$/', '', $cut);
+    return rtrim($cut) . '…';
+  }
+}
+
+/**
+ * Construye la línea visible del artículo:
+ *   "[CODIGO] - Descripción"   (si hay descripción)
+ *   "[CODIGO] - Producto"      (si no hay descripción)
+ *   "Descripción" o "Producto" (si no hay código)
+ * y luego aplica el límite de caracteres.
+ */
+function armarArticuloLinea($codigo, $producto, $descripcion, int $maxChars): string {
+  $codigo      = trim((string)($codigo ?? ''));
+  $producto    = trim((string)($producto ?? ''));
+  $descripcion = trim((string)($descripcion ?? ''));
+
+  $base   = ($descripcion !== '') ? $descripcion : $producto;
+  $prefix = ($codigo !== '') ? ('['.$codigo.'] - ') : '';
+  return limitarTexto($prefix . $base, $maxChars);
 }
 
 /* ===================== Entrada ===================== */
@@ -64,8 +102,8 @@ $BODY_STYLE   = 'B';                        // bold para mayor densidad
 $OVERPRINT    = 3;                          // pasadas para oscurecer (2–3 recomendado)
 
 // Cola / corte (ajuste)
-$TAIL_ROWS    = 3;                           // ↓ un poco menos de espacio al final (antes 5)
-$TAIL_DOTS    = 2;                           // líneas punteadas al final
+$TAIL_ROWS    = 3;                          // un poco de espacio al final
+$TAIL_DOTS    = 2;                          // líneas punteadas al final
 
 /* ===================== Paso 1: Medir alto requerido ===================== */
 $probe = new FPDF('P','mm',[ $PAGE_W, 600 ]);
@@ -79,8 +117,8 @@ $alto += snapMM(5, $DPI);                   // título
 $alto += 6 * snapMM(4, $DPI);               // 6 líneas de datos fiscales
 $alto += $GAP + $LINE_W + $GAP;             // separador
 
-// Meta (2 líneas + separador)
-$alto += 2 * snapMM(4, $DPI);
+// Meta (3 líneas: FECHA, FOLIO, ESTATUS + separador)
+$alto += 3 * snapMM(4, $DPI);
 $alto += $GAP + $LINE_W + $GAP;
 
 // Cabecera de columnas
@@ -88,12 +126,14 @@ $alto += $LH;
 
 // Detalle
 foreach ($detalles as $d) {
-  $art = trim((string)($d['producto'] ?? ''));
-  $desc = trim((string)($d['descripcion'] ?? ''));
-  if ($desc !== '' && $desc !== $art) $art .= "\n".$desc;
+  $codigo = trim((string)($d['codigo'] ?? $d['clave'] ?? $d['sku'] ?? ''));
+  $prod   = trim((string)($d['producto'] ?? $d['nombre'] ?? ''));
+  $desc   = trim((string)($d['descripcion'] ?? ''));
 
-  $lineas = 0;
-  foreach (explode("\n", $art) as $bloque) $lineas += contarLineasFPDF($probe, $bloque, $W_ART);
+  // UNA sola línea lógica: "[CODIGO] - Descripción/Producto" limitada
+  $art = armarArticuloLinea($codigo, $prod, $desc, MAX_ART_CHARS);
+
+  $lineas = contarLineasFPDF($probe, $art, $W_ART);
   $alto += max($LH, $lineas * $LH_DESC);
 }
 
@@ -164,10 +204,23 @@ $pdf->Cell(0, snapMM(4,$DPI), 'Tel: (662) 262-1129',                0, 1, 'C');
 
 $pdf->Ln($GAP); $y=$pdf->GetY(); $pdf->Line($X0, $y, $X1, $y); $pdf->Ln($GAP);
 
-/* ---------- Meta ---------- */
+/* ---------- Meta (incluye ESTATUS) ---------- */
 $pdf->SetFont('Courier', $BODY_STYLE, $FS_BODY);
 $pdf->Cell(0, snapMM(4,$DPI), 'FECHA: '.fechaMx($venta['fecha'] ?? null), 0, 1, 'L');
 $pdf->Cell(0, snapMM(4,$DPI), 'FOLIO: '.(($venta['folio'] ?? '') !== '' ? $venta['folio'] : 'VTA-'.$idVenta), 0, 1, 'L');
+
+// Estatus: usa el que venga; si no, infiere por cancelada / id_forma_pago
+$estatus = trim((string)($venta['estatus'] ?? ''));
+if ($estatus === '') {
+  $cancelada = (int)($venta['cancelada'] ?? 0) === 1;
+  if ($cancelada) {
+    $estatus = 'Cancelada';
+  } else {
+    $fp = (int)($venta['id_forma_pago'] ?? 0);
+    $estatus = ($fp === 21) ? 'Credito' : 'Activa';
+  }
+}
+$pdf->Cell(0, snapMM(4,$DPI), 'ESTATUS: '.strtoupper($estatus), 0, 1, 'L');
 
 $pdf->Ln($GAP); $y=$pdf->GetY(); $pdf->Line($X0, $y, $X1, $y); $pdf->Ln($GAP);
 
@@ -188,9 +241,12 @@ foreach ($detalles as $d) {
   $imp    = isset($d['subtotal']) ? (float)$d['subtotal'] : $cant * $precio;
   $totalCalc += $imp;
 
-  $art  = trim((string)($d['producto'] ?? ''));
-  $desc = trim((string)($d['descripcion'] ?? ''));
-  if ($desc !== '' && $desc !== $art) $art .= "\n".$desc;
+  $codigo = trim((string)($d['codigo'] ?? $d['clave'] ?? $d['sku'] ?? ''));
+  $prod   = trim((string)($d['producto'] ?? $d['nombre'] ?? ''));
+  $desc   = trim((string)($d['descripcion'] ?? ''));
+
+  // UNA sola línea visible, con límite
+  $art = armarArticuloLinea($codigo, $prod, $desc, MAX_ART_CHARS);
 
   $y0 = $pdf->GetY();
 
@@ -199,7 +255,7 @@ foreach ($detalles as $d) {
   $cellDark($pdf, $W_CANT, $LH, rtrim(rtrim(number_format($cant,2,'.',''),'0'),'.'), 'L', false);
   $pdf->SetFont('Courier', $BODY_STYLE, $FS_BODY);
 
-  // ART (multilínea)
+  // ART (multilínea según ancho)
   $xArt = $pdf->GetX();
   $pdf->MultiCell($W_ART, $LH_DESC, utf8_decode($art), 0, 'L');
 
@@ -233,7 +289,6 @@ $pdf->Cell(0, snapMM(4,$DPI), 'GRACIAS POR TU COMPRA', 0, 1, 'C');
 $pdf->Cell(0, snapMM(4,$DPI), utf8_decode('EN PARTES ELÉCTRICAS NO HAY GARANTÍA'), 0, 1, 'C');
 
 /* ---------- Cola extra bajo leyendas + patrón punteado ---------- */
-// Cola (ajustada)
 $pdf->SetFont('Courier','', $FS_SM);
 for ($i=0; $i<$TAIL_ROWS; $i++) {
   $pdf->Cell(0, snapMM(4,$DPI), ' ', 0, 1, 'L');

@@ -128,7 +128,7 @@ if (!isset($_SESSION['usuario'])) {
               <h5 class="mb-0">Orden actual</h5>
               <!-- Folio sugerido (informativo; el folio real se asigna al guardar/cobrar) -->
               <span
-                class="badge bg-secondary text-white"
+                class="badge bg-primary text-white"
                 style="padding:6px 16px;border-radius:20px;min-width:82px;text-align:center;"
                 title="Folio sugerido (aún no asignado)">
                 #<span id="codigoOrden">—</span>
@@ -240,8 +240,7 @@ if (!isset($_SESSION['usuario'])) {
 
   <!-- =================== LÓGICA POS (JS) ===================== -->
   <script>
-  (() => {
-    'use strict';
+  (() => { 'use strict';
 
     // ============================================================
     // 1) CONSTANTES & HELPERS DE FORMATO
@@ -250,8 +249,7 @@ if (!isset($_SESSION['usuario'])) {
     const mxn  = v => Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
     const fix2 = v => (Number(v||0)).toFixed(2);
     const num  = v => parseFloat(v ?? 0) || 0;
-    const normalize = s => (s||'').toString().toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+    const normalize = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 
     // ============================================================
     // 2) ESTADO EN MEMORIA (solo del cliente)
@@ -309,7 +307,7 @@ if (!isset($_SESSION['usuario'])) {
           if(r?.ok && r.folio){
             $('#codigoOrden').text(r.folio);
             $('#codigoOrden').closest('.badge')
-              .removeClass('bg-success').addClass('bg-secondary')
+              .removeClass('bg-success').addClass('bg-primary')
               .attr('title','Folio sugerido (aún no asignado)');
           }
         });
@@ -673,6 +671,7 @@ if (!isset($_SESSION['usuario'])) {
     // ============================================================
     // 9) REGISTRO DE VENTA (arma payload y maneja respuesta)
     // ============================================================
+    // ============================================================
     function registrarVenta({estatus='Activa', pagos={}} = {}){
       const slugPrecio = $('#tpPrecio').val();
       const clienteVal = $('#selCliente').val();
@@ -682,7 +681,7 @@ if (!isset($_SESSION['usuario'])) {
         venta: {
           fecha: $('#fechaVenta').val(),
           estatus,                         // 'Activa' | 'Guardada' | 'Credito'
-          id_cliente: idCliente,           // En crédito: requerido en frontend (validado en flujoCobro)
+          id_cliente: idCliente,           // En crédito: requerido (validado en flujoCobro)
           id_forma_pago: estatus==='Guardada' ? null : (Number($('#selFormaPago').val()) || null),
           id_tipo_precio: mapTipoPrecioId(slugPrecio),
           tipo_precio_slug: slugPrecio,
@@ -695,20 +694,30 @@ if (!isset($_SESSION['usuario'])) {
       };
 
       postVenta(payload, (r)=>{
-        if(!r?.ok) return Swal.fire({icon:'error', title:'No se pudo registrar', text:(r?.msg||'Intenta de nuevo')});
+        if(!r?.ok){
+          return Swal.fire({ icon:'error', title:'No se pudo registrar', text:(r?.msg||'Intenta de nuevo') });
+        }
 
+        // Guardar último id de venta para reimpresión
         $('#tk-idventa').val(r.id_venta || '');
 
-        if(estatus==='Guardada'){
-          Swal.fire({icon:'success', title:'Venta guardada', html:`<p>Folio: <b>${r.folio}</b></p>`});
+        if (estatus === 'Guardada'){
+          Swal.fire({ icon:'success', title:'Venta guardada', html:`<p>Folio: <b>${r.folio}</b></p>` });
         }
         else if (estatus === 'Credito'){
-          // Para crédito: no imprimimos; se abonará después en Pagos Parciales
+          // === Botón para imprimir ticket en crédito ===
           Swal.fire({
             icon:'success',
             title:'Venta a crédito registrada',
             html:`<p><small>Folio:</small> <b>${r.folio}</b></p>
-                  <p class="mb-0">Realiza abonos desde el módulo de <b>Pagos Parciales</b>.</p>`
+                  <p class="mb-0">Realiza abonos desde el módulo de <b>Pagos Parciales</b>.</p>`,
+            confirmButtonText: 'Imprimir ticket',
+            showCancelButton: true,
+            cancelButtonText: 'Cerrar'
+          }).then(res=>{
+            if(res.isConfirmed && r.id_venta){
+              imprimirTicketAjax(r.id_venta);
+            }
           });
         }
         else {
@@ -729,13 +738,14 @@ if (!isset($_SESSION['usuario'])) {
           });
         }
 
-        // Reset de UI tras registrar
+        // Reset UI post-venta
         carrito=[]; pintarCarrito(); $('#selCliente').val('');
-        $('#tpPrecio').val('publico'); // valor por defecto tras venta
-        cargarFormasPago();            // recargar para refrescar default
+        $('#tpPrecio').val('publico');
+        cargarFormasPago();
         pintarFolioSugerido();
       });
     }
+
 
     // ============================================================
     // 10) FLUJO DE COBRO (define la UX según forma de pago)
@@ -757,11 +767,12 @@ if (!isset($_SESSION['usuario'])) {
           icon:'question',
           title:'Confirmar venta a crédito',
           html:`<p>Total a crédito: <b>${mxn(total)}</b></p>
-                <p class="mb-0">No se imprimirá ticket ahora. Podrás abonar o liquidar después en <b>Pagos Parciales</b>.</p>`,
+                <p class="mb-0">Se imprimirá ticket al confirmar. Podrás abonar o liquidar después en <b>Pagos Parciales</b>.</p>`,
           showCancelButton:true,
           confirmButtonText:'Registrar crédito'
         }).then(res=>{
           if(res.isConfirmed){
+            // El ticket se ofrece en el Swal de 'registrarVenta' (estatus === 'Credito')
             registrarVenta({ estatus:'Credito', pagos:{ tipo:'credito' } });
           }
         });
@@ -833,6 +844,7 @@ if (!isset($_SESSION['usuario'])) {
       }
     }
 
+
     // ============================================================
     // 11) BINDINGS DE BOTONES (Guardar/Cobrar/Cancelar)
     // ============================================================
@@ -851,7 +863,7 @@ if (!isset($_SESSION['usuario'])) {
       // Limpia carrito y controles básicos de la vista
       carrito=[]; pintarCarrito(); $('#selCliente').val(''); $('#txtBuscar').val('');
       $('#fechaVenta').val('<?= date('Y-m-d') ?>'); // Fecha del día (servidor)
-      $('#tpPrecio').val('publico');                // Regresa a “público”
+      $('#tpPrecio').val('taller').trigger('change');               // Regresa a “público”
       cargarFormasPago();                           // Refresca y aplica default (Crédito si existe)
       pintarFolioSugerido();
     });
