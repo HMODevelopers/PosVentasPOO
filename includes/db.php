@@ -6,7 +6,7 @@ $isLocal = in_array($_SERVER['HTTP_HOST'], ['localhost', '127.0.0.1']);
 if ($isLocal) {
     // Configuración local
     define('DB_HOST', 'localhost');
-    define('DB_NAME', 'punto_venta_db');
+    define('DB_NAME', 'refacc26_ventas_db');
     define('DB_USER', 'root');
     define('DB_PASS', '');
 } else {

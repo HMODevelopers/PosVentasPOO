@@ -522,126 +522,162 @@ if (!isset($_SESSION['usuario'])) {
     }
 
     function pintarCarrito(){
-      const $tb = $('#tablaCarrito tbody').empty();
+    const $tb = $('#tablaCarrito tbody').empty();
 
-      if(!carrito.length){
-        $('#wrapCarritoVacio').removeClass('d-none');
-        $('#wrapCarritoTabla').addClass('d-none');
-        $('#resTotal').text('$0.00');
-        totalActual = 0;
-        return;
-      }
-
-      $('#wrapCarritoVacio').addClass('d-none');
-      $('#wrapCarritoTabla').removeClass('d-none');
-
-      let total = 0;
-
-      carrito.forEach((it, idx) => {
-        const precio   = precioDeItem(it);
-        const cantidad = Number(it.cantidad) || 0;
-        const subtotal = cantidad * precio;
-        total += subtotal;
-
-        $tb.append(`
-          <tr>
-            <td>
-              <div class="d-flex align-items-center">
-                <div>
-                  <div class="fw-semibold">${it.descripcion}</div>
-                  <div class="small text-muted">
-                    Cod: ${it.codigo} ${it.proveedor?`· Prov: ${it.proveedor}`:``}
-                    · Exist: <span class="badge ${Number(it.stock_actual)>0?'bg-success':'bg-secondary'} badge-stock">${fix2(it.stock_actual)}</span>
-                  </div>
-                </div>
-              </div>
-            </td>
-
-            <!-- Cantidad con +/- y edición directa -->
-            <td class="text-center">
-              <div class="btn-group btn-group-sm" role="group">
-                <button class="btn btn-outline-danger" data-dec="${idx}">
-                  <i class="mdi mdi-minus"></i>
-                </button>
-                <input type="number" min="1" step="1"
-                       class="form-control form-control-sm text-center w-70px"
-                       value="${fix2(it.cantidad)}" data-qty="${idx}">
-                <button class="btn btn-outline-success" data-inc="${idx}">
-                  <i class="mdi mdi-plus"></i>
-                </button>
-              </div>
-            </td>
-
-            <!-- Subtotal editable: recalcula precio unitario si lo cambias -->
-            <td class="text-end">
-              <input type="number" min="0" step="0.01"
-                     class="form-control form-control-sm text-end"
-                     value="${fix2(subtotal)}" data-sub="${idx}"
-                     title="Editar subtotal (ajusta el precio unitario automáticamente)">
-            </td>
-
-            <!-- Eliminar ítem -->
-            <td class="text-end">
-              <button class="btn btn-sm btn-outline-danger" data-del="${idx}">
-                <i class="mdi mdi-delete"></i>
-              </button>
-            </td>
-          </tr>
-        `);
-      });
-
-      totalActual = total;
-      $('#resTotal').text(mxn(total));
+    if(!carrito.length){
+      $('#wrapCarritoVacio').removeClass('d-none');
+      $('#wrapCarritoTabla').addClass('d-none');
+      $('#resTotal').text('$0.00');
+      totalActual = 0;
+      return;
     }
 
-    $('#tpPrecio').on('change',pintarCarrito);
+    $('#wrapCarritoVacio').addClass('d-none');
+    $('#wrapCarritoTabla').removeClass('d-none');
 
-    $('#tablaCarrito').on('click','button[data-inc]',function(){
-      const i=Number(this.dataset.inc);
-      if(isNaN(i)||!carrito[i]) return;
-      const vendible=maxVendible(carrito[i]);
-      const next=Number(carrito[i].cantidad)+1;
-      carrito[i].cantidad = next>vendible ? (toastr.info('Se alcanzó el máximo vendible.'), vendible) : next;
-      pintarCarrito();
+    let total = 0;
+
+    carrito.forEach((it, idx) => {
+      const precio   = precioDeItem(it);
+      const cantidad = Number(it.cantidad) || 0;
+      const subtotal = cantidad * precio;
+      total += subtotal;
+
+      $tb.append(`
+        <tr>
+          <td>
+            <div class="d-flex align-items-center">
+              <div>
+                <div class="fw-semibold">${it.descripcion}</div>
+                <div class="small text-muted">
+                  Cod: ${it.codigo} ${it.proveedor?`· Prov: ${it.proveedor}`:``}
+                  · Exist: <span class="badge ${Number(it.stock_actual)>0?'bg-success':'bg-secondary'} badge-stock">${fix2(it.stock_actual)}</span>
+                </div>
+              </div>
+            </div>
+          </td>
+
+          <!-- Cantidad con +/- y edición directa (permite decimales) -->
+          <td class="text-center">
+            <div class="btn-group btn-group-sm" role="group">
+              <button class="btn btn-outline-danger" data-dec="${idx}">
+                <i class="mdi mdi-minus"></i>
+              </button>
+              <input type="number"
+                    min="0.01"
+                    step="0.01"
+                    class="form-control form-control-sm text-center w-70px"
+                    value="${fix2(it.cantidad)}"
+                    data-qty="${idx}">
+              <button class="btn btn-outline-success" data-inc="${idx}">
+                <i class="mdi mdi-plus"></i>
+              </button>
+            </div>
+          </td>
+
+          <!-- Subtotal editable: step=1 para que 20.70 pase a 21.70 -->
+          <td class="text-end">
+            <input type="number"
+                  min="0"
+                  step="1"
+                  class="form-control form-control-sm text-end"
+                  value="${fix2(subtotal)}"
+                  data-sub="${idx}"
+                  title="Editar subtotal (ajusta el precio unitario automáticamente)">
+          </td>
+
+          <!-- Eliminar ítem -->
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-danger" data-del="${idx}">
+              <i class="mdi mdi-delete"></i>
+            </button>
+          </td>
+        </tr>
+      `);
     });
 
-    $('#tablaCarrito').on('click','button[data-dec]',function(){
-      const i=Number(this.dataset.dec);
-      if(isNaN(i)||!carrito[i]) return;
-      carrito[i].cantidad=Math.max(1,Number(carrito[i].cantidad)-1);
-      pintarCarrito();
-    });
+    totalActual = total;
+    $('#resTotal').text(mxn(total));
+  }
 
-    $('#tablaCarrito').on('change','input[data-qty]',function(){
-      const i=Number(this.dataset.qty);
-      if(isNaN(i)||!carrito[i]) return;
-      let val=Math.max(1, Number(this.value||1));
-      const vendible=maxVendible(carrito[i]);
-      if(val>vendible){ val=vendible; toastr.info('Se ajustó a máximo vendible.'); }
-      carrito[i].cantidad=val;
-      pintarCarrito();
-    });
+  $('#tpPrecio').on('change',pintarCarrito);
 
-    $('#tablaCarrito').on('click','button[data-del]',function(){
-      const i=Number(this.dataset.del);
-      if(isNaN(i)) return;
-      carrito.splice(i,1);
-      pintarCarrito();
-    });
+  /* ========== CANTIDAD ========== */
 
-    $('#tablaCarrito').on('change','input[data-sub]', function(){
-      const i = Number(this.dataset.sub);
-      if (isNaN(i) || !carrito[i]) return;
+  $('#tablaCarrito').on('click','button[data-inc]',function(){
+    const i = Number(this.dataset.inc);
+    if(isNaN(i) || !carrito[i]) return;
 
-      let sub = Number(this.value);
-      if (isNaN(sub) || sub < 0) sub = 0;
+    const vendible = maxVendible(carrito[i]);
+    const actual   = Number(carrito[i].cantidad) || 0;
+    const next     = actual + 1; // sigue sumando de 1 en 1 (para piezas)
 
-      const qty  = Math.max(1, Number(carrito[i].cantidad) || 1);
-      const unit = sub / qty;
+    carrito[i].cantidad = next > vendible
+      ? (toastr.info('Se alcanzó el máximo vendible.'), vendible)
+      : next;
 
-      carrito[i].override_unit = Number(unit.toFixed(2)); // Precio unitario “forzado”
-      pintarCarrito();
-    });
+    // Redondeamos a 2 decimales por si hay decimales
+    carrito[i].cantidad = Number(carrito[i].cantidad.toFixed(2));
+    pintarCarrito();
+  });
+
+  $('#tablaCarrito').on('click','button[data-dec]',function(){
+    const i = Number(this.dataset.dec);
+    if(isNaN(i) || !carrito[i]) return;
+
+    const actual = Number(carrito[i].cantidad) || 0;
+    let next = actual - 1; // resta de 1 en 1
+    if (next < 0.01) next = 0.01; // MIN para permitir cable 0.70, 0.50, etc.
+
+    carrito[i].cantidad = Number(next.toFixed(2));
+    pintarCarrito();
+  });
+
+  $('#tablaCarrito').on('change','input[data-qty]',function(){
+    const i = Number(this.dataset.qty);
+    if(isNaN(i) || !carrito[i]) return;
+
+    let val = Number(this.value || 0);
+    if (isNaN(val) || val <= 0) val = 0.01;      // mínimo 0.01
+    const vendible = maxVendible(carrito[i]);
+
+    if (val > vendible) {
+      val = vendible;
+      toastr.info('Se ajustó a máximo vendible.');
+    }
+
+    carrito[i].cantidad = Number(val.toFixed(2)); // siempre 2 decimales
+    pintarCarrito();
+  });
+
+  /* ========== ELIMINAR ITEM ========== */
+
+  $('#tablaCarrito').on('click','button[data-del]',function(){
+    const i = Number(this.dataset.del);
+    if(isNaN(i)) return;
+    carrito.splice(i,1);
+    pintarCarrito();
+  });
+
+  /* ========== SUBTOTAL EDITABLE (CAMBIO DE PRECIO) ========== */
+
+  $('#tablaCarrito').on('change','input[data-sub]', function(){
+    const i = Number(this.dataset.sub);
+    if (isNaN(i) || !carrito[i]) return;
+
+    let sub = Number(this.value);
+    if (isNaN(sub) || sub < 0) sub = 0;
+
+    // Redondeamos el subtotal a 2 decimales
+    sub = Number(sub.toFixed(2));
+
+    const qty = Math.max(0.01, Number(carrito[i].cantidad) || 0.01);
+    const unit = sub / qty;
+
+    // Precio unitario forzado (2 decimales)
+    carrito[i].override_unit = Number(unit.toFixed(2));
+    pintarCarrito();
+  });
 
     // ============================================================
     // 7) IMPRESIÓN DE TICKET (requiere script server-side Mike42)
