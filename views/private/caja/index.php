@@ -287,12 +287,12 @@ if (!isset($_SESSION['usuario'])) {
       return Number(it.precio_publico||0); // público por defecto
     }
 
-    const vendibleDe = det => Math.max(0, num(det.stock_actual ?? det.existencia) - num(det.stock_minimo));
-    
+    // Ahora solo cuenta la existencia real, ignorando el stock mínimo para POS
+    const vendibleDe = det => Math.max(0, num(det.stock_actual ?? det.existencia));
+
     function maxVendible(it){
-      const stock = Number(it.stock_actual ?? 0);
-      const smin  = Number(it.stock_minimo ?? 0);
-      return Math.max(0, stock - smin);
+      const stock = num(it.stock_actual ?? it.existencia ?? 0);
+      return Math.max(0, stock); // puedes vender todo lo que haya
     }
 
     function mapTipoPrecioId(slug){ const m = { publico:1, taller:2, proveedor:3 }; return m[slug] || 1; }
@@ -464,10 +464,9 @@ if (!isset($_SESSION['usuario'])) {
           if(!det){ toastr.error('No se encontró el detalle del producto'); return; }
 
           const vendible = vendibleDe(det);
-          if(vendible <= 0){
-            const stk  = num(det.stock_actual ?? det.existencia);
-            const smin = num(det.stock_minimo);
-            toastr.warning(`Sin stock suficiente para vender. (Exist: ${fix2(stk)} · Mín: ${fix2(smin)})`);
+          if (vendible <= 0) {
+            const stk = num(det.stock_actual ?? det.existencia);
+            toastr.warning(`Sin existencias para vender. (Existencia: ${fix2(stk)})`);
             return;
           }
 
@@ -776,7 +775,7 @@ if (!isset($_SESSION['usuario'])) {
 
         // Reset UI post-venta
         carrito=[]; pintarCarrito(); $('#selCliente').val('');
-        $('#tpPrecio').val('publico');
+        $('#tpPrecio').val('taller');
         cargarFormasPago();
         pintarFolioSugerido();
       });

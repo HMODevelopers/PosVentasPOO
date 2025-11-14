@@ -76,26 +76,38 @@ switch ($accion) {
       $sheet = $spreadsheet->getActiveSheet();
       $sheet->setTitle('Faltantes');
 
-      // Encabezados (incluye COMPRÓ si crédito)
+      // Encabezados (ahora incluye FOLIO y FECHA VENTA por renglón)
       $headers = [
         'A1' => 'CÓDIGO',
         'B1' => 'UNIDAD',
         'C1' => 'DESCRIPCIÓN',
         'D1' => 'VENDIDO',
-        'E1' => 'ÚLTIMA VENTA',
-        'F1' => 'COMPRÓ (si crédito)', // NUEVO
-        'G1' => 'PROVEEDOR',
-        'H1' => 'INVENTARIO',
-        'I1' => 'FALTANTE vs VENTAS',
-        'J1' => 'FALTANTE vs MÍNIMO',
+        'E1' => 'FOLIO',
+        'F1' => 'FECHA VENTA',
+        'G1' => 'COMPRÓ (si crédito)',
+        'H1' => 'PROVEEDOR',
+        'I1' => 'INVENTARIO',
+        'J1' => 'FALTANTE vs VENTAS',
+        'K1' => 'FALTANTE vs MÍNIMO',
       ];
-      foreach ($headers as $cell => $text) { $sheet->setCellValue($cell, $text); }
+      foreach ($headers as $cell => $text) {
+        $sheet->setCellValue($cell, $text);
+      }
 
-      $sheet->getStyle('A1:J1')->applyFromArray([
+      $sheet->getStyle('A1:K1')->applyFromArray([
         'font' => ['bold' => true],
-        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
-        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor' => ['rgb' => 'EDEDED']],
-        'borders' => ['bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]]
+        'alignment' => [
+          'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER
+        ],
+        'fill' => [
+          'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+          'startColor' => ['rgb' => 'EDEDED']
+        ],
+        'borders' => [
+          'bottom' => [
+            'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN
+          ]
+        ]
       ]);
 
       $rowNum = 2;
@@ -104,34 +116,51 @@ switch ($accion) {
         $inventario = (float)($r['inventario'] ?? 0);
         $faltVtas   = (float)($r['faltante_sobre_ventas'] ?? 0);
         $faltMin    = (float)($r['faltante_vs_minimo'] ?? 0);
+        $folio      = (string)($r['folio'] ?? '');
 
-        $fecha = $r['fecha_venta'];
+        $fecha = $r['fecha_venta'] ?? null;
         if (!empty($fecha)) {
           $dt = date_create($fecha);
           $fecha = $dt ? $dt->format('Y-m-d H:i') : $r['fecha_venta'];
-        } else { $fecha = ''; }
+        } else {
+          $fecha = '';
+        }
 
-        $sheet->setCellValueExplicit('A'.$rowNum, (string)($r['codigo'] ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit(
+          'A'.$rowNum,
+          (string)($r['codigo'] ?? ''),
+          \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+        );
         $sheet->setCellValue('B'.$rowNum, (string)($r['unidad'] ?? ''));
         $sheet->setCellValue('C'.$rowNum, (string)($r['descripcion'] ?? ''));
         $sheet->setCellValue('D'.$rowNum, $vendido);
-        $sheet->setCellValue('E'.$rowNum, $fecha);
-        $sheet->setCellValue('F'.$rowNum, (string)($r['compro_credito'] ?? '')); // NUEVO
-        $sheet->setCellValue('G'.$rowNum, (string)($r['proveedor'] ?? ''));
-        $sheet->setCellValue('H'.$rowNum, $inventario);
-        $sheet->setCellValue('I'.$rowNum, $faltVtas);
-        $sheet->setCellValue('J'.$rowNum, $faltMin);
+        $sheet->setCellValue('E'.$rowNum, $folio);
+        $sheet->setCellValue('F'.$rowNum, $fecha);
+        $sheet->setCellValue('G'.$rowNum, (string)($r['compro_credito'] ?? ''));
+        $sheet->setCellValue('H'.$rowNum, (string)($r['proveedor'] ?? ''));
+        $sheet->setCellValue('I'.$rowNum, $inventario);
+        $sheet->setCellValue('J'.$rowNum, $faltVtas);
+        $sheet->setCellValue('K'.$rowNum, $faltMin);
         $rowNum++;
       }
 
       $last = $rowNum - 1;
       if ($last >= 2) {
-        $sheet->getStyle('D2:D'.$last)->getNumberFormat()->setFormatCode('#,##0.00');
-        $sheet->getStyle('H2:J'.$last)->getNumberFormat()->setFormatCode('#,##0.00;[Red]-#,##0.00');
+        // VENDIDO
+        $sheet->getStyle('D2:D'.$last)
+              ->getNumberFormat()
+              ->setFormatCode('#,##0.00');
+        // INVENTARIO, FALTANTE vs VENTAS, FALTANTE vs MÍNIMO
+        $sheet->getStyle('I2:K'.$last)
+              ->getNumberFormat()
+              ->setFormatCode('#,##0.00;[Red]-#,##0.00');
       }
-      foreach (range('A','J') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
 
-      $sheet->setAutoFilter('A1:J'.$last);
+      foreach (range('A','K') as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+      }
+
+      $sheet->setAutoFilter('A1:K'.$last);
       $sheet->freezePane('A2');
 
       header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

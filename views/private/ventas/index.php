@@ -768,11 +768,15 @@ window.abrirTicket = function(idVenta){
   $('#tk-fecha').text('—');
   $('#tk-total').text('$0.00');
   $('#tk-estatus').text('—');
+  // ← reset cliente siempre
+  $('#tk-cliente').text('—');
+  $('#wrap-tk-cliente').addClass('d-none');
+
   $('#tk-idventa').val(idVenta);
 
   $.get(VENTAS_URL, { accion:'detalle', id_venta:idVenta }, function(resp){
     if(!resp || !resp.venta){ alert('No se encontró la venta.'); return; }
-    const v = resp.venta || {};
+    const v   = resp.venta || {};
     const det = resp.detalles || [];
 
     $('#tk-folio').text(v.folio || '—');
@@ -781,6 +785,26 @@ window.abrirTicket = function(idVenta){
     const estatus = inferirEstatus(v);
     $('#tk-estatus').text(estatus);
 
+    // ====== CLIENTE SOLO SI ES CRÉDITO ======
+    const fp        = Number(v.id_forma_pago || 0);
+    const esCredito = (estatus.toLowerCase() === 'credito') || fp === 21;
+
+    const nombreCliente = (
+      v.nombre_cliente ||
+      v.cliente ||
+      v.cliente_nombre ||
+      'Público en general'
+    ).toString().trim();
+
+    if (esCredito && nombreCliente) {
+      $('#tk-cliente').text(nombreCliente);
+      $('#wrap-tk-cliente').removeClass('d-none');
+    } else {
+      $('#tk-cliente').text('—');
+      $('#wrap-tk-cliente').addClass('d-none');
+    }
+    // =======================================
+
     let html = '', total = 0;
     det.forEach(d=>{
       const c = Number(d.cantidad || 0);
@@ -788,10 +812,10 @@ window.abrirTicket = function(idVenta){
       const s = Number(d.subtotal ?? (c * u));
       total += s;
 
-      const codigo = d.codigo || d.clave || d.sku || '';
-      const producto = d.producto || d.nombre || '';
+      const codigo      = d.codigo || d.clave || d.sku || '';
+      const producto    = d.producto || d.nombre || '';
       const descripcion = d.descripcion || '';
-      const articulo = armarArticuloLineaJS(codigo, producto, descripcion, MAX_ART_CHARS);
+      const articulo    = armarArticuloLineaJS(codigo, producto, descripcion, MAX_ART_CHARS);
 
       html += renderTkItem({
         cantidad: c,

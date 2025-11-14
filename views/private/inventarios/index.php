@@ -106,35 +106,36 @@ if (!isset($_SESSION['usuario'])) {
                 </div>
               </div>
 
-            <!-- Desde -->
-            <div class="col-md-2">
-              <div class="form-group">
-                <label for="Desde" class="control-label">Desde</label>
-                <div class="input-group">
-                  <input type="date" id="Desde" class="form-control filtrar">
-                  <div class="input-group-append clean-filter" style="display:none;">
-                    <span class="input-group-text">
-                      <i class="mdi mdi-close-circle text-danger" onclick="clearField('Desde')"></i>
-                    </span>
+              <!-- Desde -->
+              <div class="col-md-2">
+                <div class="form-group">
+                  <label for="Desde" class="control-label">Desde</label>
+                  <div class="input-group">
+                    <input type="date" id="Desde" class="form-control filtrar">
+                    <div class="input-group-append clean-filter" style="display:none;">
+                      <span class="input-group-text">
+                        <i class="mdi mdi-close-circle text-danger" onclick="clearField('Desde')"></i>
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Hasta -->
-            <div class="col-md-2">
-              <div class="form-group">
-                <label for="Hasta" class="control-label">Hasta</label>
-                <div class="input-group">
-                  <input type="date" id="Hasta" class="form-control filtrar">
-                  <div class="input-group-append clean-filter" style="display:none;">
-                    <span class="input-group-text">
-                      <i class="mdi mdi-close-circle text-danger" onclick="clearField('Hasta')"></i>
-                    </span>
+              <!-- Hasta -->
+              <div class="col-md-2">
+                <div class="form-group">
+                  <label for="Hasta" class="control-label">Hasta</label>
+                  <div class="input-group">
+                    <input type="date" id="Hasta" class="form-control filtrar">
+                    <div class="input-group-append clean-filter" style="display:none;">
+                      <span class="input-group-text">
+                        <i class="mdi mdi-close-circle text-danger" onclick="clearField('Hasta')"></i>
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+
             </div><!--/row-->
           </div>
         </div>
@@ -147,6 +148,10 @@ if (!isset($_SESSION['usuario'])) {
           <div class="card-box">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h4 class="header-title">Listado de Movimientos</h4>
+              <button id="btnExportar" type="button"
+                      class="btn btn-success btn-sm waves-effect waves-light">
+                <i class="mdi mdi-file-excel"></i> Exportar Excel
+              </button>
             </div>
 
             <div class="table-responsive">
@@ -162,6 +167,7 @@ if (!isset($_SESSION['usuario'])) {
                   <th class="text-center" style="width:150px;">Usuario</th>
                   <th class="text-center" style="width:140px;">Referencia</th>
                   <th>Motivo</th>
+                  <th class="text-center" style="width:180px;">Cliente (si crédito)</th>
                   <th class="text-center" style="width:90px;">Acciones</th>
                 </tr>
                 </thead>
@@ -322,7 +328,7 @@ if (!isset($_SESSION['usuario'])) {
       function renderizarTabla(rows){
         let tbody = '';
         if (!rows.length){
-          tbody = '<tr><td colspan="10" class="text-center">No hay movimientos</td></tr>';
+          tbody = '<tr><td colspan="11" class="text-center">No hay movimientos</td></tr>';
         } else {
           rows.forEach(v => {
             const fecha = ymdHisToEs(v.fecha || v.fecha_creacion);
@@ -357,6 +363,11 @@ if (!isset($_SESSION['usuario'])) {
             const ref   = v.referencia || '—';
             const mot   = v.motivo || '—';
 
+            const estV  = v.estatus_venta || '';
+            const cliCr = (estV === 'Credito' || estV === 'Crédito')
+                            ? (v.cliente || '—')
+                            : '—';
+
             tbody += `
               <tr>
                 <td class="text-center">${fecha}</td>
@@ -368,6 +379,7 @@ if (!isset($_SESSION['usuario'])) {
                 <td class="text-center">${usr}</td>
                 <td class="text-center">${ref}</td>
                 <td>${mot}</td>
+                <td class="text-center">${cliCr}</td>
                 <td class="text-center">
                   <div class="btn-group dropdown">
                     <a href="javascript:void(0);" class="table-action-btn dropdown-toggle arrow-none btn btn-light btn-sm" data-toggle="dropdown" aria-expanded="false">
@@ -508,7 +520,21 @@ if (!isset($_SESSION['usuario'])) {
         });
       });
 
-       }); // ready
+      // Exportar Excel
+      $('#btnExportar').on('click', function(){
+        const params = new URLSearchParams({
+          accion: 'exportar-excel',
+          q: $('#Buscar').val() || '',
+          codigo: $('#Codigo').val() || '',
+          descripcion: $('#Descripcion').val() || '',
+          id_usuario: $('#Usuario').val() || '',
+          desde: $('#Desde').val() || '',
+          hasta: $('#Hasta').val() || ''
+        });
+        window.location = '<?= BASE_URL ?>/controllers/InventarioMovimientosController.php?' + params.toString();
+      });
+
+    }); // ready
 
     // util: limpiar filtros
     function clearField(id){

@@ -24,16 +24,21 @@
 
           <div class="tk-line my-2"></div>
 
-          <!-- FECHA / FOLIO / ESTATUS -->
-         <div class="tk-meta">
-          <div class="left"><strong>Fecha:</strong> <span id="tk-fecha">—</span></div>
-          <div class="right"><strong>Folio:</strong> <span id="tk-folio">—</span></div>
-        </div>
+          <!-- FECHA / FOLIO -->
+          <div class="tk-meta">
+            <div class="left"><strong>Fecha:</strong> <span id="tk-fecha">—</span></div>
+            <div class="right"><strong>Folio:</strong> <span id="tk-folio">—</span></div>
+          </div>
 
-        <!-- ESTATUS (su propia línea) -->
-        <div class="tk-meta-line">
-          <strong>Estatus:</strong> <span id="tk-estatus">—</span>
-        </div>
+          <!-- ESTATUS -->
+          <div class="tk-meta-line">
+            <strong>Estatus:</strong> <span id="tk-estatus">—</span>
+          </div>
+
+          <!-- CLIENTE (solo crédito; se muestra por JS) -->
+          <div class="tk-meta-line d-none" id="wrap-tk-cliente">
+            <strong>Cliente:</strong> <span id="tk-cliente">—</span>
+          </div>
 
           <div class="tk-line my-2"></div>
 

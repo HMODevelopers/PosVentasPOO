@@ -60,7 +60,9 @@ if (!isset($_SESSION['usuario'])) {
                   <div class="input-group">
                     <input type="date" id="Desde" class="form-control filtrar" placeholder="dd/mm/aaaa">
                     <div class="input-group-append clean-filter" style="display:none;">
-                      <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" title="Limpiar" onclick="clearField('Desde')"></i></span>
+                      <span class="input-group-text">
+                        <i class="mdi mdi-close-circle text-danger" title="Limpiar" onclick="clearField('Desde')"></i>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -71,7 +73,9 @@ if (!isset($_SESSION['usuario'])) {
                   <div class="input-group">
                     <input type="date" id="Hasta" class="form-control filtrar" placeholder="dd/mm/aaaa">
                     <div class="input-group-append clean-filter" style="display:none;">
-                      <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" title="Limpiar" onclick="clearField('Hasta')"></i></span>
+                      <span class="input-group-text">
+                        <i class="mdi mdi-close-circle text-danger" title="Limpiar" onclick="clearField('Hasta')"></i>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -88,22 +92,23 @@ if (!isset($_SESSION['usuario'])) {
           <div class="card-box">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h4 class="header-title">Listado de Faltantes</h4>
-              <button id="btnExportar"  type="button"
-                          class="btn btn-success btn-sm waves-effect waves-light">
-                  <i class="mdi mdi-file-excel"></i> Exportar Excel
-                </button>
+              <button id="btnExportar" type="button"
+                      class="btn btn-success btn-sm waves-effect waves-light">
+                <i class="mdi mdi-file-excel"></i> Exportar Excel
+              </button>
             </div>
 
             <div class="table-responsive">
               <table id="tablaFaltantes" class="table table-bordered table-hover table-striped">
                 <thead>
                   <tr>
+                    <th class="text-center" width="7%">FOLIO</th> <!-- NUEVO -->
                     <th>CÓDIGO</th>
                     <th>UNIDAD</th>
                     <th>DESCRIPCIÓN</th>
                     <th class="text-right">VENDIDO</th>
-                    <th class="text-center">ÚLTIMA VENTA</th>
-                    <th>COMPRÓ (si crédito)</th> <!-- NUEVO -->
+                    <th class="text-center">FECHA VENTA</th> <!-- antes "ÚLTIMA VENTA" -->
+                    <th>COMPRÓ (si crédito)</th>
                     <th>PROVEEDOR</th>
                     <th class="text-right">INVENTARIO</th>
                     <th class="text-right">FALTANTE vs VENTAS</th>
@@ -115,9 +120,13 @@ if (!isset($_SESSION['usuario'])) {
             </div>
 
             <div class="row align-items-center justify-content-between mt-2">
-              <div class="col-md-6"><div id="infoFalt" class="dataTables_info"></div></div>
+              <div class="col-md-6">
+                <div id="infoFalt" class="dataTables_info"></div>
+              </div>
               <div class="col-md-6 d-flex justify-content-end">
-                <nav aria-label="Page navigation"><ul id="pagination" class="pagination justify-content-end mb-0"></ul></nav>
+                <nav aria-label="Page navigation">
+                  <ul id="pagination" class="pagination justify-content-end mb-0"></ul>
+                </nav>
               </div>
             </div>
           </div>
@@ -153,11 +162,17 @@ if (!isset($_SESSION['usuario'])) {
       window.clearField = clearField;
 
       const fmt2 = v => Number(v||0).toFixed(2);
-      const fmtDT = (iso)=>{
-        if(!iso) return '—';
-        const d = new Date(String(iso).replace(' ','T'));
-        if(Number.isNaN(d.getTime())) return iso;
-        return d.toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
+      const fmtDT = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(String(iso).replace(' ', 'T'));
+        if (Number.isNaN(d.getTime())) return iso;
+
+        // solo fecha, sin hora
+        return d.toLocaleDateString('es-MX', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        });
       };
 
       function toggleFechas(){
@@ -185,7 +200,7 @@ if (!isset($_SESSION['usuario'])) {
         };
 
         if (usarFechas && (!filtros.Desde || !filtros.Hasta)){
-          $('#tbodyFaltantes').html('<tr><td colspan="10" class="text-center text-muted">Selecciona un rango de fechas.</td></tr>');
+          $('#tbodyFaltantes').html('<tr><td colspan="11" class="text-center text-muted">Selecciona un rango de fechas.</td></tr>');
           $('#infoFalt').text('');
           $('#pagination').empty().closest('nav').hide();
           return;
@@ -194,7 +209,9 @@ if (!isset($_SESSION['usuario'])) {
         $('#LoadingImage').show();
         $.ajax({
           url: `${BASE_URL}/controllers/FaltantesController.php`,
-          method: 'POST', dataType: 'json', data: filtros
+          method: 'POST',
+          dataType: 'json',
+          data: filtros
         })
         .done(function(resp){
           const rows  = resp?.data || [];
@@ -202,17 +219,18 @@ if (!isset($_SESSION['usuario'])) {
 
           let tbody = '';
           if (!rows.length){
-            tbody = '<tr><td colspan="10" class="text-center">Sin resultados</td></tr>';
+            tbody = '<tr><td colspan="11" class="text-center">Sin resultados</td></tr>';
           } else {
             rows.forEach(r=>{
               tbody += `
                 <tr>
+                  <td>${r.folio || '—'}</td>
                   <td><b>${r.codigo || ''}</b></td>
                   <td>${r.unidad || ''}</td>
                   <td>${r.descripcion || ''}</td>
                   <td class="text-right">${fmt2(r.cantidad)}</td>
                   <td class="text-center">${fmtDT(r.fecha_venta)}</td>
-                  <td>${r.compro_credito || '—'}</td> <!-- NUEVO -->
+                  <td>${r.compro_credito || '—'}</td>
                   <td>${r.proveedor || '—'}</td>
                   <td class="text-right">${fmt2(r.inventario)}</td>
                   <td class="text-right">${fmt2(r.faltante_sobre_ventas)}</td>
@@ -239,12 +257,17 @@ if (!isset($_SESSION['usuario'])) {
         const maxVisiblePages = 5;
         $ul.empty();
 
-        if (totalPages <= 1){ $ul.closest('nav').hide(); return; }
-        else { $ul.closest('nav').show(); }
+        if (totalPages <= 1){
+          $ul.closest('nav').hide();
+          return;
+        } else {
+          $ul.closest('nav').show();
+        }
 
         let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages/2));
         let endPage   = Math.min(totalPages, startPage + maxVisiblePages - 1);
-        if (endPage - startPage + 1 < maxVisiblePages) startPage = Math.max(1, endPage - maxVisiblePages + 1);
+        if (endPage - startPage + 1 < maxVisiblePages)
+          startPage = Math.max(1, endPage - maxVisiblePages + 1);
 
         if (currentPage > 1){
           $ul.append(`<li class="page-item"><a class="page-link" data-page="1">Primera</a></li>`);
@@ -261,7 +284,10 @@ if (!isset($_SESSION['usuario'])) {
         $ul.off('click','a.page-link').on('click','a.page-link', function(e){
           e.preventDefault();
           const page = Number($(this).data('page'));
-          if (Number.isFinite(page)) { paginaActual = page; cargarFaltantes(paginaActual); }
+          if (Number.isFinite(page)) {
+            paginaActual = page;
+            cargarFaltantes(paginaActual);
+          }
         });
       }
 

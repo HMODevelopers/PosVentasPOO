@@ -77,6 +77,33 @@ $venta    = $ventaModel->obtenerVentaPorId($idVenta);
 if (!$venta) { http_response_code(404); exit('Venta no encontrada'); }
 $detalles = $ventaModel->obtenerDetalleVenta($idVenta);
 
+/* ========= ESTATUS + CLIENTE (para usar en todo el ticket) ========= */
+// Estatus: usa el que venga; si no, infiere por cancelada / id_forma_pago
+$estatusRaw = trim((string)($venta['estatus'] ?? ''));
+$fp         = (int)($venta['id_forma_pago'] ?? 0);
+$cancelada  = (int)($venta['cancelada'] ?? 0) === 1;
+
+if ($estatusRaw === '') {
+  if ($cancelada) {
+    $estatusRaw = 'Cancelada';
+  } else {
+    $estatusRaw = ($fp === 21) ? 'Credito' : 'Activa';
+  }
+}
+$estatus = strtoupper($estatusRaw);
+
+// Es crédito si el estatus es "Credito" o forma de pago 21
+$esCredito = (strcasecmp($estatusRaw, 'Credito') === 0) || ($fp === 21);
+
+// Nombre del cliente (tomando el primer campo disponible)
+$nombreCliente = trim((string)(
+  $venta['nombre_cliente'] ??
+  $venta['cliente'] ??
+  $venta['nombre'] ??
+  $venta['razon_social'] ??
+  ''
+));
+
 /* ===================== Parámetros de look ===================== */
 $DPI          = 203;
 $PAGE_W       = snapMM(80, $DPI);           // ancho físico
@@ -117,8 +144,12 @@ $alto += snapMM(5, $DPI);                   // título
 $alto += 6 * snapMM(4, $DPI);               // 6 líneas de datos fiscales
 $alto += $GAP + $LINE_W + $GAP;             // separador
 
-// Meta (3 líneas: FECHA, FOLIO, ESTATUS + separador)
-$alto += 3 * snapMM(4, $DPI);
+// Meta: FECHA, FOLIO, ESTATUS (+ CLIENTE si crédito) + separador
+$lineasMeta = 3; // FECHA, FOLIO, ESTATUS
+if ($esCredito && $nombreCliente !== '') {
+  $lineasMeta++; // CLIENTE
+}
+$alto += $lineasMeta * snapMM(4, $DPI);
 $alto += $GAP + $LINE_W + $GAP;
 
 // Cabecera de columnas
@@ -204,23 +235,16 @@ $pdf->Cell(0, snapMM(4,$DPI), 'Tel: (662) 262-1129',                0, 1, 'C');
 
 $pdf->Ln($GAP); $y=$pdf->GetY(); $pdf->Line($X0, $y, $X1, $y); $pdf->Ln($GAP);
 
-/* ---------- Meta (incluye ESTATUS) ---------- */
+/* ---------- Meta (incluye ESTATUS y CLIENTE si crédito) ---------- */
 $pdf->SetFont('Courier', $BODY_STYLE, $FS_BODY);
 $pdf->Cell(0, snapMM(4,$DPI), 'FECHA: '.fechaMx($venta['fecha'] ?? null), 0, 1, 'L');
 $pdf->Cell(0, snapMM(4,$DPI), 'FOLIO: '.(($venta['folio'] ?? '') !== '' ? $venta['folio'] : 'VTA-'.$idVenta), 0, 1, 'L');
+$pdf->Cell(0, snapMM(4,$DPI), 'ESTATUS: '.$estatus, 0, 1, 'L');
 
-// Estatus: usa el que venga; si no, infiere por cancelada / id_forma_pago
-$estatus = trim((string)($venta['estatus'] ?? ''));
-if ($estatus === '') {
-  $cancelada = (int)($venta['cancelada'] ?? 0) === 1;
-  if ($cancelada) {
-    $estatus = 'Cancelada';
-  } else {
-    $fp = (int)($venta['id_forma_pago'] ?? 0);
-    $estatus = ($fp === 21) ? 'Credito' : 'Activa';
-  }
+// SOLO cuando sea crédito y tengamos nombre de cliente
+if ($esCredito && $nombreCliente !== '') {
+  $pdf->Cell(0, snapMM(4,$DPI), 'CLIENTE: '.utf8_decode($nombreCliente), 0, 1, 'L');
 }
-$pdf->Cell(0, snapMM(4,$DPI), 'ESTATUS: '.strtoupper($estatus), 0, 1, 'L');
 
 $pdf->Ln($GAP); $y=$pdf->GetY(); $pdf->Line($X0, $y, $X1, $y); $pdf->Ln($GAP);
 
