@@ -137,17 +137,27 @@ if (!isset($_SESSION['usuario'])) {
         <div class="row">
           <div class="col-12">
             <div class="card-box">
-              <div class="d-flex justify-content-between align-items-center mb-2">
+             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h4 class="header-title">Listado de Productos</h4>
 
-                <!-- Botón Agregar producto -->
-                <button id="btnAgregarProducto"
-                        type="button"
-                        class="btn btn-primary btn-sm waves-effect waves-light"
-                        data-toggle="modal"
-                        data-target="#modalProducto">
-                  <i class="mdi mdi-plus"></i> Agregar producto
-                </button>
+                <div class="btn-group">
+                   <!-- Botón Agregar producto -->
+                  <button id="btnAgregarProducto"
+                          type="button"
+                          class="btn btn-primary btn-sm waves-effect waves-light"
+                          data-toggle="modal"
+                          data-target="#modalProducto">
+                    <i class="mdi mdi-plus"></i> Agregar producto
+                  </button>
+                  <!-- Botón Exportar Excel -->
+                  <button id="btnExportarExcel"
+                          type="button"
+                          class="btn btn-success btn-sm waves-effect waves-light">
+                    <i class="mdi mdi-file-excel"></i> Exportar Excel
+                  </button>
+
+                 
+                </div>
               </div>
 
               <div class="table-responsive">
@@ -1121,6 +1131,31 @@ if (!isset($_SESSION['usuario'])) {
         });
       });
     });
+
+    // ===================== EXPORTAR EXCEL =====================
+      function exportarProductosExcel() {
+        const params = new URLSearchParams();
+
+        const codigo      = ($('#Codigo').val() || '').trim();
+        const descripcion = ($('#Descripcion').val() || '').trim();
+        const idProv      = $('#Proveedor').val() || '';
+        const idGrupo     = $('#Grupo').val() || '';
+
+        if (codigo)      params.append('codigo', codigo);
+        if (descripcion) params.append('descripcion', descripcion);
+        if (idProv)      params.append('id_proveedor', idProv);
+        if (idGrupo)     params.append('id_grupo', idGrupo);
+
+        params.append('accion', 'exportar-excel');
+
+        const url = '<?= BASE_URL ?>/controllers/ProductosController.php?' + params.toString();
+        window.location.href = url;
+      }
+
+      $('#btnExportarExcel').on('click', function(e){
+        e.preventDefault();
+        exportarProductosExcel();
+      });
     </script>
 
     <!-- =================== NUEVO: Lógica del modal de Etiquetas =================== -->
@@ -1348,6 +1383,8 @@ if (!isset($_SESSION['usuario'])) {
     })(jQuery);
     </script>
     <!-- =================== /Lógica del modal de Etiquetas =================== -->
+
+    
 
   </body>
 </html>

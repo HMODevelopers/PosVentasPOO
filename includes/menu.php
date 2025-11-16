@@ -66,7 +66,7 @@ acl_bootstrap();
         <?php if (can('inventarios.menu')): ?>
         <li class="has-submenu">
           <a href="#"><i class="la la-cubes"></i>Inventarios <div class="arrow-down"></div></a>
-          <ul class="submenu megamenu">
+          <ul class="submenu">
             <li>
               <ul>
                 <?php if (can('inventarios.productos')): ?>

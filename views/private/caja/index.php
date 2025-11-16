@@ -3,11 +3,6 @@
  * views/private/ventas/caja.php
  * --------------------------------------------------------------------------
  * Vista de Punto de Venta (POS) "Caja".
- * - Protege la sesión (solo usuarios autenticados).
- * - Carga el layout global (header/breadcrumb/footer).
- * - UI: Buscador de productos + Orden/Carrito + Flujo de Cobro.
- * - JS: Manejo de carrito, búsqueda con sugerencias, cálculo de totales,
- *       alta de venta (AJAX) y flujo de cobro con SweetAlert2, incluyendo CRÉDITO.
  * --------------------------------------------------------------------------
  */
 
@@ -56,6 +51,8 @@ if (!isset($_SESSION['usuario'])) {
 
     /* Utilidades */
     .w-70px { width: 70px; }
+    .w-80px { width: 80px; }
+    .w-100px{ width: 100px; }
 
     /* Layout responsive de la pantalla POS */
     .pos-layout { display: block; }
@@ -66,9 +63,19 @@ if (!isset($_SESSION['usuario'])) {
     }
 
     /* Tabla del carrito dentro de scroll, con header fijo */
-    .carrito-scroll { max-height: 300px; overflow-y: auto; border: 1px solid rgba(0,0,0,.075); border-radius: .25rem; }
+    .carrito-scroll {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid rgba(0,0,0,.075);
+      border-radius: .25rem;
+    }
     .carrito-scroll table { margin-bottom: 0; }
-    .carrito-scroll thead th { position: sticky; top: 0; z-index: 1; background: #f8f9fa; }
+    .carrito-scroll thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8f9fa;
+    }
   </style>
 </head>
 <body>
@@ -171,10 +178,11 @@ if (!isset($_SESSION['usuario'])) {
                   <table class="table align-middle mb-0" id="tablaCarrito">
                     <thead class="table-light">
                       <tr>
-                        <th>Producto</th>
-                        <th class="text-center" style="width:210px;">Cant.</th>
-                        <th class="text-end" style="width:160px;">Subtotal</th>
-                        <th class="text-end" style="width:54px;"></th>
+                        <th class="text-center" style="width:250px;">Producto</th>
+                        <th class="text-center" style="width:180px;">Cant.</th>
+                        <th class="text-center" style="width:180px;">P. unitario</th>
+                        <th class="text-center" style="width:180px;">Subtotal</th>
+                        <th class="text-center" style="width:40px;"></th>
                       </tr>
                     </thead>
                     <tbody></tbody>
@@ -202,7 +210,6 @@ if (!isset($_SESSION['usuario'])) {
 
               <!-- Botones de acción principales -->
               <div class="mt-3 d-grid gap-2">
-                <!-- Tip: type="button" evita submits si algún día se envuelve en <form> -->
                 <button id="btnGuardar" type="button" class="btn btn-outline-primary">
                   <i class="mdi mdi-content-save-outline me-1"></i> Guardar
                 </button>
@@ -245,38 +252,42 @@ if (!isset($_SESSION['usuario'])) {
     // ============================================================
     // 1) CONSTANTES & HELPERS DE FORMATO
     // ============================================================
-    const BASE = BASE_URL; // URL base del sistema (inyectada por PHP).
+    const BASE = BASE_URL;
     const mxn  = v => Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
     const fix2 = v => (Number(v||0)).toFixed(2);
     const num  = v => parseFloat(v ?? 0) || 0;
-    const normalize = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+    const normalize = s => (s||'').toString().toLowerCase()
+                            .normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 
     // ============================================================
-    // 2) ESTADO EN MEMORIA (solo del cliente)
+    // 2) ESTADO EN MEMORIA
     // ============================================================
-    let carrito       = [];        // Lista de ítems en carrito
-    let idxFocus      = -1;        // Índice de navegación en sugerencias
-    let ultResultados = [];        // Cache de últimos resultados del buscador (básico)
-    let debTimer      = null;      // Temporizador para debounce
-    const detalleCache = new Map();// Cache por id_producto de detalles
-    let totalActual   = 0;         // Total vigente mostrado en UI
+    let carrito       = [];
+    let idxFocus      = -1;
+    let ultResultados = [];
+    let debTimer      = null;
+    const detalleCache = new Map();
+    let totalActual   = 0;
 
     // ============================================================
-    // 3) MAPEOS / LÓGICA DE NEGOCIO (precio/formapago/stock)
+    // 3) MAPEOS / LÓGICA DE NEGOCIO
     // ============================================================
     function formaPagoSlug(){
       const txt = $('#selFormaPago option:selected').text()?.trim() || '';
       const t = normalize(txt);
       if (t.includes('efectivo')) return 'efectivo';
       if (t.includes('mixto') || t.includes('mixta')) return 'mixto';
-      if ((t.includes('credito') || t.includes('crédito')) && !t.includes('tarjeta')) return 'credito'; // Crédito a cliente (no tarjeta)
+      if ((t.includes('credito') || t.includes('crédito')) && !t.includes('tarjeta')) return 'credito';
       if (t.includes('transfer')) return 'transferencia';
       if (t.includes('tarjeta') || t.includes('debito') || t.includes('débito')) return 'tarjeta';
-      return 'tarjeta'; // Fallback conservador
+      return 'tarjeta';
     }
 
-    function tipoPrecioActual() { return ($('#tpPrecio').val() || 'publico'); }
+    function tipoPrecioActual() {
+      return ($('#tpPrecio').val() || 'publico');
+    }
 
+    // Respeta override_unit si existe
     function precioDeItem(it){
       if (typeof it.override_unit === 'number' && !isNaN(it.override_unit)) {
         return Number(it.override_unit);
@@ -284,21 +295,31 @@ if (!isset($_SESSION['usuario'])) {
       const t = tipoPrecioActual();
       if (t === 'taller')     return Number(it.precio_taller||0);
       if (t === 'proveedor')  return Number(it.precio_proveedor||0);
-      return Number(it.precio_publico||0); // público por defecto
+      return Number(it.precio_publico||0);
     }
 
-    // Ahora solo cuenta la existencia real, ignorando el stock mínimo para POS
+    // Helper para pintar/usar el precio unitario
+    function obtenerPrecioItem(it){
+      let p = (it.precio_unitario != null)
+            ? it.precio_unitario
+            : (it.precio != null ? it.precio : precioDeItem(it));
+      return Number(p) || 0;
+    }
+
     const vendibleDe = det => Math.max(0, num(det.stock_actual ?? det.existencia));
 
     function maxVendible(it){
       const stock = num(it.stock_actual ?? it.existencia ?? 0);
-      return Math.max(0, stock); // puedes vender todo lo que haya
+      return Math.max(0, stock);
     }
 
-    function mapTipoPrecioId(slug){ const m = { publico:1, taller:2, proveedor:3 }; return m[slug] || 1; }
+    function mapTipoPrecioId(slug){
+      const m = { publico:1, taller:2, proveedor:3 };
+      return m[slug] || 1;
+    }
 
     // ============================================================
-    // 4) SERVICIOS (AJAX) PARA CARGAR DATOS A LA VISTA
+    // 4) SERVICIOS (AJAX) PARA CARGAR DATOS
     // ============================================================
     function pintarFolioSugerido(){
       const fecha = $('#fechaVenta').val();
@@ -331,20 +352,18 @@ if (!isset($_SESSION['usuario'])) {
           if (Array.isArray(data) && data.length) {
             setClientesOptions(data);
           } else {
-            // Fallback a listar normal
             $.post(`${BASE}/controllers/ClientesController.php`, {accion:'listar', pagina:1, limite:LIM})
               .done(r2=>{
                 const data2 = r2?.data || [];
                 setClientesOptions(data2);
                 if (!data2.length) toastr.info('No hay clientes activos. Usando “Mostrador / Público general”.');
               })
-              .fail(()=> {
+              .fail(()=>{
                 setClientesOptions([]); toastr.error('No se pudieron cargar clientes (listar).');
               });
           }
         })
         .fail(()=>{
-          // Fallback ante error
           $.post(`${BASE}/controllers/ClientesController.php`, {accion:'listar', pagina:1, limite:LIM})
             .done(r2=>{
               const data2 = r2?.data || [];
@@ -356,40 +375,37 @@ if (!isset($_SESSION['usuario'])) {
     }
 
     function cargarFormasPago(){
-        $.get(`${BASE}/controllers/FormasPagoController.php`, {accion:'listar_select'})
-          .done(r=>{
-            const sel = $('#selFormaPago').empty();
-            const arr = r?.data || (Array.isArray(r) ? r : []);
-            if (!arr.length) {
-              sel.append(`<option value="">(sin formas de pago)</option>`);
-              return;
-            }
+      $.get(`${BASE}/controllers/FormasPagoController.php`, {accion:'listar_select'})
+        .done(r=>{
+          const sel = $('#selFormaPago').empty();
+          const arr = r?.data || (Array.isArray(r) ? r : []);
+          if (!arr.length) {
+            sel.append(`<option value="">(sin formas de pago)</option>`);
+            return;
+          }
 
-            let idxDefault = 0; // por defecto, primera opción
-            arr.forEach((fp, i)=>{
-              sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
-              const d = normalize(fp.descripcion);
-              // 🔹 Ahora preferimos “Efectivo”
-              if (d.includes('efectivo')) idxDefault = i;
-            });
-
-            sel.prop('selectedIndex', idxDefault);
-          })
-          .fail(()=>{
-            // Fallback simple para no dejar vacío
-            const sel = $('#selFormaPago').empty();
-            sel.append(`
-              <option value="1" selected>Efectivo</option>
-              <option value="2">Tarjeta</option>
-              <option value="3">Mixto</option>
-              <option value="4">Crédito</option>
-            `);
+          let idxDefault = 0;
+          arr.forEach((fp, i)=>{
+            sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
+            const d = normalize(fp.descripcion);
+            if (d.includes('efectivo')) idxDefault = i;
           });
+
+          sel.prop('selectedIndex', idxDefault);
+        })
+        .fail(()=>{
+          const sel = $('#selFormaPago').empty();
+          sel.append(`
+            <option value="1" selected>Efectivo</option>
+            <option value="2">Tarjeta</option>
+            <option value="3">Mixto</option>
+            <option value="4">Crédito</option>
+          `);
+        });
     }
 
-
     // ============================================================
-    // 5) BUSCADOR DE PRODUCTOS (sugerencias + detalle diferido)
+    // 5) BUSCADOR DE PRODUCTOS
     // ============================================================
     const $input = $('#txtBuscar'), $panel = $('#panelSug');
 
@@ -423,11 +439,9 @@ if (!isset($_SESSION['usuario'])) {
 
       if(!ultResultados.length) return $panel.addClass('d-none');
 
-      // 1) Dibuja filas básicas
       ultResultados.forEach(p=>$panel.append(sugHTMLBasico(p)));
       $panel.removeClass('d-none');
 
-      // 2) Completa con detalle (cache → servidor)
       ultResultados.forEach(p=>{
         const id = p.id_producto;
         const $row = $panel.find(`[data-id="${id}"]`);
@@ -478,12 +492,16 @@ if (!isset($_SESSION['usuario'])) {
         .fail(()=> toastr.error('No se pudo obtener el detalle del producto'));
     }
 
-    $('#txtBuscar').on('input', function(){ debounce(()=>buscar(this.value.trim()), 220); });
+    $('#txtBuscar').on('input', function(){
+      debounce(()=>buscar(this.value.trim()), 220);
+    });
+
     $('#panelSug').on('click','.list-group-item',function(e){
       e.preventDefault();
       if($(this).hasClass('disabled')) return;
       seleccionarPorId(Number($(this).data('id')));
     });
+
     $(document).on('click', e=>{
       if(!$(e.target).closest('#txtBuscar,#panelSug').length){
         $panel.addClass('d-none').empty();
@@ -491,7 +509,7 @@ if (!isset($_SESSION['usuario'])) {
     });
 
     // ============================================================
-    // 6) CARRITO (agregar, pintar, editar cant/subtotal, eliminar)
+    // 6) CARRITO (agregar, pintar, editar, eliminar)
     // ============================================================
     function agregarDesdeDetalle(p){
       const idx = carrito.findIndex(x => x.id_producto == p.id_producto);
@@ -520,173 +538,200 @@ if (!isset($_SESSION['usuario'])) {
       pintarCarrito();
     }
 
-    function pintarCarrito(){
-    const $tb = $('#tablaCarrito tbody').empty();
+    function pintarCarrito()
+    {
+      const $tb = $('#tablaCarrito tbody').empty();
 
-    if(!carrito.length){
-      $('#wrapCarritoVacio').removeClass('d-none');
-      $('#wrapCarritoTabla').addClass('d-none');
-      $('#resTotal').text('$0.00');
-      totalActual = 0;
-      return;
-    }
+      if(!carrito.length){
+        $('#wrapCarritoVacio').removeClass('d-none');
+        $('#wrapCarritoTabla').addClass('d-none');
+        $('#resTotal').text('$0.00');
+        totalActual = 0;
+        return;
+      }
 
-    $('#wrapCarritoVacio').addClass('d-none');
-    $('#wrapCarritoTabla').removeClass('d-none');
+      $('#wrapCarritoVacio').addClass('d-none');
+      $('#wrapCarritoTabla').removeClass('d-none');
 
-    let total = 0;
+      let total = 0;
 
-    carrito.forEach((it, idx) => {
-      const precio   = precioDeItem(it);
-      const cantidad = Number(it.cantidad) || 0;
-      const subtotal = cantidad * precio;
-      total += subtotal;
+      carrito.forEach((it, idx) => {
+        const precio   = obtenerPrecioItem(it);
+        const cantidad = Number(it.cantidad) || 0;
+        const subtotal = cantidad * precio;
+        total += subtotal;
 
-      $tb.append(`
-        <tr>
-          <td>
-            <div class="d-flex align-items-center">
-              <div>
-                <div class="fw-semibold">${it.descripcion}</div>
-                <div class="small text-muted">
-                  Cod: ${it.codigo} ${it.proveedor?`· Prov: ${it.proveedor}`:``}
-                  · Exist: <span class="badge ${Number(it.stock_actual)>0?'bg-success':'bg-secondary'} badge-stock">${fix2(it.stock_actual)}</span>
+        $tb.append(`
+          <tr>
+            <!-- Producto -->
+            <td>
+              <div class="d-flex align-items-center">
+                <div>
+                  <div class="fw-semibold">${it.descripcion}</div>
+                  <div class="small text-muted">
+                    Cod: ${it.codigo} ${it.proveedor ? `· Prov: ${it.proveedor}` : ``}
+                    · Exist: <span class="badge ${Number(it.stock_actual)>0?'bg-success':'bg-secondary'} badge-stock">${fix2(it.stock_actual)}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </td>
+            </td>
 
-          <!-- Cantidad con +/- y edición directa (permite decimales) -->
-          <td class="text-center">
-            <div class="btn-group btn-group-sm" role="group">
-              <button class="btn btn-outline-danger" data-dec="${idx}">
-                <i class="mdi mdi-minus"></i>
-              </button>
+            <!-- Cantidad -->
+            <td class="text-center">
+              <div class="btn-group btn-group-sm" role="group">
+                
+                <input type="number"
+                       min="0.01"
+                       step="1"
+                       class="form-control form-control-sm text-center w-70px"
+                       value="${fix2(cantidad)}"
+                       data-qty="${idx}">
+                
+              </div>
+            </td>
+
+            <!-- Precio unitario -->
+            <td class="text-center">
               <input type="number"
-                    min="0.01"
-                    step="0.01"
-                    class="form-control form-control-sm text-center w-70px"
-                    value="${fix2(it.cantidad)}"
-                    data-qty="${idx}">
-              <button class="btn btn-outline-success" data-inc="${idx}">
-                <i class="mdi mdi-plus"></i>
+                     min="0"
+                     step="1"
+                     class="form-control form-control-sm text-end w-80px"
+                     value="${fix2(precio)}"
+                     data-precio="${idx}"
+                     title="Precio unitario">
+            </td>
+
+            <!-- Subtotal -->
+            <td class="text-end">
+              <input type="number"
+                     min="0"
+                     step="1"
+                     class="form-control form-control-sm text-end w-100px"
+                     value="${fix2(subtotal)}"
+                     data-sub="${idx}"
+                     title="Editar subtotal (ajusta el precio unitario automáticamente)">
+            </td>
+
+            <!-- Eliminar -->
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-danger" data-del="${idx}">
+                <i class="mdi mdi-delete"></i>
               </button>
-            </div>
-          </td>
+            </td>
+          </tr>
+        `);
+      });
 
-          <!-- Subtotal editable: step=1 para que 20.70 pase a 21.70 -->
-          <td class="text-end">
-            <input type="number"
-                  min="0"
-                  step="1"
-                  class="form-control form-control-sm text-end"
-                  value="${fix2(subtotal)}"
-                  data-sub="${idx}"
-                  title="Editar subtotal (ajusta el precio unitario automáticamente)">
-          </td>
-
-          <!-- Eliminar ítem -->
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-danger" data-del="${idx}">
-              <i class="mdi mdi-delete"></i>
-            </button>
-          </td>
-        </tr>
-      `);
-    });
-
-    totalActual = total;
-    $('#resTotal').text(mxn(total));
-  }
-
-  $('#tpPrecio').on('change',pintarCarrito);
-
-  /* ========== CANTIDAD ========== */
-
-  $('#tablaCarrito').on('click','button[data-inc]',function(){
-    const i = Number(this.dataset.inc);
-    if(isNaN(i) || !carrito[i]) return;
-
-    const vendible = maxVendible(carrito[i]);
-    const actual   = Number(carrito[i].cantidad) || 0;
-    const next     = actual + 1; // sigue sumando de 1 en 1 (para piezas)
-
-    carrito[i].cantidad = next > vendible
-      ? (toastr.info('Se alcanzó el máximo vendible.'), vendible)
-      : next;
-
-    // Redondeamos a 2 decimales por si hay decimales
-    carrito[i].cantidad = Number(carrito[i].cantidad.toFixed(2));
-    pintarCarrito();
-  });
-
-  $('#tablaCarrito').on('click','button[data-dec]',function(){
-    const i = Number(this.dataset.dec);
-    if(isNaN(i) || !carrito[i]) return;
-
-    const actual = Number(carrito[i].cantidad) || 0;
-    let next = actual - 1; // resta de 1 en 1
-    if (next < 0.01) next = 0.01; // MIN para permitir cable 0.70, 0.50, etc.
-
-    carrito[i].cantidad = Number(next.toFixed(2));
-    pintarCarrito();
-  });
-
-  $('#tablaCarrito').on('change','input[data-qty]',function(){
-    const i = Number(this.dataset.qty);
-    if(isNaN(i) || !carrito[i]) return;
-
-    let val = Number(this.value || 0);
-    if (isNaN(val) || val <= 0) val = 0.01;      // mínimo 0.01
-    const vendible = maxVendible(carrito[i]);
-
-    if (val > vendible) {
-      val = vendible;
-      toastr.info('Se ajustó a máximo vendible.');
+      totalActual = total;
+      $('#resTotal').text(mxn(total));
     }
 
-    carrito[i].cantidad = Number(val.toFixed(2)); // siempre 2 decimales
-    pintarCarrito();
-  });
+    $('#tpPrecio').on('change', pintarCarrito);
 
-  /* ========== ELIMINAR ITEM ========== */
+    /* ========== CANTIDAD ========== */
 
-  $('#tablaCarrito').on('click','button[data-del]',function(){
-    const i = Number(this.dataset.del);
-    if(isNaN(i)) return;
-    carrito.splice(i,1);
-    pintarCarrito();
-  });
+    $('#tablaCarrito').on('click','button[data-inc]',function(){
+      const i = Number(this.dataset.inc);
+      if(isNaN(i) || !carrito[i]) return;
 
-  /* ========== SUBTOTAL EDITABLE (CAMBIO DE PRECIO) ========== */
+      const vendible = maxVendible(carrito[i]);
+      const actual   = Number(carrito[i].cantidad) || 0;
+      const next     = actual + 1;
 
-  $('#tablaCarrito').on('change','input[data-sub]', function(){
-    const i = Number(this.dataset.sub);
-    if (isNaN(i) || !carrito[i]) return;
+      carrito[i].cantidad = next > vendible
+        ? (toastr.info('Se alcanzó el máximo vendible.'), vendible)
+        : next;
 
-    let sub = Number(this.value);
-    if (isNaN(sub) || sub < 0) sub = 0;
+      carrito[i].cantidad = Number(carrito[i].cantidad.toFixed(2));
+      pintarCarrito();
+    });
 
-    // Redondeamos el subtotal a 2 decimales
-    sub = Number(sub.toFixed(2));
+    $('#tablaCarrito').on('click','button[data-dec]',function(){
+      const i = Number(this.dataset.dec);
+      if(isNaN(i) || !carrito[i]) return;
 
-    const qty = Math.max(0.01, Number(carrito[i].cantidad) || 0.01);
-    const unit = sub / qty;
+      const actual = Number(carrito[i].cantidad) || 0;
+      let next = actual - 1;
+      if (next < 0.01) next = 0.01;
 
-    // Precio unitario forzado (2 decimales)
-    carrito[i].override_unit = Number(unit.toFixed(2));
-    pintarCarrito();
-  });
+      carrito[i].cantidad = Number(next.toFixed(2));
+      pintarCarrito();
+    });
+
+    $('#tablaCarrito').on('change','input[data-qty]',function(){
+      const i = Number(this.dataset.qty);
+      if(isNaN(i) || !carrito[i]) return;
+
+      let val = Number(this.value || 0);
+      if (isNaN(val) || val <= 0) val = 0.01;
+      const vendible = maxVendible(carrito[i]);
+
+      if (val > vendible) {
+        val = vendible;
+        toastr.info('Se ajustó a máximo vendible.');
+      }
+
+      carrito[i].cantidad = Number(val.toFixed(2));
+      pintarCarrito();
+    });
+
+    /* ========== ELIMINAR ITEM ========== */
+
+    $('#tablaCarrito').on('click','button[data-del]',function(){
+      const i = Number(this.dataset.del);
+      if(isNaN(i)) return;
+      carrito.splice(i,1);
+      pintarCarrito();
+    });
+
+    /* ========== CAMBIO DE PRECIO UNITARIO ========== */
+
+    $('#tablaCarrito').on('change','input[data-precio]', function(){
+      const i = Number(this.dataset.precio);
+      if (isNaN(i) || !carrito[i]) return;
+
+      let unit = Number(this.value);
+      if (isNaN(unit) || unit < 0) unit = 0;
+
+      unit = Number(unit.toFixed(2));
+
+      carrito[i].override_unit   = unit;
+      carrito[i].precio_unitario = unit;
+      carrito[i].precio          = unit;
+
+      pintarCarrito();
+    });
+
+    /* ========== SUBTOTAL EDITABLE (CAMBIO DE PRECIO) ========== */
+
+    $('#tablaCarrito').on('change','input[data-sub]', function(){
+      const i = Number(this.dataset.sub);
+      if (isNaN(i) || !carrito[i]) return;
+
+      let sub = Number(this.value);
+      if (isNaN(sub) || sub < 0) sub = 0;
+
+      sub = Number(sub.toFixed(2));
+
+      let qty = Math.max(0.01, Number(carrito[i].cantidad) || 0.01);
+      const unit = sub / qty;
+
+      carrito[i].override_unit   = Number(unit.toFixed(2));
+      carrito[i].precio_unitario = carrito[i].override_unit;
+      carrito[i].precio          = carrito[i].override_unit;
+
+      pintarCarrito();
+    });
 
     // ============================================================
-    // 7) IMPRESIÓN DE TICKET (requiere script server-side Mike42)
+    // 7) IMPRESIÓN DE TICKET
     // ============================================================
     function imprimirTicketAjax(idVenta){
-       if (!idVenta) return false;
-        const url = `${BASE}/utils/ticket_pdf.php?id_venta=${encodeURIComponent(idVenta)}`;
-        const win = window.open(url, '_blank');
-        if (win) win.focus();
-        return true; // por si alguien lo "await"
+      if (!idVenta) return false;
+      const url = `${BASE}/utils/ticket_pdf.php?id_venta=${encodeURIComponent(idVenta)}`;
+      const win = window.open(url, '_blank');
+      if (win) win.focus();
+      return true;
     }
 
     // ============================================================
@@ -700,12 +745,14 @@ if (!isset($_SESSION['usuario'])) {
         data: JSON.stringify(payload)
       })
       .done(r=> onOk(r))
-      .fail(()=> Swal.fire({icon:'error', title:'Error de comunicación', text:'No fue posible contactar al servidor.'}));
+      .fail(()=> Swal.fire({
+        icon:'error', title:'Error de comunicación',
+        text:'No fue posible contactar al servidor.'
+      }));
     }
 
     // ============================================================
-    // 9) REGISTRO DE VENTA (arma payload y maneja respuesta)
-    // ============================================================
+    // 9) REGISTRO DE VENTA
     // ============================================================
     function registrarVenta({estatus='Activa', pagos={}} = {}){
       const slugPrecio = $('#tpPrecio').val();
@@ -715,32 +762,44 @@ if (!isset($_SESSION['usuario'])) {
       const payload = {
         venta: {
           fecha: $('#fechaVenta').val(),
-          estatus,                         // 'Activa' | 'Guardada' | 'Credito'
-          id_cliente: idCliente,           // En crédito: requerido (validado en flujoCobro)
+          estatus,
+          id_cliente: idCliente,
           id_forma_pago: estatus==='Guardada' ? null : (Number($('#selFormaPago').val()) || null),
           id_tipo_precio: mapTipoPrecioId(slugPrecio),
           tipo_precio_slug: slugPrecio,
-          ...pagos                         // { tipo:'efectivo'|'mixto'|'tarjeta'|'transferencia'|'credito', ... }
+          ...pagos
         },
         detalles: carrito.map(it => {
-          const unit = precioDeItem(it), cant = Number(it.cantidad);
-          return { id_producto: it.id_producto, cantidad: cant, precio_unitario: unit, subtotal: cant*unit };
+          const unit = precioDeItem(it);
+          const cant = Number(it.cantidad);
+          return {
+            id_producto: it.id_producto,
+            cantidad: cant,
+            precio_unitario: unit,
+            subtotal: cant * unit
+          };
         })
       };
 
       postVenta(payload, (r)=>{
         if(!r?.ok){
-          return Swal.fire({ icon:'error', title:'No se pudo registrar', text:(r?.msg||'Intenta de nuevo') });
+          return Swal.fire({
+            icon:'error',
+            title:'No se pudo registrar',
+            text:(r?.msg||'Intenta de nuevo')
+          });
         }
 
-        // Guardar último id de venta para reimpresión
         $('#tk-idventa').val(r.id_venta || '');
 
         if (estatus === 'Guardada'){
-          Swal.fire({ icon:'success', title:'Venta guardada', html:`<p>Folio: <b>${r.folio}</b></p>` });
+          Swal.fire({
+            icon:'success',
+            title:'Venta guardada',
+            html:`<p>Folio: <b>${r.folio}</b></p>`
+          });
         }
         else if (estatus === 'Credito'){
-          // === Botón para imprimir ticket en crédito ===
           Swal.fire({
             icon:'success',
             title:'Venta a crédito registrada',
@@ -756,7 +815,6 @@ if (!isset($_SESSION['usuario'])) {
           });
         }
         else {
-          // Activa (efectivo/mixto/tarjeta/transferencia)
           const cambioTxt = (typeof pagos.cambio === 'number')
             ? `<p><small>Cambio:</small> <b>${mxn(pagos.cambio)}</b></p>` : '';
           Swal.fire({
@@ -773,7 +831,6 @@ if (!isset($_SESSION['usuario'])) {
           });
         }
 
-        // Reset UI post-venta
         carrito=[]; pintarCarrito(); $('#selCliente').val('');
         $('#tpPrecio').val('taller');
         cargarFormasPago();
@@ -781,9 +838,8 @@ if (!isset($_SESSION['usuario'])) {
       });
     }
 
-
     // ============================================================
-    // 10) FLUJO DE COBRO (define la UX según forma de pago)
+    // 10) FLUJO DE COBRO
     // ============================================================
     function flujoCobro(){
       if(!carrito.length){ toastr.warning('Agrega productos a la orden'); return; }
@@ -791,11 +847,14 @@ if (!isset($_SESSION['usuario'])) {
       const total  = totalActual;
       const fpSlug = formaPagoSlug();
 
-      // ---- CRÉDITO: requiere cliente y no pide monto ----
       if (fpSlug === 'credito'){
         const idCliente = $('#selCliente').val() ? Number($('#selCliente').val()) : null;
         if (!idCliente){
-          Swal.fire({icon:'warning', title:'Selecciona un cliente', text:'Para ventas a crédito es obligatorio elegir un cliente.'});
+          Swal.fire({
+            icon:'warning',
+            title:'Selecciona un cliente',
+            text:'Para ventas a crédito es obligatorio elegir un cliente.'
+          });
           return;
         }
         Swal.fire({
@@ -807,14 +866,12 @@ if (!isset($_SESSION['usuario'])) {
           confirmButtonText:'Registrar crédito'
         }).then(res=>{
           if(res.isConfirmed){
-            // El ticket se ofrece en el Swal de 'registrarVenta' (estatus === 'Credito')
             registrarVenta({ estatus:'Credito', pagos:{ tipo:'credito' } });
           }
         });
         return;
       }
 
-      // ---- EFECTIVO: pide monto recibido y calcula cambio ----
       if(fpSlug === 'efectivo'){
         Swal.fire({
           title: 'Cobro en efectivo',
@@ -823,7 +880,10 @@ if (!isset($_SESSION['usuario'])) {
           showCancelButton:true, confirmButtonText:'Cobrar',
           preConfirm:(value)=>{
             const monto=Number(value);
-            if(isNaN(monto)||monto<total){ Swal.showValidationMessage('El monto recibido debe ser ≥ total.'); return false; }
+            if(isNaN(monto)||monto<total){
+              Swal.showValidationMessage('El monto recibido debe ser ≥ total.');
+              return false;
+            }
             return monto;
           }
         }).then(res=>{
@@ -835,7 +895,6 @@ if (!isset($_SESSION['usuario'])) {
         return;
       }
 
-      // ---- MIXTO: efectivo + tarjeta; validar suma ≥ total ----
       if(fpSlug === 'mixto'){
         Swal.fire({
           title:'Cobro mixto',
@@ -852,19 +911,24 @@ if (!isset($_SESSION['usuario'])) {
           preConfirm:()=>{
             const ef=Number(document.getElementById('m_efectivo').value||0);
             const tj=Number(document.getElementById('m_tarjeta').value||0);
-            if((ef+tj)<total){ Swal.showValidationMessage('Efectivo + tarjeta debe ser ≥ total.'); return false; }
+            if((ef+tj)<total){
+              Swal.showValidationMessage('Efectivo + tarjeta debe ser ≥ total.');
+              return false;
+            }
             return {ef,tj};
           }
         }).then(res=>{
           if(res.isConfirmed){
             const {ef,tj}=res.value; const cambio=Math.max(0,(ef+tj)-total);
-            registrarVenta({estatus:'Activa', pagos:{ tipo:'mixto', recibido_efectivo:ef, recibido_tarjeta:tj, cambio }});
+            registrarVenta({
+              estatus:'Activa',
+              pagos:{ tipo:'mixto', recibido_efectivo:ef, recibido_tarjeta:tj, cambio }
+            });
           }
         });
         return;
       }
 
-      // ---- TARJETA / TRANSFERENCIA: confirmar y registrar ----
       if (fpSlug === 'tarjeta' || fpSlug === 'transferencia'){
         Swal.fire({
           title: (fpSlug==='tarjeta'?'Cobro con tarjeta':'Cobro por transferencia'),
@@ -879,37 +943,40 @@ if (!isset($_SESSION['usuario'])) {
       }
     }
 
-
     // ============================================================
-    // 11) BINDINGS DE BOTONES (Guardar/Cobrar/Cancelar)
+    // 11) BINDINGS DE BOTONES
     // ============================================================
     $('#btnCobrar').on('click', flujoCobro);
 
     $('#btnGuardar').on('click', ()=>{
       if(!carrito.length) return toastr.warning('Agrega productos a la orden');
       Swal.fire({
-        icon:'question', title:'Guardar venta',
+        icon:'question',
+        title:'Guardar venta',
         text:'Se reservará inventario pero NO contará para el corte hasta que la cobres. ¿Continuar?',
-        showCancelButton:true, confirmButtonText:'Guardar'
-      }).then(res=>{ if(res.isConfirmed){ registrarVenta({estatus:'Guardada'}); }});
+        showCancelButton:true,
+        confirmButtonText:'Guardar'
+      }).then(res=>{
+        if(res.isConfirmed){ registrarVenta({estatus:'Guardada'}); }
+      });
     });
 
     $('#btnCancelar').on('click', ()=>{
-      // Limpia carrito y controles básicos de la vista
       carrito=[]; pintarCarrito(); $('#selCliente').val(''); $('#txtBuscar').val('');
-      $('#fechaVenta').val('<?= date('Y-m-d') ?>'); // Fecha del día (servidor)
-      $('#tpPrecio').val('taller').trigger('change');               // Regresa a “público”
-      cargarFormasPago();                           // Refresca y aplica default (Crédito si existe)
+      $('#fechaVenta').val('<?= date('Y-m-d') ?>');
+      $('#tpPrecio').val('taller').trigger('change');
+      cargarFormasPago();
       pintarFolioSugerido();
     });
 
     // ============================================================
-    // 12) INIT (al cargar la pantalla)
+    // 12) INIT
     // ============================================================
     cargarClientes();
     cargarFormasPago();
     pintarFolioSugerido();
     $('#fechaVenta').on('change', pintarFolioSugerido);
+
   })();
   </script>
 </body>

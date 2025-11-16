@@ -31,7 +31,7 @@ if (!isset($_SESSION['usuario'])) {
     .card-header{ border-color:darkgray; border-style:dotted; }
     .clean-filter .input-group-text{ cursor:pointer; }
     .table thead th{ white-space:nowrap; }
-     tfoot td{ font-weight:700; background:#eef3ff; }
+    tfoot td{ font-weight:700; background:#eef3ff; }
   </style>
 </head>
 <body>
@@ -130,16 +130,18 @@ if (!isset($_SESSION['usuario'])) {
                     <th>Descripción</th>
                     <th class="text-center" style="width:130px;">Precio</th>
                     <th class="text-center" style="width:130px;">Total</th>
+                    <th class="text-center" style="width:130px;">Fecha venta</th>
                   </tr>
                 </thead>
                 <tbody id="tbodyItems">
-                  <tr><td colspan="8" class="text-center text-muted">Sin registros</td></tr>
+                  <tr><td colspan="9" class="text-center text-muted">Sin registros</td></tr>
                 </tbody>
                 <tfoot>
                   <tr>
-                    <!-- Solo suma la última columna -->
+                    <!-- Suma la columna de Total; la columna de Fecha queda vacía -->
                     <td colspan="7" class="text-right">TOTAL</td>
                     <td class="text-center" id="tImporte">—</td>
+                    <td></td>
                   </tr>
                 </tfoot>
               </table>
@@ -185,6 +187,11 @@ if (!isset($_SESSION['usuario'])) {
     const esc = s => String(s==null?'':s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[m]));
     const mxn = n => Number(n||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
     const num = n => Number(n||0);
+
+    const fmtFecha = f => {
+      if (!f) return '';
+      return String(f).split(' ')[0]; // 2025-11-01 10:20:30 -> 2025-11-01
+    };
 
     // Fecha por defecto: hoy en ambos (desde/hasta)
     (function setHoy(){
@@ -239,7 +246,7 @@ if (!isset($_SESSION['usuario'])) {
       if(idc && d && h) cargarItems(1);
     }
 
-    // ====== listado + total del rango (solo suma de la última columna) ======
+    // ====== listado + total del rango (solo suma de la columna Total) ======
     function cargarItems(pagina){
       paginaActual = pagina;
       const idc=$('#FiltroCliente').val(), d=$('#FiltroDesde').val(), h=$('#FiltroHasta').val();
@@ -267,12 +274,13 @@ if (!isset($_SESSION['usuario'])) {
     function renderTabla(rows){
       const $tb = $('#tbodyItems');
       if(!rows.length){
-        $tb.html('<tr><td colspan="8" class="text-center text-muted">Sin registros</td></tr>');
+        $tb.html('<tr><td colspan="9" class="text-center text-muted">Sin registros</td></tr>');
         $('#tImporte').text('—');
         return;
       }
       let html='';
       rows.forEach(r=>{
+        const fecha = fmtFecha(r.fecha_venta || r.fecha || '');
         html += `
           <tr>
             <td class="text-center"><b>${esc(r.folio || '')}</b></td>
@@ -283,6 +291,7 @@ if (!isset($_SESSION['usuario'])) {
             <td>${esc(r.descripcion || '')}</td>
             <td class="text-center">${mxn(r.precio_unitario ?? r.precio ?? 0)}</td>
             <td class="text-center"><b>${mxn(r.importe ?? r.total ?? 0)}</b></td>
+            <td class="text-center">${esc(fecha)}</td>
           </tr>
         `;
       });

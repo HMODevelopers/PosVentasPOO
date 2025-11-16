@@ -70,6 +70,7 @@ class ReporteModel {
             $params[':q'] = "%{$q}%";
         }
 
+        // Ordenado por fecha de venta, luego folio y renglón
         $sql .= " ORDER BY v.fecha DESC, v.folio ASC, d.id_venta_detalle ASC
                   LIMIT {$limite} OFFSET {$offset}";
 
@@ -109,7 +110,7 @@ class ReporteModel {
         return (int)($st->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
     }
 
-    /** LISTAR TODO (sin paginación) para CSV */
+    /** LISTAR TODO (sin paginación) para CSV / XLS (incluye fecha) */
     public function listarCreditoClienteItemsTodo(array $filtros = []): array {
         $idCliente = (int)($filtros['id_cliente'] ?? 0);
         if ($idCliente <= 0) return [];
@@ -147,6 +148,7 @@ class ReporteModel {
             $params[':q'] = "%{$q}%";
         }
 
+        // Orden para exportes: por fecha de venta
         $sql .= " ORDER BY v.fecha DESC, v.folio ASC, d.id_venta_detalle ASC";
 
         $st = $this->conn->prepare($sql);
@@ -195,7 +197,7 @@ class ReporteModel {
         ];
     }
 
-    /** CSV */
+    /** CSV (incluye fecha de venta) */
     public function csvCreditoClienteItems(array $rows): string {
         $fh = fopen('php://temp', 'w+');
         fputcsv($fh, ['FOLIO','ESTATUS_CREDITO','CANTIDAD','CODIGO','UNIDAD','DESCRIPCION','PRECIO','TOTAL','FECHA']);
@@ -217,6 +219,7 @@ class ReporteModel {
     }
 
     // === NUEVO: Reporte de Utilidades ===
+
     /**
      * Construye el WHERE de estatus de venta según filtros.
      */
@@ -244,7 +247,10 @@ class ReporteModel {
         $cond[] = "v.estatus <> 'Cancelada'";
         $cond[] = "v.estatus <> 'Devuelta'";
 
-        return '(' . implode(' OR ', array_slice($cond, 0, max(1, count($cond)-2))) . ') AND v.estatus <> \'Cancelada\' AND v.estatus <> \'Devuelta\'';
+        // Tomamos solo las condiciones de estatus para el OR,
+        // y luego agregamos los <> Cancelada/Devuelta afuera
+        return '(' . implode(' OR ', array_slice($cond, 0, max(1, count($cond)-2))) . ')
+                AND v.estatus <> \'Cancelada\' AND v.estatus <> \'Devuelta\'';
     }
 
     /**
@@ -255,43 +261,35 @@ class ReporteModel {
         switch ($g) {
             case 'semana':
                 return [
-                'select' => "CONCAT('Sem ', LPAD(WEEK(v.fecha,3),2,'0'), '/', YEAR(v.fecha)) AS periodo",
-                'group'  => "YEAR(v.fecha), WEEK(v.fecha,3)",
-                'order'  => "YEAR(v.fecha) DESC, WEEK(v.fecha,3) DESC"
+                    'select' => "CONCAT('Sem ', LPAD(WEEK(v.fecha,3),2,'0'), '/', YEAR(v.fecha)) AS periodo",
+                    'group'  => "YEAR(v.fecha), WEEK(v.fecha,3)",
+                    'order'  => "YEAR(v.fecha) DESC, WEEK(v.fecha,3) DESC"
                 ];
             case 'mes':
                 return [
-                'select' => "DATE_FORMAT(v.fecha, '%m/%Y') AS periodo",
-                'group'  => "YEAR(v.fecha), MONTH(v.fecha)",
-                'order'  => "YEAR(v.fecha) DESC, MONTH(v.fecha) DESC"
+                    'select' => "DATE_FORMAT(v.fecha, '%m/%Y') AS periodo",
+                    'group'  => "YEAR(v.fecha), MONTH(v.fecha)",
+                    'order'  => "YEAR(v.fecha) DESC, MONTH(v.fecha) DESC"
                 ];
             case 'ninguno':
                 return [
-                'select' => "NULL AS periodo",
-                'group'  => "", // sin período
-                'order'  => "p.codigo ASC"
+                    'select' => "NULL AS periodo",
+                    'group'  => "",
+                    'order'  => "p.codigo ASC"
                 ];
             case 'dia':
             default:
                 return [
-                'select' => "DATE_FORMAT(v.fecha, '%d/%m/%Y') AS periodo",
-                'group'  => "DATE(v.fecha)",
-                'order'  => "DATE(v.fecha) DESC"
+                    'select' => "DATE_FORMAT(v.fecha, '%d/%m/%Y') AS periodo",
+                    'group'  => "DATE(v.fecha)",
+                    'order'  => "DATE(v.fecha) DESC"
                 ];
         }
     }
 
     /**
-     * Lista utilidades agregadas por producto y período.
-     * Filtros:
-     *  - desde, hasta (YYYY-MM-DD)
-     *  - q (código/descr)
-     *  - group_by: dia|semana|mes|ninguno
-     *  - inc_credito: 0/1
-     *  - solo_credito_liquidado: 1 (default) / 0
-     *  - inc_guardadas: 0/1
+     * Detalle por renglón para utilidades.
      */
-    // === NUEVO: detalle por renglón (con folio, precios unitarios) ===
     public function listarUtilidadesDetalle(int $pagina=1, int $limite=20, array $filtros=[]): array {
         $pagina = max(1, $pagina);
         $limite = max(1, $limite);
@@ -408,12 +406,10 @@ class ReporteModel {
         $ing = (float)($r['ingreso'] ?? 0);
         $uti = (float)($r['utilidad'] ?? 0);
         return [
-        'ingreso'  => $ing,
-        'costo'    => (float)($r['costo'] ?? 0),
-        'utilidad' => $uti,
-        'margen'   => $ing > 0 ? ($uti / $ing) : 0
+            'ingreso'  => $ing,
+            'costo'    => (float)($r['costo'] ?? 0),
+            'utilidad' => $uti,
+            'margen'   => $ing > 0 ? ($uti / $ing) : 0
         ];
     }
-
-    
 }

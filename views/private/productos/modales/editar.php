@@ -32,7 +32,7 @@
                 </div>
                 <div class="form-group col-md-4">
                   <label for="e_id_unidad_sat">Unidad SAT <span class="text-danger">*</span></label>
-                  <select id="e_id_unidad_sat" name="id_unidad_sat" class="form-control" required>
+                  <select id="e_id_unidad_sat" name="id_unidad_sat" class="form-control" >
                     <option value="">— Selecciona —</option>
                   </select>
                 </div>

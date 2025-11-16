@@ -192,20 +192,25 @@ switch ($accion) {
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Productos');
 
-        // Encabezados
+        // Encabezados (agregamos Precio Proveedor y Costo Neto)
         $headers = [
             'A1' => 'Código',
             'B1' => 'Descripción',
             'C1' => 'Proveedor',
             'D1' => 'Grupo',
             'E1' => 'Stock',
-            'F1' => 'Precio Público',
-            'G1' => 'Precio Taller'
+            'F1' => 'Última compra',
+            'G1' => 'Precio Proveedor',
+            'H1' => 'Costo Neto',
+            'I1' => 'Precio Público',
+            'J1' => 'Precio Taller',
         ];
-        foreach ($headers as $cell => $text) { $sheet->setCellValue($cell, $text); }
+        foreach ($headers as $cell => $text) {
+            $sheet->setCellValue($cell, $text);
+        }
 
         // Estilo encabezado
-        $sheet->getStyle('A1:G1')->applyFromArray([
+        $sheet->getStyle('A1:J1')->applyFromArray([
             'font' => ['bold' => true],
             'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
             'fill' => [
@@ -220,31 +225,76 @@ switch ($accion) {
         // Datos
         $rowNum = 2;
         foreach ($rows as $r) {
-            $c  = $r['codigo'] ?? ('#' . ($r['id_producto'] ?? ''));
-            $d  = $r['descripcion'] ?? '';
-            $pr = $r['proveedor'] ?? '';
-            $gr = $r['grupo'] ?? ($r['nombre_grupo'] ?? '');
-            $st = (float)($r['stock_actual'] ?? 0);
-            $pb = (float)($r['precio_publico'] ?? 0);
-            $pt = (float)($r['precio_taller'] ?? 0);
+            $c    = $r['codigo'] ?? ('#' . ($r['id_producto'] ?? ''));
+            $d    = $r['descripcion'] ?? '';
+            $pr   = $r['proveedor'] ?? '';
+            $gr   = $r['grupo'] ?? ($r['nombre_grupo'] ?? '');
+            $st   = (float)($r['stock_actual'] ?? 0);
+            $ppv  = (float)($r['precio_proveedor'] ?? 0);
+            $cn   = (float)($r['costo_neto'] ?? 0);
+            $pb   = (float)($r['precio_publico'] ?? 0);
+            $pt   = (float)($r['precio_taller'] ?? 0);
+            $ult  = $r['ultima_compra'] ?? null;   // viene del model
 
-            $sheet->setCellValueExplicit('A'.$rowNum, $c, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            // Código como texto (para que no lo "numere" Excel)
+            $sheet->setCellValueExplicit(
+                'A'.$rowNum,
+                $c,
+                \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+            );
             $sheet->setCellValue('B'.$rowNum, $d);
             $sheet->setCellValue('C'.$rowNum, $pr);
             $sheet->setCellValue('D'.$rowNum, $gr);
             $sheet->setCellValue('E'.$rowNum, $st);
-            $sheet->setCellValue('F'.$rowNum, $pb);
-            $sheet->setCellValue('G'.$rowNum, $pt);
+
+            // Última compra: si es fecha válida, la mandamos como fecha Excel
+            if (!empty($ult)) {
+                try {
+                    $dt = new \DateTime($ult);
+                    $excelDate = \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($dt);
+                    $sheet->setCellValue('F'.$rowNum, $excelDate);
+                } catch (\Exception $e) {
+                    // Si falla el parse, la dejamos como texto plano
+                    $sheet->setCellValue('F'.$rowNum, $ult);
+                }
+            } else {
+                $sheet->setCellValue('F'.$rowNum, null);
+            }
+
+            $sheet->setCellValue('G'.$rowNum, $ppv);
+            $sheet->setCellValue('H'.$rowNum, $cn);
+            $sheet->setCellValue('I'.$rowNum, $pb);
+            $sheet->setCellValue('J'.$rowNum, $pt);
+
             $rowNum++;
         }
 
+        $lastRow = $rowNum - 1;
+
         // Formatos y autosize
-        $sheet->getStyle('E2:E'.$rowNum)->getNumberFormat()->setFormatCode('#,##0');
-        $sheet->getStyle('F2:G'.$rowNum)->getNumberFormat()->setFormatCode('$ #,##0.00;[Red]$ -#,##0.00');
-        foreach (range('A','G') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+        if ($lastRow >= 2) {
+            // Stock
+            $sheet->getStyle('E2:E'.$lastRow)
+                  ->getNumberFormat()
+                  ->setFormatCode('#,##0');
+
+            // Fecha "Última compra"
+            $sheet->getStyle('F2:F'.$lastRow)
+                  ->getNumberFormat()
+                  ->setFormatCode('dd/mm/yyyy');
+
+            // Precios (PPV, CN, PB, PT)
+            $sheet->getStyle('G2:J'.$lastRow)
+                  ->getNumberFormat()
+                  ->setFormatCode('$ #,##0.00;[Red]$ -#,##0.00');
+        }
+
+        foreach (range('A','J') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
 
         // Filtro y freeze
-        $sheet->setAutoFilter('A1:G'.($rowNum-1));
+        $sheet->setAutoFilter('A1:J'.$lastRow);
         $sheet->freezePane('A2');
 
         // Descargar
@@ -258,6 +308,7 @@ switch ($accion) {
         unset($spreadsheet);
         exit;
     break;
+
 
     default:
         header('Content-Type: application/json; charset=UTF-8');

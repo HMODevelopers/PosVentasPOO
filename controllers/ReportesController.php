@@ -154,9 +154,10 @@ switch ($accion) {
     $rows = $model->listarCreditoClienteItemsTodo($filtros);
     $tot  = $model->totalesCreditoClienteDia($filtros); // ['total','abonos','saldo']
 
-    $headers = ['Folio','Estatus Crédito','Cantidad','Código','Unidad','Descripción','Precio','Total'];
+    $headers = ['Folio','Estatus Crédito','Cantidad','Código','Unidad','Descripción','Precio','Total','Fecha venta'];
     $outRows = [];
     foreach ($rows as $r) {
+      $fecha = $r['fecha_venta'] ?? $r['fecha'] ?? '';
       $outRows[] = [
         (string)($r['folio'] ?? ''),
         (string)($r['estatus_credito'] ?? ''),
@@ -166,9 +167,10 @@ switch ($accion) {
         (string)($r['descripcion'] ?? ''),
         (float)($r['precio_unitario'] ?? $r['precio'] ?? 0),
         (float)($r['importe'] ?? $r['total'] ?? 0),
+        (string)$fecha,
       ];
     }
-    $footer = ['', '', '', '', '', 'TOTAL:', '', (float)($tot['total'] ?? 0)];
+    $footer = ['', '', '', '', '', 'TOTAL:', '', (float)($tot['total'] ?? 0), ''];
 
     $fname = 'ventas_credito_items_cliente_'.$filtros['id_cliente'].'_'.date('Ymd_His').'.xlsx';
     xlsx_download($fname, $headers, $outRows, $footer);

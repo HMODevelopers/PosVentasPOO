@@ -530,18 +530,29 @@ class ProductoModel
 
     public function listarParaExportar($codigo = '', $descripcion = '', $idProveedor = null, $idGrupo = null)
     {
+        // ⚠️ IMPORTANTE:
+        // Cambia este nombre por el de la columna FECHA real en tu tabla `compras`
+        // Ejemplos típicos: 'fecha_compra', 'fecha', 'fecha_ult_fact', etc.
+        $colFechaCompras = 'fecha_factura';  // <--- AJÚSTALO A TU ESQUEMA REAL
+
         $sql = "SELECT 
                     p.id_producto,
                     p.codigo,
                     p.descripcion,
                     p.stock_actual,
+                    p.precio_proveedor,
+                    p.costo_neto,
                     p.precio_publico,
                     p.precio_taller,
                     pr.nombre       AS proveedor,
-                    g.nombre_grupo  AS grupo
+                    g.nombre_grupo  AS grupo,
+                    MAX(c.{$colFechaCompras}) AS ultima_compra
                 FROM productos p
                 LEFT JOIN proveedores pr ON pr.id_proveedor = p.id_proveedor
                 LEFT JOIN cat_grupos g   ON g.id_grupo     = p.id_grupo
+                -- AJUSTA el nombre de la tabla de detalle de compras si es diferente
+                LEFT JOIN compras_detalle cd ON cd.id_producto = p.id_producto
+                LEFT JOIN compras c          ON c.id_compra    = cd.id_compra
                 WHERE p.activo = 1";
         $params = [];
 
@@ -562,7 +573,18 @@ class ProductoModel
             $params[':idGrupo'] = (int)$idGrupo;
         }
 
-        $sql .= " ORDER BY p.descripcion ASC";
+        $sql .= " GROUP BY
+                    p.id_producto,
+                    p.codigo,
+                    p.descripcion,
+                    p.stock_actual,
+                    p.precio_proveedor,
+                    p.costo_neto,
+                    p.precio_publico,
+                    p.precio_taller,
+                    pr.nombre,
+                    g.nombre_grupo
+                ORDER BY p.descripcion ASC";
 
         $stmt = $this->conn->prepare($sql);
         foreach ($params as $k => $v) {
@@ -571,6 +593,7 @@ class ProductoModel
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
 
     /* ============================================================
      * BITÁCORA
