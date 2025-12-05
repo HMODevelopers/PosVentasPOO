@@ -124,6 +124,16 @@ if (!isset($_SESSION['usuario'])) {
         .no-print, .modal-header, .modal-footer, .modal-backdrop { display:none !important; }
       }
 
+      /* ===== Fix: dropdown del botón de acciones NO se recorte ni genere scroll raro ===== */
+      .ventas-wrapper .card-box .table-responsive{
+        overflow-x: auto;
+        overflow-y: visible;  /* deja que el menú se salga por arriba/abajo */
+      }
+      .ventas-wrapper #tablaVentas .dropdown-menu{
+        z-index: 2050 !important;   /* por encima de la tabla y contenedores */
+      }
+
+      
     </style>
   </head>
 
@@ -140,7 +150,8 @@ if (!isset($_SESSION['usuario'])) {
         </div>
       </div>
 
-      <div class="container-fluid">
+      <!-- agrega clase ventas-wrapper para limitar el CSS del fix -->
+      <div class="container-fluid ventas-wrapper">
         <!-- Breadcrumb -->
         <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>
         <!-- /Breadcrumb -->
