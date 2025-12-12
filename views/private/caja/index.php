@@ -1,23 +1,48 @@
 <?php
-/**
- * views/private/ventas/caja.php
- * --------------------------------------------------------------------------
- * Vista de Punto de Venta (POS) "Caja".
- * --------------------------------------------------------------------------
- */
-
 $titulo    = "Ventas";
 $modulo    = "Punto de Venta";
 $subtitulo = "Caja";
 
 session_start();
-require_once __DIR__ . '/../../../includes/config.php';
+// ================================
+    // Duración lógica de la sesión
+    // ================================
+    $SESSION_LIFETIME = 10 * 60 * 60; // 10 horas en segundos
 
-// --- Guard: si no hay usuario en sesión, redirige al login público.
-if (!isset($_SESSION['usuario'])) {
-  header('Location: ' . BASE_URL . '/views/public/index.php');
-  exit();
-}
+    // Iniciar sesión solo si no está iniciada
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    require_once __DIR__ . '/../../../includes/config.php';
+
+    // ================================
+    // Validar que haya usuario logueado
+    // ================================
+    if (!isset($_SESSION['usuario'])) {
+        header('Location: ' . BASE_URL . '/views/public/index.php');
+        exit();
+    }
+
+    // ================================
+    // Control de tiempo de sesión (10h)
+    // ================================
+    $sessionStart = $_SESSION['SESSION_START'] ?? 0;
+    $sessionTTL   = $_SESSION['SESSION_TTL']   ?? $SESSION_LIFETIME;
+
+    // Si no hay marca de inicio o ya se pasó el tiempo, forzamos re-login
+    if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
+        session_unset();
+        session_destroy();
+        // Mandamos al index público con flag de expirado
+        header('Location: ' . BASE_URL . '/views/public/index.php?expired=1');
+        exit();
+    }
+
+    // Si la sesión sigue vigente, actualizamos banderas
+    $_SESSION['SESION_VIGENTE'] = true;
+    $_SESSION['LAST_ACTIVITY']  = time();
+
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -590,7 +615,6 @@ if (!isset($_SESSION['usuario'])) {
                   <div class="small text-muted">
                     Cod: ${it.codigo} ${it.proveedor ? `· Prov: ${it.proveedor}` : ``}
                     · Exist total: <span class="badge ${badgeClass} badge-stock">${fix2(stockTotal)}</span>
-                    · En carrito: ${fix2(usado)}
                   </div>
                 </div>
               </div>
@@ -600,7 +624,7 @@ if (!isset($_SESSION['usuario'])) {
             <td class="text-center">
               <div class="btn-group btn-group-sm" role="group">
                 <input type="number"
-                       min="0.01"
+                       min="0"
                        step="1"
                        class="form-control form-control-sm text-center w-70px"
                        value="${fix2(cantidad)}"
