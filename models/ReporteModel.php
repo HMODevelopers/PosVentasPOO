@@ -9,22 +9,33 @@ class ReporteModel {
     public function __construct() {
         global $pdo;
         $this->conn = $pdo;
-        try { $this->conn->exec("SET time_zone = '-07:00'"); } catch (\Throwable $th) {}
+        try {
+            $this->conn->exec("SET time_zone = '-07:00'");
+        } catch (\Throwable $th) {}
     }
 
     /** Rango de fecha index-friendly */
     private function rangoFechas(string $desde = '', string $hasta = ''): array {
-        if ($desde === '' && $hasta === '') { $desde = $hasta = date('Y-m-d'); }
-        if ($desde === '' && $hasta !== '') $desde = $hasta;
-        if ($hasta === '' && $desde !== '') $hasta = $desde;
-        $ini = $desde.' 00:00:00';
-        $fin = date('Y-m-d', strtotime($hasta.' +1 day')).' 00:00:00';
+        if ($desde === '' && $hasta === '') {
+            $desde = $hasta = date('Y-m-d');
+        }
+        if ($desde === '' && $hasta !== '') {
+            $desde = $hasta;
+        }
+        if ($hasta === '' && $desde !== '') {
+            $hasta = $desde;
+        }
+        $ini = $desde . ' 00:00:00';
+        $fin = date('Y-m-d', strtotime($hasta . ' +1 day')) . ' 00:00:00';
         return [$ini, $fin];
     }
 
+    /* ============================================================
+     *  CRÉDITOS POR CLIENTE - DETALLE (ventas_detalle TAL CUAL)
+     * ============================================================ */
+
     /**
-     * LISTADO (paginado) — una fila por renglón de producto
-     * Filtros: id_cliente (OBLIG), desde/hasta (o fecha), q (folio/código/descr)
+     * LISTADO (paginado) — una fila = un renglón de ventas_detalle
      */
     public function listarCreditoClienteItems(int $pagina = 1, int $limite = 10, array $filtros = []): array {
         $pagina = max(1, (int)$pagina);
@@ -34,162 +45,261 @@ class ReporteModel {
         $idCliente = (int)($filtros['id_cliente'] ?? 0);
         if ($idCliente <= 0) return [];
 
-        [$ini, $fin] = $this->rangoFechas(trim($filtros['desde'] ?? ''), trim($filtros['hasta'] ?? ''));
+        [$ini, $fin] = $this->rangoFechas(
+            trim($filtros['desde'] ?? ''),
+            trim($filtros['hasta'] ?? '')
+        );
         $q = trim($filtros['q'] ?? '');
 
-        // En tu BD existe precio_unitario y subtotal
+        // Expresiones de precio/importe (sin agrupar, por renglón)
         $precioExpr  = "d.precio_unitario";
         $importeExpr = "COALESCE(d.subtotal, d.cantidad * d.precio_unitario)";
 
-        $sql = "SELECT
-                    v.id_venta,
-                    v.folio,
-                    v.fecha,
-                    v.estatus_credito,
-                    d.id_venta_detalle,
-                    d.cantidad,
-                    $precioExpr AS precio_unitario,
-                    $importeExpr AS importe,
-                    COALESCE(p.codigo, CONCAT('#', d.id_producto)) AS codigo,
-                    COALESCE(p.descripcion, '') AS descripcion,
-                    COALESCE(u.descripcion, 'Pza') AS unidad
-                FROM ventas v
-                JOIN ventas_detalle d ON d.id_venta = v.id_venta
-                LEFT JOIN productos p  ON p.id_producto = d.id_producto
-                LEFT JOIN unidades_sat u ON u.id_unidad_sat = p.id_unidad_sat
-                WHERE v.activo = 1
-                  AND d.activo = 1
-                  AND v.id_cliente = :idCliente
-                  AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
-                  AND v.fecha >= :ini AND v.fecha < :fin";
+        $sql = "
+            SELECT
+                -- VENTA
+                v.id_venta,
+                v.folio,
+                v.fecha,                       -- fecha completa por si la necesitas
+                DATE(v.fecha) AS fecha_venta,  -- solo fecha (para reporte)
+                v.estatus_credito,
 
-        $params = [ ':idCliente'=>$idCliente, ':ini'=>$ini, ':fin'=>$fin ];
+                -- DETALLE TAL CUAL
+                d.id_venta_detalle,
+                d.id_producto,
+                d.cantidad,
+                $precioExpr  AS precio_unitario,
+                $importeExpr AS importe,
+
+                -- PRODUCTO / UNIDAD (solo para mostrar)
+                COALESCE(p.codigo, CONCAT('#', d.id_producto)) AS codigo,
+                COALESCE(p.descripcion, '') AS descripcion,
+                COALESCE(u.descripcion, 'Pza') AS unidad
+            FROM ventas v
+            INNER JOIN ventas_detalle d ON d.id_venta = v.id_venta
+            LEFT JOIN productos p       ON p.id_producto = d.id_producto
+            LEFT JOIN unidades_sat u    ON u.id_unidad_sat = p.id_unidad_sat
+            WHERE
+                v.activo     = 1
+                AND d.activo = 1
+                AND v.id_cliente = :idCliente
+                AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
+                AND v.fecha >= :ini
+                AND v.fecha <  :fin
+        ";
+
+        $params = [
+            ':idCliente' => $idCliente,
+            ':ini'       => $ini,
+            ':fin'       => $fin,
+        ];
 
         if ($q !== '') {
-            $sql .= " AND (v.folio LIKE :q OR p.codigo LIKE :q OR p.descripcion LIKE :q)";
+            $sql .= " AND (
+                        v.folio           LIKE :q
+                        OR p.codigo       LIKE :q
+                        OR p.descripcion  LIKE :q
+                    )";
             $params[':q'] = "%{$q}%";
         }
 
-        // Ordenado por fecha de venta, luego folio y renglón
-        $sql .= " ORDER BY v.fecha DESC, v.folio ASC, d.id_venta_detalle ASC
-                  LIMIT {$limite} OFFSET {$offset}";
+        // Orden: MÁS VIEJO → MÁS NUEVO, luego folio, luego renglón
+        $sql .= "
+            ORDER BY
+                v.fecha ASC,
+                v.folio ASC,
+                d.id_venta_detalle ASC
+            LIMIT {$limite} OFFSET {$offset}
+        ";
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    /** TOTAL de renglones para el paginador */
+    /**
+     * CONTAR renglones del detalle (para paginador)
+     */
     public function contarCreditoClienteItems(array $filtros = []): int {
         $idCliente = (int)($filtros['id_cliente'] ?? 0);
         if ($idCliente <= 0) return 0;
 
-        [$ini, $fin] = $this->rangoFechas(trim($filtros['desde'] ?? ''), trim($filtros['hasta'] ?? ''));
+        [$ini, $fin] = $this->rangoFechas(
+            trim($filtros['desde'] ?? ''),
+            trim($filtros['hasta'] ?? '')
+        );
         $q = trim($filtros['q'] ?? '');
 
-        $sql = "SELECT COUNT(*) AS total
-                FROM ventas v
-                JOIN ventas_detalle d ON d.id_venta = v.id_venta
-                LEFT JOIN productos p  ON p.id_producto = d.id_producto
-                WHERE v.activo = 1
-                  AND d.activo = 1
-                  AND v.id_cliente = :idCliente
-                  AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
-                  AND v.fecha >= :ini AND v.fecha < :fin";
-        $params = [ ':idCliente'=>$idCliente, ':ini'=>$ini, ':fin'=>$fin ];
+        $sql = "
+            SELECT COUNT(*) AS total
+            FROM ventas v
+            INNER JOIN ventas_detalle d ON d.id_venta = v.id_venta
+            LEFT JOIN productos p       ON p.id_producto = d.id_producto
+            WHERE
+                v.activo     = 1
+                AND d.activo = 1
+                AND v.id_cliente = :idCliente
+                AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
+                AND v.fecha >= :ini
+                AND v.fecha <  :fin
+        ";
+
+        $params = [
+            ':idCliente' => $idCliente,
+            ':ini'       => $ini,
+            ':fin'       => $fin,
+        ];
 
         if ($q !== '') {
-            $sql .= " AND (v.folio LIKE :q OR p.codigo LIKE :q OR p.descripcion LIKE :q)";
+            $sql .= " AND (
+                        v.folio           LIKE :q
+                        OR p.codigo       LIKE :q
+                        OR p.descripcion  LIKE :q
+                    )";
             $params[':q'] = "%{$q}%";
         }
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
         $st->execute();
         return (int)($st->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
     }
 
-    /** LISTAR TODO (sin paginación) para CSV / XLS (incluye fecha) */
+    /**
+     * LISTAR TODO (sin paginación) — para Excel / CSV
+     * Una fila = un renglón de ventas_detalle
+     */
     public function listarCreditoClienteItemsTodo(array $filtros = []): array {
         $idCliente = (int)($filtros['id_cliente'] ?? 0);
         if ($idCliente <= 0) return [];
 
-        [$ini, $fin] = $this->rangoFechas(trim($filtros['desde'] ?? ''), trim($filtros['hasta'] ?? ''));
+        [$ini, $fin] = $this->rangoFechas(
+            trim($filtros['desde'] ?? ''),
+            trim($filtros['hasta'] ?? '')
+        );
         $q = trim($filtros['q'] ?? '');
 
         $precioExpr  = "d.precio_unitario";
         $importeExpr = "COALESCE(d.subtotal, d.cantidad * d.precio_unitario)";
 
-        $sql = "SELECT
-                    v.folio,
-                    v.estatus_credito,
-                    d.cantidad,
-                    COALESCE(p.codigo, CONCAT('#', d.id_producto)) AS codigo,
-                    COALESCE(u.descripcion, 'Pza') AS unidad,
-                    COALESCE(p.descripcion, '') AS descripcion,
-                    $precioExpr  AS precio,
-                    $importeExpr AS total,
-                    v.fecha
-                FROM ventas v
-                JOIN ventas_detalle d ON d.id_venta = v.id_venta
-                LEFT JOIN productos p  ON p.id_producto = d.id_producto
-                LEFT JOIN unidades_sat u ON u.id_unidad_sat = p.id_unidad_sat
-                WHERE v.activo = 1
-                  AND d.activo = 1
-                  AND v.id_cliente = :idCliente
-                  AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
-                  AND v.fecha >= :ini AND v.fecha < :fin";
+        $sql = "
+            SELECT
+                v.folio,
+                v.estatus_credito,
+                DATE(v.fecha) AS fecha_venta,
 
-        $params = [ ':idCliente'=>$idCliente, ':ini'=>$ini, ':fin'=>$fin ];
+                d.id_venta_detalle,
+                d.id_producto,
+                d.cantidad,
+                $precioExpr  AS precio_unitario,
+                $importeExpr AS importe,
+
+                COALESCE(p.codigo, CONCAT('#', d.id_producto)) AS codigo,
+                COALESCE(p.descripcion, '') AS descripcion,
+                COALESCE(u.descripcion, 'Pza') AS unidad
+            FROM ventas v
+            INNER JOIN ventas_detalle d ON d.id_venta = v.id_venta
+            LEFT JOIN productos p       ON p.id_producto = d.id_producto
+            LEFT JOIN unidades_sat u    ON u.id_unidad_sat = p.id_unidad_sat
+            WHERE
+                v.activo     = 1
+                AND d.activo = 1
+                AND v.id_cliente = :idCliente
+                AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
+                AND v.fecha >= :ini
+                AND v.fecha <  :fin
+        ";
+
+        $params = [
+            ':idCliente' => $idCliente,
+            ':ini'       => $ini,
+            ':fin'       => $fin,
+        ];
 
         if ($q !== '') {
-            $sql .= " AND (v.folio LIKE :q OR p.codigo LIKE :q OR p.descripcion LIKE :q)";
+            $sql .= " AND (
+                        v.folio           LIKE :q
+                        OR p.codigo       LIKE :q
+                        OR p.descripcion  LIKE :q
+                    )";
             $params[':q'] = "%{$q}%";
         }
 
-        // Orden para exportes: por fecha de venta
-        $sql .= " ORDER BY v.fecha DESC, v.folio ASC, d.id_venta_detalle ASC";
+        $sql .= "
+            ORDER BY
+                v.fecha ASC,
+                v.folio ASC,
+                d.id_venta_detalle ASC
+        ";
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    /** Totales del día (suma de cantidades e importes) */
+    /**
+     * Totales del rango (este sí usa SUM, pero solo para el total global,
+     * NO agrupa filas ni afecta el detalle).
+     */
     public function totalesCreditoClienteDia(array $filtros = []): array {
         $idCliente = (int)($filtros['id_cliente'] ?? 0);
-        if ($idCliente <= 0) return ['items'=>0,'cantidad'=>0,'total'=>0];
+        if ($idCliente <= 0) return ['items' => 0, 'cantidad' => 0, 'total' => 0];
 
-        [$ini, $fin] = $this->rangoFechas(trim($filtros['desde'] ?? ''), trim($filtros['hasta'] ?? ''));
+        [$ini, $fin] = $this->rangoFechas(
+            trim($filtros['desde'] ?? ''),
+            trim($filtros['hasta'] ?? '')
+        );
         $q = trim($filtros['q'] ?? '');
 
         $importeExpr = "COALESCE(d.subtotal, d.cantidad * d.precio_unitario)";
 
-        $sql = "SELECT
-                    COUNT(*) AS items,
-                    SUM(d.cantidad) AS cantidad,
-                    SUM($importeExpr) AS total
-                FROM ventas v
-                JOIN ventas_detalle d ON d.id_venta = v.id_venta
-                LEFT JOIN productos p  ON p.id_producto = d.id_producto
-                WHERE v.activo = 1
-                  AND d.activo = 1
-                  AND v.id_cliente = :idCliente
-                  AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
-                  AND v.fecha >= :ini AND v.fecha < :fin";
-        $params = [ ':idCliente'=>$idCliente, ':ini'=>$ini, ':fin'=>$fin ];
+        $sql = "
+            SELECT
+                COUNT(*)            AS items,
+                SUM(d.cantidad)     AS cantidad,
+                SUM($importeExpr)   AS total
+            FROM ventas v
+            INNER JOIN ventas_detalle d ON d.id_venta = v.id_venta
+            LEFT JOIN productos p       ON p.id_producto = d.id_producto
+            WHERE
+                v.activo     = 1
+                AND d.activo = 1
+                AND v.id_cliente = :idCliente
+                AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
+                AND v.fecha >= :ini
+                AND v.fecha <  :fin
+        ";
+
+        $params = [
+            ':idCliente' => $idCliente,
+            ':ini'       => $ini,
+            ':fin'       => $fin,
+        ];
 
         if ($q !== '') {
-            $sql .= " AND (v.folio LIKE :q OR p.codigo LIKE :q OR p.descripcion LIKE :q)";
+            $sql .= " AND (
+                        v.folio           LIKE :q
+                        OR p.codigo       LIKE :q
+                        OR p.descripcion  LIKE :q
+                    )";
             $params[':q'] = "%{$q}%";
         }
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
         $st->execute();
         $row = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+
         return [
             'items'    => (int)($row['items'] ?? 0),
             'cantidad' => (float)($row['cantidad'] ?? 0),
@@ -197,28 +307,44 @@ class ReporteModel {
         ];
     }
 
-    /** CSV (incluye fecha de venta) */
+    /**
+     * CSV: una línea por renglón de ventas_detalle (SIN AGRUPAR)
+     */
     public function csvCreditoClienteItems(array $rows): string {
         $fh = fopen('php://temp', 'w+');
-        fputcsv($fh, ['FOLIO','ESTATUS_CREDITO','CANTIDAD','CODIGO','UNIDAD','DESCRIPCION','PRECIO','TOTAL','FECHA']);
+        fputcsv($fh, [
+            'FOLIO',
+            'ESTATUS_CREDITO',
+            'FECHA_VENTA',
+            'CANTIDAD',
+            'CODIGO',
+            'UNIDAD',
+            'DESCRIPCION',
+            'PRECIO_UNITARIO',
+            'IMPORTE'
+        ]);
+
         foreach ($rows as $r) {
             fputcsv($fh, [
                 $r['folio'],
                 $r['estatus_credito'],
-                number_format((float)$r['cantidad'], 2, '.', ''),
+                $r['fecha_venta'] ?? '',
+                number_format((float)$r['cantidad'],        2, '.', ''),
                 $r['codigo'],
                 $r['unidad'],
                 $r['descripcion'],
-                number_format((float)($r['precio_unitario'] ?? $r['precio'] ?? 0), 2, '.', ''),
-                number_format((float)($r['importe'] ?? $r['total'] ?? 0),  2, '.', ''),
-                $r['fecha']
+                number_format((float)$r['precio_unitario'], 2, '.', ''),
+                number_format((float)$r['importe'],         2, '.', ''),
             ]);
         }
+
         rewind($fh);
         return stream_get_contents($fh);
     }
 
-    // === NUEVO: Reporte de Utilidades ===
+    /* ============================================================
+     *  UTILIDADES (como ya lo tenías, sin tocar)
+     * ============================================================ */
 
     /**
      * Construye el WHERE de estatus de venta según filtros.
@@ -232,7 +358,9 @@ class ReporteModel {
         $cond = ["v.estatus = 'Activa'"];
 
         // Guardada (opcional)
-        if ($incGuard === 1) $cond[] = "v.estatus = 'Guardada'";
+        if ($incGuard === 1) {
+            $cond[] = "v.estatus = 'Guardada'";
+        }
 
         // Crédito (opcional) + subfiltro "solo liquidado"
         if ($incCred === 1) {
@@ -249,8 +377,10 @@ class ReporteModel {
 
         // Tomamos solo las condiciones de estatus para el OR,
         // y luego agregamos los <> Cancelada/Devuelta afuera
-        return '(' . implode(' OR ', array_slice($cond, 0, max(1, count($cond)-2))) . ')
-                AND v.estatus <> \'Cancelada\' AND v.estatus <> \'Devuelta\'';
+        $estatusConds = array_slice($cond, 0, max(1, count($cond) - 2));
+
+        return '(' . implode(' OR ', $estatusConds) . ")
+                AND v.estatus <> 'Cancelada' AND v.estatus <> 'Devuelta'";
     }
 
     /**
@@ -290,7 +420,7 @@ class ReporteModel {
     /**
      * Detalle por renglón para utilidades.
      */
-    public function listarUtilidadesDetalle(int $pagina=1, int $limite=20, array $filtros=[]): array {
+    public function listarUtilidadesDetalle(int $pagina = 1, int $limite = 20, array $filtros = []): array {
         $pagina = max(1, $pagina);
         $limite = max(1, $limite);
         $offset = ($pagina - 1) * $limite;
@@ -298,7 +428,7 @@ class ReporteModel {
         [$ini, $fin] = $this->rangoFechas(trim($filtros['desde'] ?? ''), trim($filtros['hasta'] ?? ''));
         $q = trim($filtros['q'] ?? '');
 
-        $params = [':ini'=>$ini, ':fin'=>$fin];
+        $params = [':ini' => $ini, ':fin' => $fin];
         $wEstatus = $this->whereEstatusVenta($filtros, $params);
 
         $ingreso = "COALESCE(d.subtotal, d.cantidad * d.precio_unitario)";
@@ -336,16 +466,18 @@ class ReporteModel {
                 LIMIT {$limite} OFFSET {$offset}";
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function contarUtilidadesDetalle(array $filtros=[]): int {
+    public function contarUtilidadesDetalle(array $filtros = []): int {
         [$ini, $fin] = $this->rangoFechas(trim($filtros['desde'] ?? ''), trim($filtros['hasta'] ?? ''));
         $q = trim($filtros['q'] ?? '');
 
-        $params = [':ini'=>$ini, ':fin'=>$fin];
+        $params = [':ini' => $ini, ':fin' => $fin];
         $wEstatus = $this->whereEstatusVenta($filtros, $params);
 
         $sql = "
@@ -364,17 +496,19 @@ class ReporteModel {
         }
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
         $st->execute();
         return (int)($st->fetch(PDO::FETCH_ASSOC)['total'] ?? 0);
     }
 
-    /** Totales del rango (ingreso, costo, utilidad) sin agrupar. */
-    public function totalesUtilidades(array $filtros=[]): array {
+    /** Totales del rango (ingreso, costo, utilidad) sin agrupar filas. */
+    public function totalesUtilidades(array $filtros = []): array {
         [$ini, $fin] = $this->rangoFechas(trim($filtros['desde'] ?? ''), trim($filtros['hasta'] ?? ''));
         $q = trim($filtros['q'] ?? '');
 
-        $params = [':ini'=>$ini, ':fin'=>$fin];
+        $params = [':ini' => $ini, ':fin' => $fin];
         $wEstatus = $this->whereEstatusVenta($filtros, $params);
 
         $ingreso = "COALESCE(d.subtotal, d.cantidad * d.precio_unitario)";
@@ -400,9 +534,11 @@ class ReporteModel {
         }
 
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
         $st->execute();
-        $r = $st->fetch(PDO::FETCH_ASSOC) ?: ['ingreso'=>0,'costo'=>0,'utilidad'=>0];
+        $r = $st->fetch(PDO::FETCH_ASSOC) ?: ['ingreso' => 0, 'costo' => 0, 'utilidad' => 0];
         $ing = (float)($r['ingreso'] ?? 0);
         $uti = (float)($r['utilidad'] ?? 0);
         return [

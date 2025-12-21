@@ -65,7 +65,7 @@ $accion = $_REQUEST['accion'] ?? '';
 switch ($accion) {
 
   /* ============================================================
-   *  CRÉDITOS POR CLIENTE - LISTADO
+   *  CRÉDITOS POR CLIENTE - LISTADO DETALLE
    * ============================================================ */
   case 'creditos-cliente-listar':
     $pagina = (int)($_GET['pagina'] ?? $_POST['pagina'] ?? 1);
@@ -81,7 +81,10 @@ switch ($accion) {
       'q'          => trim($_REQUEST['q'] ?? '')
     ];
 
-    if ($filtros['id_cliente'] <= 0) { send_json(['ok'=>false,'msg'=>'id_cliente requerido'], 400); break; }
+    if ($filtros['id_cliente'] <= 0) {
+      send_json(['ok'=>false,'msg'=>'id_cliente requerido'], 400);
+      break;
+    }
 
     $data  = $model->listarCreditoClienteItems($pagina, $limite, $filtros);
     $total = $model->contarCreditoClienteItems($filtros);
@@ -90,7 +93,7 @@ switch ($accion) {
   break;
 
   /* ============================================================
-   *  CRÉDITOS POR CLIENTE - TOTALES
+   *  CRÉDITOS POR CLIENTE - TOTALES GLOBAL (NO AGRUPA FILAS)
    * ============================================================ */
   case 'creditos-cliente-totales':
     $desde = trim($_REQUEST['desde'] ?? $_REQUEST['del'] ?? $_REQUEST['fecha'] ?? '');
@@ -102,14 +105,17 @@ switch ($accion) {
       'hasta'      => $hasta,
       'q'          => trim($_REQUEST['q'] ?? '')
     ];
-    if ($filtros['id_cliente'] <= 0) { send_json(['ok'=>false,'msg'=>'id_cliente requerido'], 400); break; }
+    if ($filtros['id_cliente'] <= 0) {
+      send_json(['ok'=>false,'msg'=>'id_cliente requerido'], 400);
+      break;
+    }
 
     $tot = $model->totalesCreditoClienteDia($filtros);
     send_json(['ok'=>true,'totales'=>$tot]);
   break;
 
   /* ============================================================
-   *  CRÉDITOS POR CLIENTE - CSV
+   *  CRÉDITOS POR CLIENTE - CSV (detalle)
    * ============================================================ */
   case 'creditos-cliente-csv':
     $desde = trim($_REQUEST['desde'] ?? $_REQUEST['del'] ?? $_REQUEST['fecha'] ?? '');
@@ -121,7 +127,10 @@ switch ($accion) {
       'hasta'      => $hasta,
       'q'          => trim($_GET['q'] ?? '')
     ];
-    if ($filtros['id_cliente'] <= 0) { send_json(['ok'=>false,'msg'=>'id_cliente requerido'], 400); break; }
+    if ($filtros['id_cliente'] <= 0) {
+      send_json(['ok'=>false,'msg'=>'id_cliente requerido'], 400);
+      break;
+    }
 
     $rows  = $model->listarCreditoClienteItemsTodo($filtros);
     $csv   = $model->csvCreditoClienteItems($rows);
@@ -138,7 +147,7 @@ switch ($accion) {
   break;
 
   /* ============================================================
-   *  CRÉDITOS POR CLIENTE - XLSX (SimpleXLSXGen)
+   *  CRÉDITOS POR CLIENTE - XLSX (detalle, sin agrupar)
    * ============================================================ */
   case 'creditos-cliente-xls':
     $desde = trim($_REQUEST['desde'] ?? $_REQUEST['del'] ?? '');
@@ -149,12 +158,15 @@ switch ($accion) {
       'hasta'      => $hasta,
       'q'          => trim($_GET['q'] ?? '')
     ];
-    if ($filtros['id_cliente'] <= 0) { send_json(['ok'=>false,'msg'=>'id_cliente requerido'], 400); break; }
+    if ($filtros['id_cliente'] <= 0) {
+      send_json(['ok'=>false,'msg'=>'id_cliente requerido'], 400);
+      break;
+    }
 
     $rows = $model->listarCreditoClienteItemsTodo($filtros);
-    $tot  = $model->totalesCreditoClienteDia($filtros); // ['total','abonos','saldo']
+    $tot  = $model->totalesCreditoClienteDia($filtros); // ['items','cantidad','total']
 
-    $headers = ['Folio','Estatus Crédito','Cantidad','Código','Unidad','Descripción','Precio','Total','Fecha venta'];
+    $headers = ['Folio','Estatus Crédito','Cantidad','Código','Unidad','Descripción','Precio','Importe','Fecha venta'];
     $outRows = [];
     foreach ($rows as $r) {
       $fecha = $r['fecha_venta'] ?? $r['fecha'] ?? '';
@@ -165,8 +177,8 @@ switch ($accion) {
         (string)($r['codigo'] ?? ''),
         (string)($r['unidad'] ?? ''),
         (string)($r['descripcion'] ?? ''),
-        (float)($r['precio_unitario'] ?? $r['precio'] ?? 0),
-        (float)($r['importe'] ?? $r['total'] ?? 0),
+        (float)($r['precio_unitario'] ?? 0),
+        (float)($r['importe'] ?? 0),
         (string)$fecha,
       ];
     }

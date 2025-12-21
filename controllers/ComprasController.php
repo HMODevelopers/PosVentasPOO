@@ -30,6 +30,44 @@ switch ($accion) {
             'total' => (int)$total
         ]);
     break;
+    
+    // ================================
+    // LISTAR DETALLE DE COMPRAS (PRODUCTOS)
+    // ================================
+    case 'listar-detalle':
+        $pagina      = (int)($_POST['pagina'] ?? $_GET['pagina'] ?? 1);
+        $limite      = (int)($_POST['limite'] ?? $_GET['limite'] ?? 50);
+
+        $codigo      = trim($_POST['codigo'] ?? $_GET['codigo'] ?? '');
+        $fecha       = trim($_POST['fecha']  ?? $_GET['fecha']  ?? ''); // Y-m-d
+        $folio       = trim($_POST['folio']  ?? $_GET['folio']  ?? '');
+        $idProveedor = $_POST['id_proveedor'] ?? $_GET['id_proveedor'] ?? null;
+        if ($idProveedor !== null && $idProveedor !== '') {
+            $idProveedor = (int)$idProveedor;
+        } else {
+            $idProveedor = null;
+        }
+
+        $items = $compraModel->obtenerComprasDetalle(
+            $pagina,
+            $limite,
+            $codigo,
+            $fecha,
+            $folio,
+            $idProveedor
+        );
+        $total = $compraModel->contarComprasDetalle(
+            $codigo,
+            $fecha,
+            $folio,
+            $idProveedor
+        );
+
+        echo json_encode([
+            'data'  => $items,
+            'total' => (int)$total
+        ]);
+    break;
 
     // ================================
     // CREAR COMPRA (encabezado+detalle)

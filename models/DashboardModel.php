@@ -60,12 +60,21 @@ class DashboardModel
         [$ini, $fin] = $this->rangoDia($fecha);
         [$wSucVentas, $pSucVentas] = $this->whereSucursalVentas($idSucursal);
 
-        /* ===== Ventas contado (EFECTIVO / TARJETA-TRANSFER) ===== */
-        $ventaEfectivo = $this->sumOrZero(
-            "SELECT IFNULL(SUM(v.total),0)
+        /* ===== Ventas contado (EFECTIVO / TARJETA-TRANSFER) =====
+           - 1) Primero, sumamos pagos_venta (incluye MIXTO).
+           - 2) Luego, sumamos ventas SIN pagos_venta activos,
+                usando ventas.id_forma_pago (comportamiento viejo).
+        */
+
+        // === EFECTIVO ===
+
+        // 1) Desde pagos_venta (incluye mixto)
+        $ventaEfectivoPagos = $this->sumOrZero(
+            "SELECT IFNULL(SUM(vp.monto),0)
                FROM ventas v
-               JOIN cajas c        ON c.id_caja = v.id_caja
-               JOIN formas_pago fp ON fp.id_forma_pago = v.id_forma_pago
+               JOIN cajas        c  ON c.id_caja      = v.id_caja
+               JOIN pagos_venta  vp ON vp.id_venta    = v.id_venta AND vp.activo = 1
+               JOIN formas_pago  fp ON fp.id_forma_pago = vp.id_forma_pago
               WHERE v.fecha >= :ini AND v.fecha < :fin
                 AND v.activo = 1
                 AND v.estatus = 'Activa'
@@ -74,12 +83,38 @@ class DashboardModel
             [':ini'=>$ini, ':fin'=>$fin, ':sat_ef'=>self::SAT_EFECTIVO] + $pSucVentas
         );
 
-        [$inTar, $pTar] = $this->inNamed('sat', self::SAT_TARJETA_SET);
-        $ventaTarjeta = $this->sumOrZero(
+        // 2) Ventas SIN pagos_venta, pero con forma de pago EFECTIVO (como antes)
+        $ventaEfectivoSinPagos = $this->sumOrZero(
             "SELECT IFNULL(SUM(v.total),0)
                FROM ventas v
-               JOIN cajas c        ON c.id_caja = v.id_caja
-               JOIN formas_pago fp ON fp.id_forma_pago = v.id_forma_pago
+               JOIN cajas       c  ON c.id_caja         = v.id_caja
+               JOIN formas_pago fp ON fp.id_forma_pago  = v.id_forma_pago
+              WHERE v.fecha >= :ini AND v.fecha < :fin
+                AND v.activo = 1
+                AND v.estatus = 'Activa'
+                AND fp.clave_sat = :sat_ef
+                AND NOT EXISTS (
+                      SELECT 1
+                        FROM pagos_venta vp2
+                       WHERE vp2.id_venta = v.id_venta
+                         AND vp2.activo   = 1
+                )
+                $wSucVentas",
+            [':ini'=>$ini, ':fin'=>$fin, ':sat_ef'=>self::SAT_EFECTIVO] + $pSucVentas
+        );
+
+        $ventaEfectivo = $ventaEfectivoPagos + $ventaEfectivoSinPagos;
+
+        // === TARJETA / TRANSFER / OTROS NO EFECTIVO ===
+        [$inTar, $pTar] = $this->inNamed('sat', self::SAT_TARJETA_SET);
+
+        // 1) Desde pagos_venta (incluye mixto)
+        $ventaTarjetaPagos = $this->sumOrZero(
+            "SELECT IFNULL(SUM(vp.monto),0)
+               FROM ventas v
+               JOIN cajas        c  ON c.id_caja      = v.id_caja
+               JOIN pagos_venta  vp ON vp.id_venta    = v.id_venta AND vp.activo = 1
+               JOIN formas_pago  fp ON fp.id_forma_pago = vp.id_forma_pago
               WHERE v.fecha >= :ini AND v.fecha < :fin
                 AND v.activo = 1
                 AND v.estatus = 'Activa'
@@ -88,9 +123,32 @@ class DashboardModel
             [':ini'=>$ini, ':fin'=>$fin] + $pSucVentas + $pTar
         );
 
+        // 2) Ventas SIN pagos_venta, pero con forma de pago de tarjeta/transfer (como antes)
+        $ventaTarjetaSinPagos = $this->sumOrZero(
+            "SELECT IFNULL(SUM(v.total),0)
+               FROM ventas v
+               JOIN cajas       c  ON c.id_caja         = v.id_caja
+               JOIN formas_pago fp ON fp.id_forma_pago  = v.id_forma_pago
+              WHERE v.fecha >= :ini AND v.fecha < :fin
+                AND v.activo = 1
+                AND v.estatus = 'Activa'
+                AND fp.clave_sat IN ($inTar)
+                AND NOT EXISTS (
+                      SELECT 1
+                        FROM pagos_venta vp2
+                       WHERE vp2.id_venta = v.id_venta
+                         AND vp2.activo   = 1
+                )
+                $wSucVentas",
+            [':ini'=>$ini, ':fin'=>$fin] + $pSucVentas + $pTar
+        );
+
+        $ventaTarjeta = $ventaTarjetaPagos + $ventaTarjetaSinPagos;
+
+        // Total contado
         $ventaDiaContado = $ventaEfectivo + $ventaTarjeta;
 
-        /* ===== Ventas a CRÉDITO ===== */
+        /* ===== Ventas a CRÉDITO (igual que antes) ===== */
         $ventaCredito = $this->sumOrZero(
             "SELECT IFNULL(SUM(v.total),0)
                FROM ventas v
@@ -155,7 +213,7 @@ class DashboardModel
         );
         $abonosTotal = $abonosEfectivo + $abonosTarjeta;
 
-        /* ===== NUEVO: Abonos a VENTAS a CRÉDITO (por método) ===== */
+        /* ===== Abonos a VENTAS a CRÉDITO (por método) ===== */
         [$wSucVC, $pSucVC] = $this->whereSucursalVentas($idSucursal);
 
         // Efectivo
@@ -193,7 +251,7 @@ class DashboardModel
         $abonosCredTotal = $abonosCredEf + $abonosCredTj;
 
         /* ===== KPIs finales ===== */
-        // Si decides excluir checadas de la "venta total", ajusta aquí.
+        // Total de ventas (contado + crédito)
         $ventaTotalReal = $ventaDiaContado + $ventaCredito;
 
         // Caja = Venta EFECTIVO + Abonos EF (préstamos) + Abonos EF (ventas crédito) − Préstamos/Disp (EF)
@@ -225,7 +283,7 @@ class DashboardModel
                 'total'            => round($abonosTotal, 2),
             ],
 
-            // NUEVO: Abonos a ventas a crédito
+            // Abonos a ventas a crédito
             'abonos_credito' => [
                 'efectivo'         => round($abonosCredEf, 2),
                 'tarjeta_transfer' => round($abonosCredTj, 2),

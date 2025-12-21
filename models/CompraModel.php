@@ -130,6 +130,111 @@ class CompraModel
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
+        // =========================
+    // LISTADO DETALLE DE COMPRAS (PRODUCTOS)
+    // =========================
+    public function obtenerComprasDetalle(int $pagina = 1,int $limite = 50, string $codigo = '',string $fecha = '', string $folio = '', ?int $idProveedor = null) 
+    {
+        $offset = ($pagina - 1) * $limite;
+
+        $sql = "SELECT 
+                    cd.id_compra_detalle,
+                    cd.id_compra,
+                    c.folio_factura         AS factura,
+                    DATE(c.fecha_factura)   AS fecha,
+                    pr.nombre               AS proveedor,
+                    p.codigo,
+                    p.descripcion           AS producto,
+                    cd.cantidad,
+                    cd.precio_unitario      AS precio_proveedor
+                FROM compras_detalle cd
+                INNER JOIN compras     c  ON cd.id_compra   = c.id_compra
+                INNER JOIN productos   p  ON cd.id_producto = p.id_producto
+                INNER JOIN proveedores pr ON c.id_proveedor = pr.id_proveedor
+                WHERE cd.activo = 1
+                  AND c.activo  = 1";
+
+        $params = [];
+
+        if (!empty($codigo)) {
+            $sql .= " AND p.codigo LIKE :codigo";
+            $params[':codigo'] = "%{$codigo}%";
+        }
+
+        if (!empty($fecha)) {
+            // fecha en formato Y-m-d
+            $sql .= " AND DATE(c.fecha_factura) = :fecha";
+            $params[':fecha'] = $fecha;
+        }
+
+        if (!empty($folio)) {
+            $sql .= " AND c.folio_factura LIKE :folio";
+            $params[':folio'] = "%{$folio}%";
+        }
+
+        if (!empty($idProveedor)) {
+            $sql .= " AND c.id_proveedor = :idprov";
+            $params[':idprov'] = (int)$idProveedor;
+        }
+
+        $sql .= " ORDER BY c.fecha_factura DESC, cd.id_compra_detalle DESC
+                  LIMIT :limite OFFSET :offset";
+
+        $st = $this->conn->prepare($sql);
+
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
+        $st->bindValue(':limite', (int)$limite, PDO::PARAM_INT);
+        $st->bindValue(':offset', (int)$offset, PDO::PARAM_INT);
+
+        $st->execute();
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function contarComprasDetalle(string $codigo = '',string $fecha = '',string $folio = '', ?int $idProveedor = null)
+    {
+
+        $sql = "SELECT COUNT(*) AS total
+                FROM compras_detalle cd
+                INNER JOIN compras     c  ON cd.id_compra   = c.id_compra
+                INNER JOIN productos   p  ON cd.id_producto = p.id_producto
+                INNER JOIN proveedores pr ON c.id_proveedor = pr.id_proveedor
+                WHERE cd.activo = 1 AND c.activo  = 1";
+
+        $params = [];
+
+        if (!empty($codigo)) {
+            $sql .= " AND p.codigo LIKE :codigo";
+            $params[':codigo'] = "%{$codigo}%";
+        }
+
+        if (!empty($fecha)) {
+            $sql .= " AND DATE(c.fecha_factura) = :fecha";
+            $params[':fecha'] = $fecha;
+        }
+
+        if (!empty($folio)) {
+            $sql .= " AND c.folio_factura LIKE :folio";
+            $params[':folio'] = "%{$folio}%";
+        }
+
+        if (!empty($idProveedor)) {
+            $sql .= " AND c.id_proveedor = :idprov";
+            $params[':idprov'] = (int)$idProveedor;
+        }
+
+        $st = $this->conn->prepare($sql);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
+        $st->execute();
+
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        return (int)($row['total'] ?? 0);
+    }
+
+
     // =========================
     // CREAR COMPRA + INVENTARIO + PRECIOS PRODUCTO (ACTUALIZADO)
     // =========================

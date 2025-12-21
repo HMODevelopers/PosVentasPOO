@@ -149,7 +149,7 @@ session_start();
                 <table class="table table-bordered table-striped" id="ventas-table">
                   <thead>
                     <tr>
-                      <th>No Tiket</th>
+                      <th width="8%">No Tiket</th>
                       <th>Cliente</th> <!-- NUEVO -->
                       <th>Código</th>
                       <th>Descripción</th>
@@ -196,145 +196,171 @@ session_start();
 
     <script>
       (function () {
-        const BASE = '<?= BASE_URL ?>';
-        const $tabla = $('#ventas-table tbody');
-        const $total = $('#total-venta');
-        const $pagination = $('#pagination');
+      const BASE = '<?= BASE_URL ?>';
+      const $tabla = $('#ventas-table tbody');
+      const $total = $('#total-venta');
+      const $pagination = $('#pagination');
 
-        const state = {
-          pagina: 1,
-          limite: 20,
-          codigo: '',
-          descripcion: '',
-          fecha: $('#FechaVenta').val() || '',
-          cargando: false
-        };
+      const state = {
+        pagina: 1,
+        limite: 20,
+        codigo: '',
+        descripcion: '',
+        fecha: $('#FechaVenta').val() || '',
+        cargando: false
+      };
 
-        // Exponer para íconos limpiar
-        function clearField(id) {
-          const $i = $('#'+id);
-          $i.val('');
-          $i.trigger('change');
+      // Exponer para íconos limpiar
+      function clearField(id) {
+        const $i = $('#' + id);
+        $i.val('');
+        $i.trigger('change');
+      }
+      window.clearField = clearField;
+
+      function formatMoney(n) {
+        return Number(n || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+      }
+
+      // Solo fecha (sin hora, sin problemas de zona horaria)
+      function soloFecha(f) {
+        if (!f) return '';
+
+        const s = String(f).trim();
+
+        // Si viene con hora: "2025-11-18 10:23:11" -> "2025-11-18"
+        const [ymd] = s.split(' ');
+
+        // Si quieres en formato dd/mm/aaaa:
+        const partes = ymd.split('-'); // ["2025","11","18"]
+        if (partes.length === 3) {
+          const [y, m, d] = partes;
+          return `${d}/${m}/${y}`;
         }
-        window.clearField = clearField;
 
-        function formatMoney(n) {
-          return Number(n || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+        // Si no cumple el formato esperado, regresamos lo que hay
+        return ymd;
+      }
+
+      let t = null;
+      function debounceLoad() {
+        if (t) clearTimeout(t);
+        t = setTimeout(load, 250);
+      }
+
+      function readFilters() {
+        state.codigo = $('#Codigo').val().trim();
+        state.descripcion = $('#Descripcion').val().trim();
+        state.fecha = $('#FechaVenta').val();
+      }
+
+      function setLoading(flag) {
+        state.cargando = !!flag;
+        if (flag) $('#LoadingImage').show();
+        else $('#LoadingImage').hide();
+      }
+
+      function buildRows(rows) {
+        if (!rows || !rows.length) {
+          return `<tr><td colspan="8" class="text-center text-muted">Sin resultados</td></tr>`;
+        }
+        return rows.map(r => {
+          const total = Number(r.total ?? 0);
+          const precio = Number(r.precio ?? 0);
+          const fecha = soloFecha(r.fecha_venta); // <<< solo fecha
+
+          return `
+            <tr>
+              <td>${r.no_tiket ?? ''}</td>
+              <td>${r.cliente ?? ''}</td>
+              <td>${r.codigo ?? ''}</td>
+              <td>${r.descripcion ?? ''}</td>
+              <td class="text-right">${Number(r.cantidad ?? 0)}</td>
+              <td class="text-right">${formatMoney(precio)}</td>
+              <td class="text-right">${formatMoney(total)}</td>
+              <td>${fecha}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      function buildPagination(paginaActual, paginas) {
+        $pagination.empty();
+        if (paginas <= 1) return;
+
+        function li(page, text, disabled = false, active = false) {
+          const cls = ['page-item'];
+          if (disabled) cls.push('disabled');
+          if (active) cls.push('active');
+          return `
+            <li class="${cls.join(' ')}">
+              <a class="page-link" href="#" data-page="${page}">${text}</a>
+            </li>
+          `;
         }
 
-        let t = null;
-        function debounceLoad() { if (t) clearTimeout(t); t = setTimeout(load, 250); }
+        $pagination.append(li(Math.max(1, paginaActual - 1), '&laquo;', paginaActual === 1));
 
-        function readFilters() {
-          state.codigo = $('#Codigo').val().trim();
-          state.descripcion = $('#Descripcion').val().trim();
-          state.fecha = $('#FechaVenta').val();
+        const maxButtons = 7;
+        let start = Math.max(1, paginaActual - Math.floor(maxButtons / 2));
+        let end = Math.min(paginas, start + maxButtons - 1);
+        if ((end - start + 1) < maxButtons) start = Math.max(1, end - maxButtons + 1);
+
+        for (let p = start; p <= end; p++) {
+          $pagination.append(li(p, String(p), false, p === paginaActual));
         }
 
-        function setLoading(flag) {
-          state.cargando = !!flag;
-          if (flag) $('#LoadingImage').show(); else $('#LoadingImage').hide();
-        }
+        $pagination.append(li(Math.min(paginas, paginaActual + 1), '&raquo;', paginaActual === paginas));
 
-        function buildRows(rows) {
-          if (!rows || !rows.length) {
-            return `<tr><td colspan="8" class="text-center text-muted">Sin resultados</td></tr>`;
+        $pagination.find('a.page-link').on('click', function (e) {
+          e.preventDefault();
+          const p = Number($(this).data('page'));
+          if (!isNaN(p) && p !== state.pagina) {
+            state.pagina = p;
+            load();
           }
-          return rows.map(r => {
-            const total = Number(r.total ?? 0);
-            const precio = Number(r.precio ?? 0);
-            const fecha = r.fecha_venta ? new Date(r.fecha_venta).toLocaleString('es-MX') : '';
-            return `
-              <tr>
-                <td>${r.no_tiket ?? ''}</td>
-                <td>${r.cliente ?? ''}</td>
-                <td>${r.codigo ?? ''}</td>
-                <td>${r.descripcion ?? ''}</td>
-                <td class="text-right">${Number(r.cantidad ?? 0)}</td>
-                <td class="text-right">${formatMoney(precio)}</td>
-                <td class="text-right">${formatMoney(total)}</td>
-                <td>${fecha}</td>
-              </tr>
-            `;
-          }).join('');
-        }
-
-        function buildPagination(paginaActual, paginas) {
-          $pagination.empty();
-          if (paginas <= 1) return;
-
-          function li(page, text, disabled=false, active=false) {
-            const cls = ['page-item'];
-            if (disabled) cls.push('disabled');
-            if (active) cls.push('active');
-            return `
-              <li class="${cls.join(' ')}">
-                <a class="page-link" href="#" data-page="${page}">${text}</a>
-              </li>
-            `;
-          }
-
-          $pagination.append(li(Math.max(1, paginaActual - 1), '&laquo;', paginaActual === 1));
-
-          const maxButtons = 7;
-          let start = Math.max(1, paginaActual - Math.floor(maxButtons/2));
-          let end = Math.min(paginas, start + maxButtons - 1);
-          if ((end - start + 1) < maxButtons) start = Math.max(1, end - maxButtons + 1);
-
-          for (let p = start; p <= end; p++) {
-            $pagination.append(li(p, String(p), false, p === paginaActual));
-          }
-
-          $pagination.append(li(Math.min(paginas, paginaActual + 1), '&raquo;', paginaActual === paginas));
-
-          $pagination.find('a.page-link').on('click', function (e) {
-            e.preventDefault();
-            const p = Number($(this).data('page'));
-            if (!isNaN(p) && p !== state.pagina) {
-              state.pagina = p;
-              load();
-            }
-          });
-        }
-
-        function load() {
-          if (state.cargando) return;
-          readFilters();
-          setLoading(true);
-
-          $.get(`${BASE}/controllers/ComprasClientesController.php`, {
-            accion: 'listar',
-            pagina: state.pagina,
-            limite: state.limite,
-            codigo: state.codigo,
-            descripcion: state.descripcion,
-            fecha: state.fecha
-          })
-          .done((res) => {
-            if (!res || res.ok === false) {
-              toastr.error(res?.msg || 'No fue posible cargar las compras');
-              return;
-            }
-            $tabla.html(buildRows(res.data || []));
-            $total.html(`<strong>${formatMoney(res.suma_total || 0)}</strong>`);
-            buildPagination(Number(res.pagina || 1), Number(res.paginas || 1));
-          })
-          .fail((xhr) => {
-            const msg = xhr?.responseJSON?.msg || 'Error de red al cargar';
-            toastr.error(msg);
-          })
-          .always(() => setLoading(false));
-        }
-
-        // Filtros
-        $('.filtrar').on('input change', function () {
-          state.pagina = 1;
-          debounceLoad();
         });
+      }
 
-        // Primer render
-        load();
-      })();
+      function load() {
+        if (state.cargando) return;
+        readFilters();
+        setLoading(true);
+
+        $.get(`${BASE}/controllers/ComprasClientesController.php`, {
+          accion: 'listar',
+          pagina: state.pagina,
+          limite: state.limite,
+          codigo: state.codigo,
+          descripcion: state.descripcion,
+          fecha: state.fecha
+        })
+        .done((res) => {
+          if (!res || res.ok === false) {
+            toastr.error(res?.msg || 'No fue posible cargar las compras');
+            return;
+          }
+          $tabla.html(buildRows(res.data || []));
+          $total.html(`<strong>${formatMoney(res.suma_total || 0)}</strong>`);
+          buildPagination(Number(res.pagina || 1), Number(res.paginas || 1));
+        })
+        .fail((xhr) => {
+          const msg = xhr?.responseJSON?.msg || 'Error de red al cargar';
+          toastr.error(msg);
+        })
+        .always(() => setLoading(false));
+      }
+
+      // Filtros
+      $('.filtrar').on('input change', function () {
+        state.pagina = 1;
+        debounceLoad();
+      });
+
+      // Primer render
+      load();
+    })();
+
     </script>
 
   </body>

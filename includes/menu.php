@@ -58,6 +58,7 @@ acl_bootstrap();
             <?php if (can('compras.gestion')): ?>
               <!-- CAMBIO: etiqueta más clara -->
               <li><a href="<?= BASE_URL ?>/views/private/compras/index.php">Gestionar compras</a></li>
+              <li><a href="<?= BASE_URL ?>/views/private/compras/listacompras.php">Listado detalle compras</a></li>
             <?php endif; ?>
           </ul>
         </li>
