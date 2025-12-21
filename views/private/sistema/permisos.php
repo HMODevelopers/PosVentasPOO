@@ -1,18 +1,54 @@
 <?php
 // CAMBIO: encabezado igual que Bitácora; mantengo validaciones de sesión y admin
-$titulo = "Sistema";
-$modulo = "Permisos por Rol";
+$titulo    = "Sistema";
+$modulo    = "Permisos por Rol";
 $subtitulo = "Control de permisos y página de inicio";
-session_start();
 
+// ================================
+// Duración lógica de la sesión
+// ================================
+$SESSION_LIFETIME = 10 * 60 * 60; // 10 horas en segundos
+
+// Iniciar sesión solo si no está iniciada
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Includes base
 require_once __DIR__ . '/../../../includes/config.php';
 require_once __DIR__ . '/../../../includes/acl.php';
 
+// ================================
+// Validar que haya usuario logueado
+// ================================
 if (!isset($_SESSION['usuario'])) {
-  header('Location: ' . BASE_URL . '/views/public/index.php'); exit;
+    header('Location: ' . BASE_URL . '/views/public/index.php');
+    exit;
 }
+
+// ================================
+// Control de tiempo de sesión (10h)
+// ================================
+$sessionStart = $_SESSION['SESSION_START'] ?? 0;
+$sessionTTL   = $_SESSION['SESSION_TTL']   ?? $SESSION_LIFETIME;
+
+if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
+    session_unset();
+    session_destroy();
+    // Mandamos al index público con flag de expirado
+    header('Location: ' . BASE_URL . '/views/public/index.php?expired=1');
+    exit;
+}
+
+// Si la sesión sigue vigente, actualizamos banderas
+$_SESSION['SESION_VIGENTE'] = true;
+$_SESSION['LAST_ACTIVITY']  = time();
+
+// ================================
+// Validar que sea rol administrador
+// ================================
 if ((int)$_SESSION['usuario']['id_rol'] !== 1) {
-  die('No autorizado.');
+    die('No autorizado.');
 }
 ?>
 <!DOCTYPE html>

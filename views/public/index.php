@@ -1,9 +1,28 @@
 <?php 
+// ================================
+// Configurar sesión a 10 horas
+// ================================
+$SESSION_LIFETIME = 10 * 60 * 60; // 10 horas en segundos
+ini_set('session.gc_maxlifetime', $SESSION_LIFETIME);
+session_set_cookie_params($SESSION_LIFETIME);
+
 session_start(); 
 include_once '../../includes/config.php';
 
-// Si ya hay sesión activa, redirige al panel
+/**
+ * Mensaje si la sesión expiró (redirigido con ?expired=1)
+ */
+$timeoutMsg = '';
+if (isset($_GET['expired']) && $_GET['expired'] == '1') {
+    $timeoutMsg = 'Tu sesión ha expirado después de 10 horas. Vuelve a iniciar sesión.';
+}
+
+// Si ya hay sesión activa, marcamos bandera y redirigimos al panel
 if (isset($_SESSION['usuario'])) {
+    // Bandera de que la sesión sigue vigente
+    $_SESSION['SESION_VIGENTE'] = true;
+    $_SESSION['LAST_ACTIVITY']  = time();
+
     header('Location: ' . BASE_URL . '/views/private/inicio/index.php');
     exit;
 }
@@ -54,8 +73,12 @@ $LOGIN_JS_VER  = @filemtime($LOGIN_JS_PATH) ?: time();
 
                             <h5 class="auth-title">Iniciar sesión</h5>
 
-                            <!-- Mensaje de error dinámico -->
-                            <div id="mensaje-error" class="alert alert-danger text-center" style="display: none;"></div>
+                            <!-- Mensaje de error dinámico / expiración -->
+                            <div id="mensaje-error"
+                                 class="alert alert-danger text-center"
+                                 style="<?= $timeoutMsg ? '' : 'display: none;' ?>">
+                                <?= htmlspecialchars($timeoutMsg, ENT_QUOTES, 'UTF-8'); ?>
+                            </div>
 
                             <!-- Formulario AJAX -->
                             <form id="formLogin">

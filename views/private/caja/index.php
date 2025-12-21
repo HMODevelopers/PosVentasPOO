@@ -1,23 +1,48 @@
 <?php
-/**
- * views/private/ventas/caja.php
- * --------------------------------------------------------------------------
- * Vista de Punto de Venta (POS) "Caja".
- * --------------------------------------------------------------------------
- */
-
 $titulo    = "Ventas";
 $modulo    = "Punto de Venta";
 $subtitulo = "Caja";
 
 session_start();
-require_once __DIR__ . '/../../../includes/config.php';
+// ================================
+    // Duración lógica de la sesión
+    // ================================
+    $SESSION_LIFETIME = 10 * 60 * 60; // 10 horas en segundos
 
-// --- Guard: si no hay usuario en sesión, redirige al login público.
-if (!isset($_SESSION['usuario'])) {
-  header('Location: ' . BASE_URL . '/views/public/index.php');
-  exit();
-}
+    // Iniciar sesión solo si no está iniciada
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    require_once __DIR__ . '/../../../includes/config.php';
+
+    // ================================
+    // Validar que haya usuario logueado
+    // ================================
+    if (!isset($_SESSION['usuario'])) {
+        header('Location: ' . BASE_URL . '/views/public/index.php');
+        exit();
+    }
+
+    // ================================
+    // Control de tiempo de sesión (10h)
+    // ================================
+    $sessionStart = $_SESSION['SESSION_START'] ?? 0;
+    $sessionTTL   = $_SESSION['SESSION_TTL']   ?? $SESSION_LIFETIME;
+
+    // Si no hay marca de inicio o ya se pasó el tiempo, forzamos re-login
+    if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
+        session_unset();
+        session_destroy();
+        // Mandamos al index público con flag de expirado
+        header('Location: ' . BASE_URL . '/views/public/index.php?expired=1');
+        exit();
+    }
+
+    // Si la sesión sigue vigente, actualizamos banderas
+    $_SESSION['SESION_VIGENTE'] = true;
+    $_SESSION['LAST_ACTIVITY']  = time();
+
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -326,8 +351,19 @@ if (!isset($_SESSION['usuario'])) {
     const vendibleDe = det => Math.max(0, num(det.stock_actual ?? det.existencia));
 
     function maxVendible(it){
-      const stock = num(it.stock_actual ?? it.existencia ?? 0);
+      const stock = num(it.stock_total ?? it.stock_actual ?? it.existencia ?? 0);
       return Math.max(0, stock);
+    }
+
+    // ==== NUEVOS HELPERS: control de stock considerando varias líneas ====
+    function totalEnCarrito(idProd) {
+      return carrito.reduce((sum, it) => {
+        return sum + (it.id_producto == idProd ? num(it.cantidad) : 0);
+      }, 0);
+    }
+
+    function stockProductoBase(p) {
+      return num(p.stock_actual ?? p.existencia ?? 0);
     }
 
     function mapTipoPrecioId(slug){
@@ -526,30 +562,32 @@ if (!isset($_SESSION['usuario'])) {
     // ============================================================
     // 6) CARRITO (agregar, pintar, editar, eliminar)
     // ============================================================
+    // Siempre agrega NUEVA línea, respetando existencia total en todas las líneas
     function agregarDesdeDetalle(p){
-      const idx = carrito.findIndex(x => x.id_producto == p.id_producto);
+      const stockTotal = stockProductoBase(p);
+      const yaEnCarrito = totalEnCarrito(p.id_producto);
+      const restante = stockTotal - yaEnCarrito;
+
+      if (restante <= 0) {
+        toastr.warning('Sin stock disponible para vender.');
+        return;
+      }
 
       const itemBase = {
         id_producto: p.id_producto,
         codigo: p.codigo,
         descripcion: p.descripcion,
-        stock_actual: Number(p.stock_actual ?? p.existencia ?? 0),
+        stock_total: stockTotal,       // stock real del sistema
+        stock_actual: stockTotal,      // para compatibilidad si se usa en algún lado
         stock_minimo: Number(p.stock_minimo ?? 0),
         precio_publico: Number(p.precio_publico ?? 0),
         precio_taller: Number(p.precio_taller ?? 0),
         precio_proveedor: Number(p.precio_proveedor ?? 0),
-        proveedor: p.proveedor ?? null
+        proveedor: p.proveedor ?? null,
+        cantidad: 1
       };
 
-      const vendible = maxVendible(itemBase);
-      if(vendible <= 0){ toastr.warning('Sin stock disponible para vender.'); return; }
-
-      if(idx >= 0){
-        const next = Math.min(vendible, Number(carrito[idx].cantidad) + 1);
-        carrito[idx].cantidad = next;
-      } else {
-        carrito.push({...itemBase, cantidad: 1});
-      }
+      carrito.push(itemBase);
       pintarCarrito();
     }
 
@@ -576,6 +614,12 @@ if (!isset($_SESSION['usuario'])) {
         const subtotal = cantidad * precio;
         total += subtotal;
 
+        const stockTotal = num(it.stock_total ?? it.stock_actual ?? 0);
+        const usado = carrito.reduce((s, x) => x.id_producto == it.id_producto ? s + num(x.cantidad) : s, 0);
+        const disponible = Math.max(0, stockTotal - usado);
+
+        const badgeClass = disponible > 0 ? 'bg-success' : 'bg-secondary';
+
         $tb.append(`
           <tr>
             <!-- Producto -->
@@ -585,7 +629,7 @@ if (!isset($_SESSION['usuario'])) {
                   <div class="fw-semibold">${it.descripcion}</div>
                   <div class="small text-muted">
                     Cod: ${it.codigo} ${it.proveedor ? `· Prov: ${it.proveedor}` : ``}
-                    · Exist: <span class="badge ${Number(it.stock_actual)>0?'bg-success':'bg-secondary'} badge-stock">${fix2(it.stock_actual)}</span>
+                    · Exist total: <span class="badge ${badgeClass} badge-stock">${fix2(stockTotal)}</span>
                   </div>
                 </div>
               </div>
@@ -595,7 +639,7 @@ if (!isset($_SESSION['usuario'])) {
             <td class="text-center">
               <div class="btn-group btn-group-sm" role="group">
                 <input type="number"
-                       min="0.01"
+                       min="0"
                        step="1"
                        class="form-control form-control-sm text-center w-70px"
                        value="${fix2(cantidad)}"
@@ -643,18 +687,65 @@ if (!isset($_SESSION['usuario'])) {
 
     /* ========== CANTIDAD ========== */
 
+    // (los botones data-inc / data-dec no se usan actualmente, pero se dejan por si los agregas después)
+   /* $('#tablaCarrito').on('click','button[data-inc]',function(){
+      const i = Number(this.dataset.inc);
+      if(isNaN(i) || !carrito[i]) return;
+
+      const it = carrito[i];
+      const stockTotal = num(it.stock_total ?? it.stock_actual ?? it.existencia ?? 0);
+      const usadoOtros = carrito.reduce((s,x,idx)=>(
+        idx!==i && x.id_producto==it.id_producto ? s + num(x.cantidad) : s
+      ),0);
+      const maxLinea = Math.max(0, stockTotal - usadoOtros);
+
+      const actual = num(it.cantidad);
+      let next = actual + 1;
+      if (next > maxLinea) {
+        next = maxLinea;
+        toastr.info('Se alcanzó la cantidad máxima disponible considerando el resto del carrito.');
+      }
+
+      it.cantidad = Number(next.toFixed(2));
+      pintarCarrito();
+    });
+
+    $('#tablaCarrito').on('click','button[data-dec]',function(){
+      const i = Number(this.dataset.dec);
+      if(isNaN(i) || !carrito[i]) return;
+
+      const it = carrito[i];
+      const actual = num(it.cantidad);
+      let next = actual - 1;
+      if (next < 0.01) next = 0.01;
+
+      it.cantidad = Number(next.toFixed(2));
+      pintarCarrito();
+    });*/
+-----------------------------------------------------------------------------
     $('#tablaCarrito').on('change','input[data-qty]',function(){
       const i = Number(this.dataset.qty);
       if(isNaN(i) || !carrito[i]) return;
 
       let val = Number(this.value || 0);
       if (isNaN(val) || val <= 0) val = 0.01;
-      const vendible = maxVendible(carrito[i]);
 
-      if (val > vendible) {
-        val = vendible;
-        toastr.info('Se ajustó a máximo vendible.');
+      const it = carrito[i];
+      const stockTotal = num(it.stock_total ?? it.stock_actual ?? it.existencia ?? 0);
+
+      // Suma de las demás líneas del mismo producto (sin contar esta)
+      const usadoOtros = carrito.reduce((s,x,idx)=>(
+        idx!==i && x.id_producto==it.id_producto ? s + num(x.cantidad) : s
+      ),0);
+
+      const maxLinea = Math.max(0, stockTotal - usadoOtros);
+
+      if (val > maxLinea) {
+        val = maxLinea;
+        toastr.info('Se ajustó a la cantidad disponible considerando el resto del carrito.');
       }
+
+      if (val <= 0) val = 0.01;
 
       carrito[i].cantidad = Number(val.toFixed(2));
       pintarCarrito();

@@ -59,7 +59,7 @@
       $btn.data('prev-text', $btn.html());
       $btn.prop('disabled', true).html('Entrando…');
     } else {
-      $btn.prop('disabled', false).html($btn.data('prev-text') || 'Entrar');
+      $btn.prop('disabled', false).html($btn.data('prev-text') || 'Iniciar sesión');
     }
   }
 
