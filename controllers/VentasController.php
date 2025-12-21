@@ -1,37 +1,37 @@
 <?php
-/**
- * Controllers/VentasController.php
- * Devuelve JSON en todas las rutas y acepta body JSON.
- */
-header('Content-Type: application/json; charset=UTF-8');
+    /**
+     * Controllers/VentasController.php
+     * Devuelve JSON en todas las rutas y acepta body JSON.
+     */
+    header('Content-Type: application/json; charset=UTF-8');
 
-// Sesión siempre disponible
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+    // Sesión siempre disponible
+    if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-// Carga modelo
-require_once __DIR__ . '/../models/VentaModel.php';
-$ventaModel = new VentaModel();
+    // Carga modelo
+    require_once __DIR__ . '/../models/VentaModel.php';
+    $ventaModel = new VentaModel();
 
-// Lee body JSON si viene
-$RAW = json_decode(file_get_contents('php://input'), true);
-if (!is_array($RAW)) { $RAW = []; }
+    // Lee body JSON si viene
+    $RAW = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($RAW)) { $RAW = []; }
 
-// Acción (querystring, form-data o JSON)
-$accion = $_REQUEST['accion'] ?? $RAW['accion'] ?? '';
+    // Acción (querystring, form-data o JSON)
+    $accion = $_REQUEST['accion'] ?? $RAW['accion'] ?? '';
 
-/** Helper: mapea slug de tipo de precio a id_tipo_precio */
-function map_tipo_precio(?string $slug): int {
-    $slug = strtolower(trim((string)$slug));
-    $map = ['publico' => 1, 'taller' => 2, 'proveedor' => 3];
-    return $map[$slug] ?? 2; // default -> taller (como en la UI)
-}
+    /** Helper: mapea slug de tipo de precio a id_tipo_precio */
+    function map_tipo_precio(?string $slug): int {
+        $slug = strtolower(trim((string)$slug));
+        $map = ['publico' => 1, 'taller' => 2, 'proveedor' => 3];
+        return $map[$slug] ?? 2; // default -> taller (como en la UI)
+    }
 
-/** Helper: respuesta de error estándar */
-function jserr(string $msg, int $code = 200): void {
-    if ($code >= 400) http_response_code($code);
-    echo json_encode(['ok' => false, 'msg' => $msg], JSON_UNESCAPED_UNICODE);
-    exit;
-}
+    /** Helper: respuesta de error estándar */
+    function jserr(string $msg, int $code = 200): void {
+        if ($code >= 400) http_response_code($code);
+        echo json_encode(['ok' => false, 'msg' => $msg], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
 /** Helper: extrae enteros con seguridad */
 function i($v): int { return (int) (is_numeric($v) ? $v : 0); }
@@ -64,12 +64,17 @@ try {
 
         /* ============================================================
          * Crear venta (Activa/Guardada/Credito)
-         * Body JSON: { venta:{...}, detalles:[...] }
+         * Body JSON: { venta:{...}, detalles:[...], pagos:[...] }
+         *   - pagos: [
+         *       { "id_forma_pago": 1, "monto": 500, "referencia": "xxx" },
+         *       { "id_forma_pago": 4, "monto": 200, "referencia": "yyy" }
+         *     ]
          * ============================================================ */
         case 'crear': {
             $data     = $RAW ?: [];
             $venta    = $data['venta']    ?? [];
             $detalles = $data['detalles'] ?? [];
+            $pagos    = $data['pagos']    ?? []; // NUEVO: pagos para venta mixta
 
             // Sesión robusta
             $usr                = $_SESSION['usuario'] ?? [];
@@ -106,14 +111,14 @@ try {
                 jserr('Para ventas a crédito es obligatorio seleccionar un cliente.', 400);
             }
 
-            $resp = $ventaModel->crearVenta($venta, $detalles);
+            $resp = $ventaModel->crearVenta($venta, $detalles, $pagos);
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }
 
         /* ============================================================
          * Detalle (cabecera + partidas + abonos + saldo + estatus_credito)
-         * GET/POST: id_venta
+         * GET/POST/JSON: id_venta
          * ============================================================ */
         case 'detalle': {
             $idVenta  = i($_GET['id_venta'] ?? $_POST['id_venta'] ?? $RAW['id_venta'] ?? 0);
@@ -154,23 +159,57 @@ try {
 
         /* ============================================================
          * Registrar ABONO de una venta a crédito
-         * POST/GET/JSON: id_venta, monto, id_forma_pago, fecha_abono?, referencia_pago?
+         * - Simple:      id_venta, monto, id_forma_pago, fecha_abono?, referencia_pago?
+         * - Mixto:       id_venta, tipo_pago = 'mixto', fecha_abono?, pagos = [ {id_forma_pago,monto,referencia_pago?}, ... ]
          * ============================================================ */
         case 'abonar-venta': {
-            $idVenta      = i($_POST['id_venta'] ?? $_GET['id_venta'] ?? $RAW['id_venta'] ?? 0);
-            $monto        = (float)($_POST['monto'] ?? $_GET['monto'] ?? $RAW['monto'] ?? 0);
-            $idFormaPago  = i($_POST['id_forma_pago'] ?? $_GET['id_forma_pago'] ?? $RAW['id_forma_pago'] ?? 0);
-            $fechaAbono   = trim($_POST['fecha_abono'] ?? $_GET['fecha_abono'] ?? $RAW['fecha_abono'] ?? '');
-            $ref          = trim($_POST['referencia_pago'] ?? $_GET['referencia_pago'] ?? $RAW['referencia_pago'] ?? '');
-
-            if ($idVenta <= 0 || $monto <= 0 || $idFormaPago <= 0) {
-                jserr('Datos inválidos para abono (id_venta, monto, id_forma_pago).');
-            }
+            $idVenta    = i($_POST['id_venta'] ?? $_GET['id_venta'] ?? $RAW['id_venta'] ?? 0);
+            $fechaAbono = trim($_POST['fecha_abono'] ?? $_GET['fecha_abono'] ?? $RAW['fecha_abono'] ?? '');
+            $ref        = trim($_POST['referencia_pago'] ?? $_GET['referencia_pago'] ?? $RAW['referencia_pago'] ?? '');
+            $tipoPago   = $_POST['tipo_pago'] ?? $_GET['tipo_pago'] ?? $RAW['tipo_pago'] ?? null;
 
             // Usuario de sesión
-            $usr        = $_SESSION['usuario'] ?? [];
-            $idUsuario  = $usr['id_usuario'] ?? ($usr['id'] ?? ($_SESSION['id_usuario'] ?? null));
+            $usr       = $_SESSION['usuario'] ?? [];
+            $idUsuario = $usr['id_usuario'] ?? ($usr['id'] ?? ($_SESSION['id_usuario'] ?? null));
             if (!$idUsuario) jserr('No hay usuario en sesión (id_usuario).');
+
+            if ($idVenta <= 0) jserr('id_venta requerido.');
+
+            // === MODO MIXTO: arreglo de pagos ===
+            if (is_string($tipoPago) && strtolower($tipoPago) === 'mixto') {
+                $pagosRaw = $_POST['pagos'] ?? $_GET['pagos'] ?? $RAW['pagos'] ?? null;
+                $pagosMixtos = null;
+                if ($pagosRaw !== null && $pagosRaw !== '') {
+                    $tmp = json_decode($pagosRaw, true);
+                    if (is_array($tmp)) {
+                        $pagosMixtos = $tmp;
+                    }
+                }
+
+                if (empty($pagosMixtos) || !is_array($pagosMixtos)) {
+                    jserr('Se requiere capturar los pagos para el abono mixto.');
+                }
+                if (!method_exists($ventaModel, 'abonarVentaMixto')) {
+                    jserr('El modelo no soporta abonarVentaMixto(). Agrega el método al VentaModel.');
+                }
+
+                $resp = $ventaModel->abonarVentaMixto(
+                    $idVenta,
+                    $pagosMixtos,
+                    $fechaAbono ?: null,
+                    $idUsuario
+                );
+                echo json_encode($resp, JSON_UNESCAPED_UNICODE);
+                break;
+            }
+
+            // === MODO SIMPLE: un solo renglón de abono ===
+            $monto       = (float)($_POST['monto'] ?? $_GET['monto'] ?? $RAW['monto'] ?? 0);
+            $idFormaPago = i($_POST['id_forma_pago'] ?? $_GET['id_forma_pago'] ?? $RAW['id_forma_pago'] ?? 0);
+
+            if ($monto <= 0 || $idFormaPago <= 0) {
+                jserr('Datos inválidos para abono (monto, id_forma_pago).');
+            }
 
             if (!method_exists($ventaModel, 'abonarVenta')) {
                 jserr('El modelo no soporta abonarVenta(). Agrega el método al VentaModel.');
@@ -185,14 +224,13 @@ try {
                 $idUsuario
             );
 
-            // El modelo ya recalcula saldo y estatus_credito; devolvemos lo nuevo.
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }
 
         /* ============================================================
          * Saldo de una venta (rápido)
-         * GET/POST: id_venta
+         * GET/POST/JSON: id_venta
          * ============================================================ */
         case 'saldo-venta': {
             $id = i($_GET['id_venta'] ?? $_POST['id_venta'] ?? $RAW['id_venta'] ?? 0);
@@ -207,7 +245,7 @@ try {
 
         /* ============================================================
          * Listar abonos de una venta (para UI)
-         * GET/POST: id_venta
+         * GET/POST/JSON: id_venta
          * ============================================================ */
         case 'listar-abonos-venta': {
             $id = i($_GET['id_venta'] ?? $_POST['id_venta'] ?? $RAW['id_venta'] ?? 0);
@@ -222,7 +260,7 @@ try {
 
         /* ============================================================
          * Cambiar estatus (simple)
-         * POST/GET: id_venta, estatus
+         * POST/GET/JSON: id_venta, estatus
          * ============================================================ */
         case 'cambiar-estatus': {
             $id      = i($_POST['id_venta'] ?? $_GET['id_venta'] ?? $RAW['id_venta'] ?? 0);
@@ -236,7 +274,7 @@ try {
 
         /* ============================================================
          * Cancelar/Eliminar (regresa stock)
-         * POST/GET: id_venta, motivo?
+         * POST/GET/JSON: id_venta, motivo?
          * ============================================================ */
         case 'cancelar':
         case 'eliminar': {
@@ -260,7 +298,7 @@ try {
 
         /* ============================================================
          * Folio sugerido por fecha
-         * GET/POST: fecha (Y-m-d)
+         * GET/POST/JSON: fecha (Y-m-d)
          * ============================================================ */
         case 'folio-sugerido': {
             $fecha = $_GET['fecha'] ?? $_POST['fecha'] ?? $RAW['fecha'] ?? date('Y-m-d');
@@ -308,18 +346,55 @@ try {
          * POST/GET/JSON: id_venta, id_forma_pago?, actualizar_fecha?, id_cliente?
          * ============================================================ */
         case 'activar-guardada': {
-            $id_venta         = (int)($_POST['id_venta'] ?? $_GET['id_venta'] ?? $RAW['id_venta'] ?? 0);
-            $id_forma_pago    = (int)($_POST['id_forma_pago'] ?? $_GET['id_forma_pago'] ?? $RAW['id_forma_pago'] ?? 0);
-            $id_cliente       = (int)($_POST['id_cliente']    ?? $_GET['id_cliente']    ?? $RAW['id_cliente']    ?? 0);
+            $id_venta      = (int)($_POST['id_venta']      ?? $_GET['id_venta']      ?? $RAW['id_venta']      ?? 0);
+            $id_forma_pago = (int)($_POST['id_forma_pago'] ?? $_GET['id_forma_pago'] ?? $RAW['id_forma_pago'] ?? 0);
+            $id_cliente    = (int)($_POST['id_cliente']    ?? $_GET['id_cliente']    ?? $RAW['id_cliente']    ?? 0);
+
+            $tipo_pago = $_POST['tipo_pago'] ?? $_GET['tipo_pago'] ?? $RAW['tipo_pago'] ?? null;
+
+            // pagos viene como JSON desde el JS en caso de mixto
+            $pagosRaw    = $_POST['pagos'] ?? $_GET['pagos'] ?? $RAW['pagos'] ?? null;
+            $pagosMixtos = null;
+            if ($pagosRaw !== null && $pagosRaw !== '') {
+                $tmp = json_decode($pagosRaw, true);
+                if (is_array($tmp)) {
+                    $pagosMixtos = $tmp;
+                }
+            }
+
+            $esMixto = is_string($tipo_pago) && strtolower($tipo_pago) === 'mixto';
 
             $actualizar_fecha = false;
             $af = ($_POST['actualizar_fecha'] ?? $_GET['actualizar_fecha'] ?? $RAW['actualizar_fecha'] ?? 0);
-            if ($af === '1' || $af === 1 || $af === true || $af === 'true') { $actualizar_fecha = true; }
+            if ($af === '1' || $af === 1 || $af === true || $af === 'true') {
+                $actualizar_fecha = true;
+            }
 
-            if ($id_venta <= 0)       { echo json_encode(['ok'=>false,'msg'=>'id_venta requerido.']); break; }
-            if ($id_forma_pago <= 0)  { echo json_encode(['ok'=>false,'msg'=>'id_forma_pago requerido.']); break; }
+            if ($id_venta <= 0) {
+                echo json_encode(['ok'=>false,'msg'=>'id_venta requerido.']);
+                break;
+            }
 
-            $resp = $ventaModel->activarGuardada($id_venta, $id_forma_pago, $actualizar_fecha, ($id_cliente ?: null));
+            // Si NO es mixto, seguimos exigiendo id_forma_pago
+            if (!$esMixto && $id_forma_pago <= 0) {
+                echo json_encode(['ok'=>false,'msg'=>'id_forma_pago requerido.']);
+                break;
+            }
+
+            // Si es mixto, exigimos que vengan pagos
+            if ($esMixto && (empty($pagosMixtos) || !is_array($pagosMixtos))) {
+                echo json_encode(['ok'=>false,'msg'=>'Se requiere capturar los pagos para el esquema mixto.']);
+                break;
+            }
+
+            $resp = $ventaModel->activarGuardada(
+                $id_venta,
+                $id_forma_pago > 0 ? $id_forma_pago : null,
+                $actualizar_fecha,
+                ($id_cliente ?: null),
+                $tipo_pago,
+                $pagosMixtos
+            );
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }

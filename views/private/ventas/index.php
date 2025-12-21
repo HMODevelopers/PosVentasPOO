@@ -268,7 +268,7 @@ if (!isset($_SESSION['usuario'])) {
 
 
     <!-- ========================= APP JS: ORGANIZADO POR MÓDULOS ========================= -->
-   <script>
+ <script>
 /* ==========================================================================
    MÓDULO: Helpers y utilidades compartidas
    ========================================================================== */
@@ -279,7 +279,15 @@ const norm = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u
 const mxn  = v => Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
 const fix2 = v => (Number(v||0)).toFixed(2);
 const num  = v => parseFloat(v ?? 0) || 0;
-const fechaMx = dt => { try{ const d=new Date(String(dt).replace(' ','T')); return d.toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}); } catch { return dt||'—'; } };
+const fechaMx = dt => {
+  try{
+    const d=new Date(String(dt).replace(' ','T'));
+    return d.toLocaleString('es-MX',{
+      day:'2-digit',month:'2-digit',year:'numeric',
+      hour:'2-digit',minute:'2-digit',hour12:true
+    });
+  } catch { return dt||'—'; }
+};
 
 // Endpoints (centralizados)
 const BASE = BASE_URL;
@@ -703,6 +711,7 @@ $(document).on('click','a.accion-ver-detalle',function(e){
   });
 });
 
+
 /* ==========================================================================
    MÓDULO: Ticket (modal Ticket)
    ========================================================================== */
@@ -863,10 +872,12 @@ $(document).off('click','#btnConfirmarEliminar').on('click','#btnConfirmarElimin
 /* ==========================================================================
    MÓDULO: Activar venta guardada (modal Activar)
    ========================================================================== */
-let AC_TIENE_CLIENTE = false;
-let AC_FP_CREDITO_ID = 21;
+let AC_TIENE_CLIENTE   = false;
+let AC_FP_CREDITO_ID   = 21;
+let AC_FP_MIXTO_ID     = null;
 let AC_CLIENTES_CARGADOS = false;
 
+/* ------------ CLIENTES ------------ */
 function ac_cargarClientes(preselectId) {
   const $sel = $('#ac-selCliente');
   if (AC_CLIENTES_CARGADOS && !preselectId) return;
@@ -888,6 +899,7 @@ function ac_cargarClientes(preselectId) {
     });
 }
 
+/* ------------ DETECTAR CRÉDITO / MIXTO ------------ */
 function ac_esCreditoSeleccionado(){
   const $sel = $('#ac-selFormaPago');
   const val  = ($sel.val() ?? '').toString().trim();
@@ -896,6 +908,30 @@ function ac_esCreditoSeleccionado(){
 
   const txt = norm($sel.find('option:selected').text());
   return txt.includes('credito') && !txt.includes('tarjeta');
+}
+
+function ac_esMixtoSeleccionado(){
+  const $sel = $('#ac-selFormaPago');
+  const val  = ($sel.val() ?? '').toString().trim();
+
+  if (AC_FP_MIXTO_ID != null && val === String(AC_FP_MIXTO_ID)) return true;
+
+  const txt = norm($sel.find('option:selected').text());
+  return txt.includes('mixto');
+}
+
+/* ------------ UI: Cliente y bloque mixto ------------ */
+function ac_toggleMixtoUI(){
+  const $wrap = $('#ac-wrapMixto');
+  if (!$wrap.length) return;
+
+  const esMixto = ac_esMixtoSeleccionado();
+  if (esMixto){
+    $wrap.removeClass('d-none');
+    ac_recalcMixto();
+  } else {
+    $wrap.addClass('d-none');
+  }
 }
 
 function ac_toggleClienteRequired(){
@@ -912,8 +948,134 @@ function ac_toggleClienteRequired(){
   } else {
     $wrap.addClass('d-none').hide();
   }
+
+  // además de cliente, actualizamos bloque de pago mixto
+  ac_toggleMixtoUI();
 }
 
+/* ------------ Mixto: helpers ------------ */
+function ac_getOpcionesMixtoHTML(){
+  // clona opciones del select principal, excluyendo Crédito y Mixto
+  const $sel = $('#ac-selFormaPago');
+  let html = '<option value="">-- Selecciona --</option>';
+
+  $sel.find('option').each(function(){
+    const val = $(this).val();
+    const txt = $(this).text();
+    const normTxt = norm(txt);
+
+    if (!val) return;
+    if (AC_FP_CREDITO_ID != null && val === String(AC_FP_CREDITO_ID)) return;
+    if (AC_FP_MIXTO_ID   != null && val === String(AC_FP_MIXTO_ID))   return;
+    if (normTxt.includes('credito') && !normTxt.includes('tarjeta'))  return;
+    if (normTxt.includes('mixto'))                                    return;
+
+    html += `<option value="${val}">${txt}</option>`;
+  });
+
+  return html;
+}
+
+function ac_addPagoMixtoRow(){
+  const $tb = $('#ac-tbMixto');
+  if (!$tb.length) return;
+
+  const opts = ac_getOpcionesMixtoHTML();
+  const row = `
+    <tr>
+      <td>
+        <select class="form-control form-control-sm ac-mix-fp">
+          ${opts}
+        </select>
+      </td>
+      <td>
+        <input type="number" min="0" step="0.01"
+               class="form-control form-control-sm ac-mix-monto"
+               placeholder="0.00">
+      </td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm btn-outline-danger ac-mix-del">
+          <i class="mdi mdi-close"></i>
+        </button>
+      </td>
+    </tr>`;
+
+  $tb.append(row);
+
+  // seleccionar EFECTIVO por default en la fila recién agregada
+  const $lastRow = $tb.find('tr').last();
+  const $sel     = $lastRow.find('.ac-mix-fp');
+  const $optEf   = $sel.find('option').filter(function(){
+    return norm($(this).text()).includes('efectivo');
+  }).first();
+  if ($optEf.length) {
+    $sel.val($optEf.val());
+  }
+
+  ac_recalcMixto();
+}
+
+function ac_recalcMixto(){
+  const totalVenta = num($('#ac-total-venta').val());
+  let suma = 0;
+
+  $('#ac-tbMixto tr').each(function(){
+    const monto = num($(this).find('.ac-mix-monto').val());
+    suma += monto;
+  });
+
+  $('#ac-totalVentaTexto').text(mxn(totalVenta));
+  $('#ac-sumaPagosTexto').text(mxn(suma));
+
+  const $help = $('#ac-helpSumaPagos');
+  const diff  = Math.abs(suma - totalVenta);
+
+  if (totalVenta > 0 && diff > 0.05){
+    $help.removeClass('d-none');
+  } else {
+    $help.addClass('d-none');
+  }
+}
+
+function ac_getPagosMixtoValidados(){
+  const totalVenta = num($('#ac-total-venta').val());
+  const $help = $('#ac-helpSumaPagos');
+  const pagos = [];
+  let suma = 0;
+  let error = null;
+
+  $('#ac-tbMixto tr').each(function(){
+    const id_fp = Number($(this).find('.ac-mix-fp').val() || 0);
+    const monto = num($(this).find('.ac-mix-monto').val());
+
+    if (!id_fp && !monto) return; // fila vacía, se ignora
+
+    if (!id_fp || monto <= 0){
+      error = 'Cada renglón de pago mixto debe tener forma de pago y monto mayor a 0.';
+      return false; // break
+    }
+
+    suma += monto;
+    pagos.push({ id_forma_pago: id_fp, monto });
+  });
+
+  if (error) return { ok:false, msg:error };
+
+  if (!pagos.length){
+    return { ok:false, msg:'Agrega al menos un pago en el esquema mixto.' };
+  }
+
+  const diff = Math.abs(suma - totalVenta);
+  if (totalVenta > 0 && diff > 0.05){
+    $help.removeClass('d-none');
+    return { ok:false, msg:'La suma de los pagos no coincide con el total de la venta.' };
+  }
+
+  $help.addClass('d-none');
+  return { ok:true, pagos, suma };
+}
+
+/* ------------ Abrir modal Activar ------------ */
 $(document).on('click','a.accion-activar', function(e){
   e.preventDefault();
   const id = $(this).data('id');
@@ -926,12 +1088,23 @@ $(document).on('click','a.accion-activar', function(e){
   $('#ac-fechaAhora').prop('checked', true);
   AC_TIENE_CLIENTE = false;
   $('#ac-wrapCliente').addClass('d-none').hide();
+  $('#ac-wrapMixto').addClass('d-none');
+  $('#ac-tbMixto').empty();
+  $('#ac-total-venta').val(0);
+  $('#ac-totalVentaTexto').text('$0.00');
+  $('#ac-sumaPagosTexto').text('$0.00');
+  $('#ac-helpSumaPagos').addClass('d-none');
 
   $.get(VENTAS_URL, {accion:'detalle', id_venta:id})
     .done(r=>{
       const v = r?.venta || {};
       AC_TIENE_CLIENTE = !!(v.id_cliente);
       const preIdCliente = v.id_cliente || '';
+
+      // guardamos total de la venta guardada para validar mixto
+      const totalVenta = num(v.total || 0);
+      $('#ac-total-venta').val(totalVenta);
+      $('#ac-totalVentaTexto').text(mxn(totalVenta));
 
       $.get(FORMASPAGO_URL, {accion:'listar_select'})
         .done(rr=>{
@@ -946,6 +1119,7 @@ $(document).on('click','a.accion-activar', function(e){
               '<option value="21">Crédito (PPD)</option>'
             );
             AC_FP_CREDITO_ID = 21;
+            AC_FP_MIXTO_ID   = 3;
           } else {
             arr.forEach(fp=>{
               const opt = $('<option/>', { value: fp.id_forma_pago, text: fp.descripcion });
@@ -955,8 +1129,12 @@ $(document).on('click','a.accion-activar', function(e){
               if (t.includes('credito') && !t.includes('tarjeta')) {
                 AC_FP_CREDITO_ID = fp.id_forma_pago;
               }
+              if (t.includes('mixto')) {
+                AC_FP_MIXTO_ID = fp.id_forma_pago;
+              }
             });
 
+            // seleccionar Efectivo por defecto si existe
             const $ef = $sel.find('option').filter(function(){
               return norm($(this).text()).includes('efectivo');
             });
@@ -979,6 +1157,7 @@ $(document).on('click','a.accion-activar', function(e){
             '<option value="21">Crédito (PPD)</option>'
           );
           AC_FP_CREDITO_ID = 21;
+          AC_FP_MIXTO_ID   = 3;
           ac_toggleClienteRequired();
           $('#modalActivarVenta').modal('show');
         });
@@ -989,25 +1168,44 @@ $(document).on('click','a.accion-activar', function(e){
     });
 });
 
+/* cambio de forma de pago */
 $(document)
   .off('change.acfp', '#ac-selFormaPago')
   .on('change.acfp',  '#ac-selFormaPago', ac_toggleClienteRequired);
 
+/* agregar/eliminar/editar pagos mixtos */
+$(document).on('click', '#ac-btnAddPago', function(){
+  ac_addPagoMixtoRow();
+});
+
+$(document).on('click', '.ac-mix-del', function(){
+  $(this).closest('tr').remove();
+  ac_recalcMixto();
+});
+
+$(document).on('input change', '.ac-mix-monto, .ac-mix-fp', function(){
+  ac_recalcMixto();
+});
+
+/* ------------ Confirmar Activar ------------ */
 $(document)
   .off('click','#btnConfirmarActivar')
   .on('click','#btnConfirmarActivar', function(){
-    const idVenta   = Number($('#ac-id-venta').val());
-    const idForma   = $('#ac-selFormaPago').val() ? Number($('#ac-selFormaPago').val()) : null;
-    const fechaAhora= $('#ac-fechaAhora').is(':checked') ? 1 : 0;
+    const idVenta    = Number($('#ac-id-venta').val());
+    const idFormaSel = $('#ac-selFormaPago').val() ? Number($('#ac-selFormaPago').val()) : null;
+    const fechaAhora = $('#ac-fechaAhora').is(':checked') ? 1 : 0;
 
     if (!idVenta){ return; }
-    if (!idForma){
+
+    const esCredito = ac_esCreditoSeleccionado();
+    const esMixto   = ac_esMixtoSeleccionado();
+
+    const idClienteSel = $('#ac-selCliente').val() ? Number($('#ac-selCliente').val()) : null;
+
+    if (!esMixto && !idFormaSel){
       $('#ac-error').removeClass('d-none').text('Selecciona una forma de pago.');
       return;
     }
-
-    const esCredito = ac_esCreditoSeleccionado();
-    const idClienteSel = $('#ac-selCliente').val() ? Number($('#ac-selCliente').val()) : null;
 
     if (esCredito && !AC_TIENE_CLIENTE && !idClienteSel){
       $('#ac-error').removeClass('d-none').text('Para activar como Crédito debes seleccionar un cliente.');
@@ -1018,13 +1216,29 @@ $(document)
     const html = $btn.html();
     $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Activando...');
 
-    $.post(VENTAS_URL, {
-      accion:'activar-guardada',
-      id_venta:idVenta,
-      id_forma_pago:idForma,
+    const payload = {
+      accion: 'activar-guardada',
+      id_venta: idVenta,
       id_cliente: idClienteSel || '',
-      actualizar_fecha:fechaAhora
-    }, function(r){
+      actualizar_fecha: fechaAhora
+    };
+
+    if (esMixto){
+      const mix = ac_getPagosMixtoValidados();
+      if (!mix.ok){
+        $('#ac-error').removeClass('d-none').text(mix.msg);
+        $btn.prop('disabled', false).html(html);
+        return;
+      }
+
+      payload.tipo_pago     = 'mixto';
+      payload.id_forma_pago = idFormaSel || '';          // guardar "Mixto" en ventas.id_forma_pago
+      payload.pagos         = JSON.stringify(mix.pagos); // renglones de pagos_venta
+    } else {
+      payload.id_forma_pago = idFormaSel;
+    }
+
+    $.post(VENTAS_URL, payload, function(r){
       if (r && r.ok){
         toastr.success(r.msg || 'Venta activada.');
         $('#modalActivarVenta').modal('hide');
@@ -1040,6 +1254,7 @@ $(document)
       $btn.prop('disabled', false).html(html);
     });
 });
+
 
 /* ==========================================================================
    MÓDULO: Editor de venta (modal Editar)
@@ -1443,93 +1658,219 @@ window.abrirEditarVenta = function(idVenta){
   },'json').fail(()=> $errEd.removeClass('d-none').text('Error al cargar la venta.'));
 };
 
+
 /* ==========================================================================
    MÓDULO: Abonos a ventas (modal Abono)
    ========================================================================== */
-function cargarFormasPagoAbono(selected){
+
+   
+// Ids de forma de pago a excluir si fuera necesario (ej. cosas internas)
+const EXCLUDE_FP_IDS_ABONO = [];
+
+// Mantener en memoria las formas de pago que vienen del backend
+window.FORMASPAGO_ABONO = window.FORMASPAGO_ABONO || [];
+
+// Normaliza texto (quita acentos, minúsculas, trim)
+const normTxt = (t) => String(t || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().trim();
+
+// Detecta si una descripción es "Crédito" (pero no "crédito tarjeta" etc.)
+const esCreditoPuro = (desc) => {
+  const txt = normTxt(desc);
+  return /^credito\b/.test(txt) && !/tarjeta/.test(txt);
+};
+
+// Devuelve el id_forma_pago cuya descripción contenga cierta palabra
+function obtenerIdFormaPagoPorTexto(buscar) {
+  const txtBuscar = normTxt(buscar);
+  const fps = window.FORMASPAGO_ABONO || [];
+  const fp = fps.find(f => normTxt(f.descripcion || '').includes(txtBuscar));
+  return fp ? Number(fp.id_forma_pago) : null;
+}
+
+// Verifica si un id_forma_pago corresponde a "Mixto"
+function esFormaPagoMixta(id_fp) {
+  const fps = window.FORMASPAGO_ABONO || [];
+  const fp = fps.find(f => Number(f.id_forma_pago) === Number(id_fp));
+  if (!fp) return false;
+  return /^mixto\b/.test(normTxt(fp.descripcion || ''));
+}
+
+// Muestra/oculta la sección de detalle mixto
+function toggleAbonoMixto(esMixto) {
+  if (esMixto) {
+    $('#wrapAbonoMixto').removeClass('d-none');
+    $('#ab-monto').prop('readonly', true);
+    recalcularTotalMixto();
+  } else {
+    $('#wrapAbonoMixto').addClass('d-none');
+    $('#ab-monto').prop('readonly', false);
+  }
+}
+
+// Recalcula el total del abono cuando es mixto (efectivo + tarjeta)
+function recalcularTotalMixto() {
+  const efe = Number($('#ab-monto-efe').val()) || 0;
+  const tar = Number($('#ab-monto-tar').val()) || 0;
+  const total = efe + tar;
+
+  if (total > 0) {
+    $('#ab-monto').val(total.toFixed(2));
+  } else {
+    $('#ab-monto').val('');
+  }
+
+  $('#ab-total-mixto').text(
+    total.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
+  );
+}
+
+// ------------------------------------------------------------
+// Cargar formas de pago (incluye Mixto, excluye Crédito puro)
+// ------------------------------------------------------------
+function cargarFormasPagoAbono(selected) {
   const $sel = $('#ab-forma');
   if (!$sel.length) return;
 
-  const EXCLUDE_FP_IDS = [];
+  $sel.prop('disabled', true)
+      .empty()
+      .append('<option value="">Cargando…</option>');
 
-  const normTxt = (t)=> String(t||'')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .toLowerCase().trim();
+  $.get(FORMASPAGO_URL, { accion: 'listar_select' })
+    .done(r => {
+      const arr = r?.data || (Array.isArray(r) ? r : []);
 
-  const esCreditoPuro = (desc)=>{
-    const txt = normTxt(desc);
-    return /^credito\b/.test(txt) && !/tarjeta/.test(txt);
-  };
-
-  $sel.prop('disabled', true).empty().append('<option value="">Cargando…</option>');
-
-  $.get(FORMASPAGO_URL, {accion:'listar_select'})
-    .done(r=>{
-      const arr = r?.data || (Array.isArray(r)?r:[]);
       const filtradas = arr.filter(fp => {
         const id   = Number(fp.id_forma_pago);
         const desc = fp.descripcion ?? '';
-        return !EXCLUDE_FP_IDS.includes(id) && !esCreditoPuro(desc);
+        // sacamos crédito puro y lo que tengas en EXCLUDE_FP_IDS_ABONO
+        return !EXCLUDE_FP_IDS_ABONO.includes(id) && !esCreditoPuro(desc);
       });
+
+      // Guardamos la lista global para usarla al armar el JSON de pagos mixtos
+      window.FORMASPAGO_ABONO = filtradas;
 
       $sel.empty();
 
-      if(!filtradas.length){
+      if (!filtradas.length) {
         $sel.append('<option value="">(sin formas de pago)</option>');
       } else {
         filtradas.forEach(fp => {
           $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
         });
 
-        if (selected != null && $sel.find(`option[value="${String(selected)}"]`).length){
+        // Si nos pasaron un seleccionado
+        if (selected != null && $sel.find(`option[value="${String(selected)}"]`).length) {
           $sel.val(String(selected));
         }
 
-        if(!$sel.val()){
-          const opEfe = $sel.find('option').filter(function(){
+        // Si no hay selección aún, intentar poner "Efectivo" por defecto
+        if (!$sel.val()) {
+          const opEfe = $sel.find('option').filter(function () {
             return normTxt($(this).text()) === 'efectivo';
           }).first().val();
-          if(opEfe) $sel.val(opEfe);
+          if (opEfe) $sel.val(opEfe);
         }
       }
+
+      // Disparar el change para activar/ocultar sección Mixto si corresponde
+      $sel.trigger('change');
     })
-    .fail(()=>{
+    .fail(() => {
+      // Fallback duro si no responde el backend
       $sel.empty()
-          .append('<option value="1">Efectivo</option>')
-          .append('<option value="2">Tarjeta de crédito</option>')
-          .append('<option value="3">Tarjeta de débito</option>')
-          .append('<option value="4">Transferencia electrónica de fondos</option>');
+        .append('<option value="1">Efectivo</option>')
+        .append('<option value="2">Tarjeta de crédito</option>')
+        .append('<option value="3">Tarjeta de débito</option>')
+        .append('<option value="4">Transferencia electrónica de fondos</option>');
+
+      window.FORMASPAGO_ABONO = [
+        { id_forma_pago: 1, descripcion: 'Efectivo' },
+        { id_forma_pago: 2, descripcion: 'Tarjeta de crédito' },
+        { id_forma_pago: 3, descripcion: 'Tarjeta de débito' },
+        { id_forma_pago: 4, descripcion: 'Transferencia electrónica de fondos' }
+      ];
+
+      $sel.trigger('change');
     })
-    .always(()=> $sel.prop('disabled', false));
+    .always(() => $sel.prop('disabled', false));
 }
 
-$(document).on('click','a.accion-abonar-venta', function(e){
+// ------------------------------------------------------------
+// Abrir modal de abono
+// ------------------------------------------------------------
+$(document).on('click', 'a.accion-abonar-venta', function (e) {
   e.preventDefault();
-  const id = Number($(this).data('id'));
+  const id    = Number($(this).data('id'));
   const folio = $(this).data('folio') || '—';
-  if(!id) return;
+  if (!id) return;
 
   $('#ab-id-venta').val(id);
   $('#ab-folio').text(folio);
   $('#ab-monto').val('');
-  $('#ab-ref').val('');
+
+  // 👉 Referencia por defecto = folio
+  const refDefault = (folio && folio !== '—') ? folio : '';
+  $('#ab-ref').val(refDefault);
+
+  // 👉 Fecha por defecto = hoy (YYYY-MM-DD)
+  const hoy = new Date();
+  const yyyy = hoy.getFullYear();
+  const mm   = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dd   = String(hoy.getDate()).padStart(2, '0');
+  $('#ab-fecha').val(`${yyyy}-${mm}-${dd}`);
+
   $('#ab-error').addClass('d-none').empty();
 
+  // Reset sección mixta
+  $('#ab-monto-efe, #ab-monto-tar').val('');
+  $('#ab-total-mixto').text('$0.00');
+  toggleAbonoMixto(false);
+
+  // Cargar formas de pago
   cargarFormasPagoAbono();
 
-  $.get(VENTAS_URL,{accion:'detalle', id_venta:id}, function(resp){
-    if(!resp || !resp.venta){
-      toastr.error('No se encontró la venta.'); 
+  // Obtener saldo
+  $.get(VENTAS_URL, { accion: 'detalle', id_venta: id }, function (resp) {
+    if (!resp || !resp.venta) {
+      toastr.error('No se encontró la venta.');
       return;
     }
-    const saldo = Number(resp?.saldo ?? ((Number(resp?.venta?.total||0) - Number(resp?.abonado||0))));
-    $('#ab-saldo').text( Number.isFinite(saldo) ? saldo.toLocaleString('es-MX',{style:'currency',currency:'MXN'}) : '$0.00' );
-    $('#ab-monto').attr('max', Math.max(0, saldo||0));
+
+    const saldo = Number(
+      resp?.saldo ?? ((Number(resp?.venta?.total || 0) - Number(resp?.abonado || 0)))
+    );
+
+    $('#ab-saldo').text(
+      Number.isFinite(saldo)
+        ? saldo.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })
+        : '$0.00'
+    );
+
+    $('#ab-monto').attr('max', Math.max(0, saldo || 0));
     $('#modalAbonarVenta').modal('show');
-  }, 'json').fail(()=> toastr.error('No se pudo obtener el saldo.'));
+  }, 'json').fail(() => toastr.error('No se pudo obtener el saldo.'));
 });
 
-$('#formAbonoVenta').on('submit', function(e){
+// ------------------------------------------------------------
+// Cambio de forma de pago -> activar / desactivar modo mixto
+// ------------------------------------------------------------
+$(document).on('change', '#ab-forma', function () {
+  const id_fp = Number($(this).val()) || 0;
+  const esMixto = esFormaPagoMixta(id_fp);
+  toggleAbonoMixto(esMixto);
+});
+
+// Cuando se capturan montos de efectivo / tarjeta en mixto
+$(document).on('input', '#ab-monto-efe, #ab-monto-tar', function () {
+  recalcularTotalMixto();
+});
+
+// ------------------------------------------------------------
+// Envío del formulario de abono
+// ------------------------------------------------------------
+$('#formAbonoVenta').on('submit', function (e) {
   e.preventDefault();
   const id_venta = Number($('#ab-id-venta').val());
   const monto    = Number($('#ab-monto').val());
@@ -1537,32 +1878,107 @@ $('#formAbonoVenta').on('submit', function(e){
   const fecha    = $('#ab-fecha').val() || '';
   const ref      = $('#ab-ref').val().trim();
 
-  if(!id_venta){ return; }
-  if(!monto || monto<=0){ $('#ab-error').removeClass('d-none').text('Captura un monto válido.'); return; }
-  if(!id_fp){ $('#ab-error').removeClass('d-none').text('Selecciona una forma de pago.'); return; }
+  if (!id_venta) { return; }
+  if (!monto || monto <= 0) {
+    $('#ab-error').removeClass('d-none').text('Captura un monto válido.');
+    return;
+  }
+  if (!id_fp) {
+    $('#ab-error').removeClass('d-none').text('Selecciona una forma de pago.');
+    return;
+  }
+
+  const esMixto = esFormaPagoMixta(id_fp);
+
+  // Validaciones extra para mixto
+  let pagos = null;
+  if (esMixto) {
+    const montoEfe = Number($('#ab-monto-efe').val()) || 0;
+    const montoTar = Number($('#ab-monto-tar').val()) || 0;
+    const suma     = montoEfe + montoTar;
+
+    if (montoEfe <= 0 && montoTar <= 0) {
+      $('#ab-error').removeClass('d-none').text(
+        'Captura al menos un monto en efectivo o tarjeta para el pago mixto.'
+      );
+      return;
+    }
+
+    if (!suma || suma <= 0) {
+      $('#ab-error').removeClass('d-none').text(
+        'La suma del pago mixto debe ser mayor a cero.'
+      );
+      return;
+    }
+
+    // Permitimos una pequeña tolerancia de centavos
+    if (Math.abs(suma - monto) > 0.01) {
+      $('#ab-error').removeClass('d-none').text(
+        'La suma de efectivo y tarjeta debe coincidir con el monto total del abono.'
+      );
+      return;
+    }
+
+    const idEfe = obtenerIdFormaPagoPorTexto('efectivo');
+    const idTar = obtenerIdFormaPagoPorTexto('tarjeta');
+
+    pagos = [];
+
+    if (montoEfe > 0 && idEfe) {
+      pagos.push({
+        id_forma_pago: idEfe,
+        monto: montoEfe,
+        referencia: ref || ('ABONO ' + id_venta)
+      });
+    }
+    if (montoTar > 0 && idTar) {
+      pagos.push({
+        id_forma_pago: idTar,
+        monto: montoTar,
+        referencia: ref || ('ABONO ' + id_venta)
+      });
+    }
+
+    if (!pagos.length) {
+      $('#ab-error').removeClass('d-none').text(
+        'No se pudo armar el detalle del pago mixto (revisa formas de pago).'
+      );
+      return;
+    }
+  }
 
   $('#ab-error').addClass('d-none').empty();
-  const $btn = $('#btnConfirmarAbono'); const bak = $btn.html();
-  $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Guardando…');
+  const $btn = $('#btnConfirmarAbono');
+  const bak = $btn.html();
+  $btn.prop('disabled', true)
+      .html('<span class="spinner-border spinner-border-sm mr-1"></span> Guardando…');
 
-  $.post(VENTAS_URL, {
+  const payload = {
     accion: 'abonar-venta',
     id_venta: id_venta,
     monto: monto,
     id_forma_pago: id_fp,
     fecha_abono: fecha,
     referencia_pago: ref
-  }, function(r){
-    if(r && r.ok){
+  };
+
+  if (esMixto && pagos) {
+    payload.pagos = JSON.stringify(pagos);
+  }
+
+  $.post(VENTAS_URL, payload, function (r) {
+    if (r && r.ok) {
       toastr.success('Abono registrado.');
       $('#modalAbonarVenta').modal('hide');
-      if (typeof cargarVentas === 'function') { cargarVentas(paginaActual || 1); }
+      if (typeof cargarVentas === 'function') {
+        cargarVentas(paginaActual || 1);
+      }
     } else {
       $('#ab-error').removeClass('d-none').text(r?.msg || 'No se pudo registrar el abono.');
     }
-  }, 'json').fail(()=>{
+  }, 'json').fail(() => {
     $('#ab-error').removeClass('d-none').text('Error de comunicación con el servidor.');
-  }).always(()=>{
+  }).always(() => {
     $btn.prop('disabled', false).html(bak);
   });
 });
@@ -1778,12 +2194,13 @@ function printAreaInIframe(el, { page = 'Letter', margin = '12mm' } = {}) {
   };
 }
 
-    // Click imprimir (Carta por defecto; usa {page:'A4'} si prefieres)
-    $(document).off('click','#btnImprimirInvoice').on('click','#btnImprimirInvoice', function(){
-      const area = document.getElementById('invArea');
-      if (!area) return;
-      printAreaInIframe(area, { page: 'Letter', margin: '12mm' });
-    });
-   </script>
+// Click imprimir (Carta por defecto)
+$(document).off('click','#btnImprimirInvoice').on('click','#btnImprimirInvoice', function(){
+  const area = document.getElementById('invArea');
+  if (!area) return;
+  printAreaInIframe(area, { page: 'Letter', margin: '12mm' });
+});
+</script>
+
   </body>
 </html>

@@ -256,8 +256,14 @@ if (!isset($_SESSION['usuario'])) {
     const mxn  = v => Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
     const fix2 = v => (Number(v||0)).toFixed(2);
     const num  = v => parseFloat(v ?? 0) || 0;
-    const normalize = s => (s||'').toString().toLowerCase()
-                            .normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+    const normalize = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+
+    // IDs de formas de pago (AJUSTA según tu catálogo real)
+    const ID_FP = {
+      efectivo: 1,      // 1 = Efectivo
+      tarjeta: 4,       // 4 = Tarjeta (ejemplo)
+      transferencia: 3  // 3 = Transferencia (ejemplo)
+    };
 
     // ============================================================
     // 2) ESTADO EN MEMORIA
@@ -274,12 +280,23 @@ if (!isset($_SESSION['usuario'])) {
     // ============================================================
     function formaPagoSlug(){
       const txt = $('#selFormaPago option:selected').text()?.trim() || '';
-      const t = normalize(txt);
+      const t   = normalize(txt);
+
+      // Primero distinguir los mixtos específicos
+      if (t.includes('mixto') && t.includes('tarjeta')) {
+        return 'mixto_efectivo_tarjeta';       // Mixto (Efectivo + Tarjeta)
+      }
+      if (t.includes('mixto') && t.includes('transfer')) {
+        return 'mixto_efectivo_transferencia'; // Mixto (Efectivo + Transferencia)
+      }
+
+      // Resto de formas de pago "simples"
       if (t.includes('efectivo')) return 'efectivo';
-      if (t.includes('mixto') || t.includes('mixta')) return 'mixto';
       if ((t.includes('credito') || t.includes('crédito')) && !t.includes('tarjeta')) return 'credito';
       if (t.includes('transfer')) return 'transferencia';
       if (t.includes('tarjeta') || t.includes('debito') || t.includes('débito')) return 'tarjeta';
+
+      // Default: tarjeta (por si la descripción no matchea)
       return 'tarjeta';
     }
 
@@ -384,22 +401,20 @@ if (!isset($_SESSION['usuario'])) {
             return;
           }
 
-          let idxDefault = 0;
-          arr.forEach((fp, i)=>{
+          arr.forEach(fp=>{
             sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
-            const d = normalize(fp.descripcion);
-            if (d.includes('efectivo')) idxDefault = i;
           });
 
-          sel.prop('selectedIndex', idxDefault);
+          // 👉 Forzar como default el id_forma_pago = 1 (Efectivo)
+          const idDefault = (arr.find(fp => Number(fp.id_forma_pago) === ID_FP.efectivo) || arr[0]).id_forma_pago;
+          sel.val(idDefault);
         })
         .fail(()=>{
           const sel = $('#selFormaPago').empty();
           sel.append(`
-            <option value="1" selected>Efectivo</option>
-            <option value="2">Tarjeta</option>
-            <option value="3">Mixto</option>
-            <option value="4">Crédito</option>
+            <option value="${ID_FP.efectivo}" selected>Efectivo</option>
+            <option value="${ID_FP.tarjeta}">Tarjeta</option>
+            <option value="">Mixto (configurar)</option>
           `);
         });
     }
@@ -579,14 +594,12 @@ if (!isset($_SESSION['usuario'])) {
             <!-- Cantidad -->
             <td class="text-center">
               <div class="btn-group btn-group-sm" role="group">
-                
                 <input type="number"
                        min="0.01"
                        step="1"
                        class="form-control form-control-sm text-center w-70px"
                        value="${fix2(cantidad)}"
                        data-qty="${idx}">
-                
               </div>
             </td>
 
@@ -629,34 +642,6 @@ if (!isset($_SESSION['usuario'])) {
     $('#tpPrecio').on('change', pintarCarrito);
 
     /* ========== CANTIDAD ========== */
-
-    $('#tablaCarrito').on('click','button[data-inc]',function(){
-      const i = Number(this.dataset.inc);
-      if(isNaN(i) || !carrito[i]) return;
-
-      const vendible = maxVendible(carrito[i]);
-      const actual   = Number(carrito[i].cantidad) || 0;
-      const next     = actual + 1;
-
-      carrito[i].cantidad = next > vendible
-        ? (toastr.info('Se alcanzó el máximo vendible.'), vendible)
-        : next;
-
-      carrito[i].cantidad = Number(carrito[i].cantidad.toFixed(2));
-      pintarCarrito();
-    });
-
-    $('#tablaCarrito').on('click','button[data-dec]',function(){
-      const i = Number(this.dataset.dec);
-      if(isNaN(i) || !carrito[i]) return;
-
-      const actual = Number(carrito[i].cantidad) || 0;
-      let next = actual - 1;
-      if (next < 0.01) next = 0.01;
-
-      carrito[i].cantidad = Number(next.toFixed(2));
-      pintarCarrito();
-    });
 
     $('#tablaCarrito').on('change','input[data-qty]',function(){
       const i = Number(this.dataset.qty);
@@ -754,7 +739,7 @@ if (!isset($_SESSION['usuario'])) {
     // ============================================================
     // 9) REGISTRO DE VENTA
     // ============================================================
-    function registrarVenta({estatus='Activa', pagos={}} = {}){
+    function registrarVenta({estatus='Activa', pagosInfo={}, pagosArr=[]} = {}){
       const slugPrecio = $('#tpPrecio').val();
       const clienteVal = $('#selCliente').val();
       const idCliente  = clienteVal ? Number(clienteVal) : null;
@@ -764,10 +749,12 @@ if (!isset($_SESSION['usuario'])) {
           fecha: $('#fechaVenta').val(),
           estatus,
           id_cliente: idCliente,
+          // forma de pago principal (la del combo)
           id_forma_pago: estatus==='Guardada' ? null : (Number($('#selFormaPago').val()) || null),
           id_tipo_precio: mapTipoPrecioId(slugPrecio),
           tipo_precio_slug: slugPrecio,
-          ...pagos
+          // info solo para mostrar en la alerta (cambio, recibido, etc.)
+          ...pagosInfo
         },
         detalles: carrito.map(it => {
           const unit = precioDeItem(it);
@@ -778,7 +765,9 @@ if (!isset($_SESSION['usuario'])) {
             precio_unitario: unit,
             subtotal: cant * unit
           };
-        })
+        }),
+        // 🔥 Aquí viajan los pagos para tabla pagos_venta
+        pagos: pagosArr
       };
 
       postVenta(payload, (r)=>{
@@ -815,8 +804,8 @@ if (!isset($_SESSION['usuario'])) {
           });
         }
         else {
-          const cambioTxt = (typeof pagos.cambio === 'number')
-            ? `<p><small>Cambio:</small> <b>${mxn(pagos.cambio)}</b></p>` : '';
+          const cambioTxt = (typeof pagosInfo.cambio === 'number')
+            ? `<p><small>Cambio:</small> <b>${mxn(pagosInfo.cambio)}</b></p>` : '';
           Swal.fire({
             icon: 'success',
             title: 'Venta registrada',
@@ -831,6 +820,7 @@ if (!isset($_SESSION['usuario'])) {
           });
         }
 
+        // Reset de pantalla
         carrito=[]; pintarCarrito(); $('#selCliente').val('');
         $('#tpPrecio').val('taller');
         cargarFormasPago();
@@ -847,6 +837,7 @@ if (!isset($_SESSION['usuario'])) {
       const total  = totalActual;
       const fpSlug = formaPagoSlug();
 
+      // ===== Crédito
       if (fpSlug === 'credito'){
         const idCliente = $('#selCliente').val() ? Number($('#selCliente').val()) : null;
         if (!idCliente){
@@ -866,12 +857,17 @@ if (!isset($_SESSION['usuario'])) {
           confirmButtonText:'Registrar crédito'
         }).then(res=>{
           if(res.isConfirmed){
-            registrarVenta({ estatus:'Credito', pagos:{ tipo:'credito' } });
+            registrarVenta({
+              estatus:'Credito',
+              pagosInfo:{ tipo:'credito' },
+              pagosArr:[]
+            });
           }
         });
         return;
       }
 
+      // ===== Efectivo
       if(fpSlug === 'efectivo'){
         Swal.fire({
           title: 'Cobro en efectivo',
@@ -889,46 +885,102 @@ if (!isset($_SESSION['usuario'])) {
         }).then(res=>{
           if(res.isConfirmed){
             const recibido=Number(res.value), cambio=recibido-total;
-            registrarVenta({estatus:'Activa', pagos:{ tipo:'efectivo', recibido, cambio }});
-          }
-        });
-        return;
-      }
 
-      if(fpSlug === 'mixto'){
-        Swal.fire({
-          title:'Cobro mixto',
-          html:`<div class="text-start">
-            <p>Total a pagar: <b>${mxn(total)}</b></p>
-            <div class="mb-2"><label class="form-label">Efectivo</label>
-              <input id="m_efectivo" type="number" min="0" step="0.01" class="swal2-input" style="width:auto" value="${fix2(total)}">
-            </div>
-            <div class="mb-2"><label class="form-label">Tarjeta</label>
-              <input id="m_tarjeta" type="number" min="0" step="0.01" class="swal2-input" style="width:auto" value="0.00">
-            </div>
-          </div>`,
-          focusConfirm:false, showCancelButton:true, confirmButtonText:'Cobrar',
-          preConfirm:()=>{
-            const ef=Number(document.getElementById('m_efectivo').value||0);
-            const tj=Number(document.getElementById('m_tarjeta').value||0);
-            if((ef+tj)<total){
-              Swal.showValidationMessage('Efectivo + tarjeta debe ser ≥ total.');
-              return false;
-            }
-            return {ef,tj};
-          }
-        }).then(res=>{
-          if(res.isConfirmed){
-            const {ef,tj}=res.value; const cambio=Math.max(0,(ef+tj)-total);
+            const pagosArr = [{
+              id_forma_pago: ID_FP.efectivo,
+              tipo: 'efectivo',
+              monto: total,
+              referencia: ''
+            }];
+
             registrarVenta({
               estatus:'Activa',
-              pagos:{ tipo:'mixto', recibido_efectivo:ef, recibido_tarjeta:tj, cambio }
+              pagosInfo:{ tipo:'efectivo', recibido, cambio },
+              pagosArr
             });
           }
         });
         return;
       }
 
+      // ===== Mixtos
+      if (fpSlug === 'mixto_efectivo_tarjeta' || fpSlug === 'mixto_efectivo_transferencia') {
+        const labelSecundaria = fpSlug === 'mixto_efectivo_tarjeta'
+          ? 'Tarjeta'
+          : 'Transferencia';
+
+        Swal.fire({
+          title:'Cobro mixto',
+          html:`<div class="text-start">
+            <p>Total a pagar: <b>${mxn(total)}</b></p>
+            <div class="mb-2">
+              <label class="form-label">Efectivo</label>
+              <input id="m_efectivo" type="number" min="0" step="0.01" class="swal2-input" style="width:auto" value="${fix2(total)}">
+            </div>
+            <div class="mb-2">
+              <label class="form-label">${labelSecundaria}</label>
+              <input id="m_secundario" type="number" min="0" step="0.01" class="swal2-input" style="width:auto" value="0.00">
+            </div>
+          </div>`,
+          focusConfirm:false,
+          showCancelButton:true,
+          confirmButtonText:'Cobrar',
+          preConfirm:()=>{
+            const ef = Number(document.getElementById('m_efectivo').value || 0);
+            const ms = Number(document.getElementById('m_secundario').value || 0);
+            if ((ef + ms) < total) {
+              Swal.showValidationMessage('La suma de los montos debe ser ≥ total.');
+              return false;
+            }
+            return { ef, ms };
+          }
+        }).then(res=>{
+          if(res.isConfirmed){
+            const {ef, ms} = res.value;
+            const cambio = Math.max(0, (ef + ms) - total);
+
+            const pagosArr = [];
+
+            // Efectivo
+            if (ef > 0) {
+              pagosArr.push({
+                id_forma_pago: ID_FP.efectivo,
+                tipo: 'efectivo',
+                monto: ef,
+                referencia: ''
+              });
+            }
+
+            // Segundo medio (tarjeta o transferencia)
+            const tipoSec = (fpSlug === 'mixto_efectivo_tarjeta' ? 'tarjeta' : 'transferencia');
+            const idFPsec = (fpSlug === 'mixto_efectivo_tarjeta'
+                             ? ID_FP.tarjeta
+                             : ID_FP.transferencia);
+
+            if (ms > 0) {
+              pagosArr.push({
+                id_forma_pago: idFPsec,
+                tipo: tipoSec,
+                monto: ms,
+                referencia: ''
+              });
+            }
+
+            const pagosInfo = {
+              tipo:'mixto',
+              recibido_efectivo: ef,
+              cambio
+            };
+            if (tipoSec === 'tarjeta') pagosInfo.recibido_tarjeta = ms;
+            else pagosInfo.recibido_transferencia = ms;
+
+            registrarVenta({ estatus:'Activa', pagosInfo, pagosArr });
+          }
+        });
+        return;
+      }
+
+      // ===== Tarjeta / Transferencia "simples"
       if (fpSlug === 'tarjeta' || fpSlug === 'transferencia'){
         Swal.fire({
           title: (fpSlug==='tarjeta'?'Cobro con tarjeta':'Cobro por transferencia'),
@@ -936,7 +988,19 @@ if (!isset($_SESSION['usuario'])) {
           icon:'question', showCancelButton:true, confirmButtonText:'Confirmar'
         }).then(res=>{
           if(res.isConfirmed){
-            registrarVenta({estatus:'Activa', pagos:{ tipo:fpSlug }});
+            const idFP = (fpSlug==='tarjeta' ? ID_FP.tarjeta : ID_FP.transferencia);
+            const pagosArr = [{
+              id_forma_pago: idFP,
+              tipo: fpSlug,
+              monto: total,
+              referencia: ''
+            }];
+
+            registrarVenta({
+              estatus:'Activa',
+              pagosInfo:{ tipo:fpSlug },
+              pagosArr
+            });
           }
         });
         return;
