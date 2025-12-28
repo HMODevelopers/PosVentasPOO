@@ -722,7 +722,8 @@ session_start();
       it.cantidad = Number(next.toFixed(2));
       pintarCarrito();
     });*/
------------------------------------------------------------------------------
+    
+    /*-----------------------------------------------------------------------------*/
     $('#tablaCarrito').on('change','input[data-qty]',function(){
       const i = Number(this.dataset.qty);
       if(isNaN(i) || !carrito[i]) return;
