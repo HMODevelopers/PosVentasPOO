@@ -1,5 +1,8 @@
 <?php
 // controllers/FormasPagoController.php
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
+
 header('Content-Type: application/json; charset=utf-8');
 
 include_once '../models/FormasPagoModel.php';

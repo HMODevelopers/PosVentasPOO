@@ -1,23 +1,38 @@
 <?php
-// Detectar si estamos en local o en el servidor
-$isLocal = in_array($_SERVER['HTTP_HOST'], ['localhost', '127.0.0.1']);
+function loadEnv(string $path): void {
+    if (!is_readable($path)) {
+        return;
+    }
 
-// Configuración dinámica según el entorno
-if ($isLocal) {
-    // Configuración local
-    define('DB_HOST', 'localhost');
-    define('DB_NAME', 'refacc26_ventas_db');
-    define('DB_USER', 'root');
-    define('DB_PASS', '');
-} else {
-    // Configuración para servidor (CPanel)
-    define('DB_HOST', 'localhost');
-    define('DB_NAME', 'refacc26_ventas_db');
-    define('DB_USER', 'refacc26_root');
-    define('DB_PASS', 'REFACCIONARIA123456789');
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (strpos(trim($line), '#') === 0) {
+            continue;
+        }
+
+        [$key, $value] = array_pad(explode('=', $line, 2), 2, '');
+        $key   = trim($key);
+        $value = trim($value, " \t\n\r\0\x0B\"");
+
+        if ($key !== '' && getenv($key) === false) {
+            putenv("{$key}={$value}");
+            $_ENV[$key] = $value;
+        }
+    }
 }
 
-define('DB_CHARSET', 'utf8mb4');
+function env(string $key, $default = null) {
+    $value = $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key);
+    return ($value === false || $value === null || $value === '') ? $default : $value;
+}
+
+loadEnv(__DIR__ . '/../.env');
+
+define('DB_HOST', env('DB_HOST', 'localhost'));
+define('DB_NAME', env('DB_NAME', 'refacc26_ventas_db'));
+define('DB_USER', env('DB_USER', 'root'));
+define('DB_PASS', env('DB_PASS', ''));
+define('DB_CHARSET', env('DB_CHARSET', 'utf8mb4'));
+$dbPort = env('DB_PORT', '');
 
 // Opciones de PDO seguras
 $options = [
@@ -27,7 +42,11 @@ $options = [
 ];
 
 try {
-    $dsn = "mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=".DB_CHARSET;
+    $dsn = "mysql:host=" . DB_HOST;
+    if (!empty($dbPort)) {
+        $dsn .= ";port=" . $dbPort;
+    }
+    $dsn .= ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
     $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
 } catch (PDOException $e) {
     if (ini_get('display_errors')) {

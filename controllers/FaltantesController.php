@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
 require_once __DIR__ . '/../models/FaltantesModel.php';
 $model = new FaltantesModel();
 

@@ -1,14 +1,11 @@
 <?php
 // controllers/PermisosController.php
-session_start();
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
+
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/config.php';
-
-// Requiere ser admin (id_rol == 1) o quien tú definas
-if (!isset($_SESSION['usuario']) || (int)$_SESSION['usuario']['id_rol'] !== 1) {
-  http_response_code(403);
-  echo json_encode(['ok'=>false,'msg'=>'No autorizado']); exit;
-}
 
 header('Content-Type: application/json');
 

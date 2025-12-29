@@ -1,6 +1,11 @@
 <?php
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
+
 header('Content-Type: application/json; charset=UTF-8');
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 include_once '../models/CajaModel.php';
 $cajaModel = new CajaModel();

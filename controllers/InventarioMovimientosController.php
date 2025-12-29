@@ -1,5 +1,7 @@
 <?php
 // No ponemos header JSON global para no estorbar el Excel.
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
 
 include_once '../models/InventarioMovimientoModel.php';
 

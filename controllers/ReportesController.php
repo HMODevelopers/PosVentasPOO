@@ -1,6 +1,9 @@
 <?php
 // controllers/ReportesController.php
 
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
+
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once '../models/ReporteModel.php';
 $model = new ReporteModel();

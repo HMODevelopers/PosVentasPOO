@@ -1,5 +1,8 @@
 <?php
 // controllers/CatGruposController.php
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
+
 header('Content-Type: application/json; charset=UTF-8');
 
 include_once __DIR__ . '/../models/CatGrupoModel.php';

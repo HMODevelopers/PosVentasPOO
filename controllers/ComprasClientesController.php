@@ -1,16 +1,13 @@
 <?php
 // controllers/ComprasClientesController.php
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
+
 header('Content-Type: application/json; charset=UTF-8');
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/../models/ComprasClientesModel.php';
 require_once __DIR__ . '/../includes/db.php'; // asegura $pdo
-
-if (!isset($_SESSION['usuario'])) {
-    http_response_code(401);
-    echo json_encode(['ok'=>false, 'msg'=>'Sesión expirada']);
-    exit;
-}
 
 // Adapta a tu estructura real de sesión.
 $usuarioSesion = $_SESSION['usuario'];

@@ -53,55 +53,23 @@ PosVentasPOO/
 
    ```bash
    git clone https://github.com/tuusuario/PosVentasPOO.git
-Importa la base de datos:
+   cd PosVentasPOO
+   ```
 
-Crea una base de datos en tu servidor (por ejemplo: pos_db)
+2. **Configura las variables de entorno:**
+   - Copia el archivo de ejemplo y completa tus credenciales reales:
+     ```bash
+     cp .env.example .env
+     ```
+   - Edita `.env` con los datos de conexión (host, puerto, usuario, contraseña, base de datos). El archivo real `.env` está en `.gitignore`, por lo que puedes versionar el proyecto con seguridad.
 
-Importa el archivo db/pos.sql usando phpMyAdmin u otra herramienta
+3. **Importa la base de datos:**
+   - Crea una base de datos en tu servidor (por ejemplo: `pos_db`).
+   - Importa el archivo `db/pos.sql` usando phpMyAdmin, MySQL Workbench o la CLI.
 
-Edita la conexión a la base de datos:
+4. **Configura el servidor web:**
+   - Asegúrate de que `.htaccess` esté activo y que tu servidor tenga habilitado `mod_rewrite`.
+   - Coloca el proyecto en el directorio público de tu servidor o configura tu host virtual apuntando a la carpeta del proyecto.
 
-En Includes/db.php, coloca tus datos reales:
-
-php
-Copiar
-Editar
-define('DB_HOST', 'localhost');
-define('DB_USER', 'TU_USUARIO');
-define('DB_PASS', 'TU_CONTRASEÑA');
-define('DB_NAME', 'pos_db');
-Activa URLs amigables:
-
-Asegúrate de que .htaccess esté activo y que tu servidor tenga habilitado mod_rewrite.
-
-🔐 Funcionalidades
-Inicio de sesión y control de acceso
-
-Registro y gestión de productos
-
-Control de clientes
-
-Ventas con detalle de ticket
-
-Registro de abonos/pagos
-
-Reportes de ventas
-
-Control de caja
-
-🔧 Tecnologías utilizadas
-PHP 8 (POO sin frameworks)
-
-MySQL
-
-AJAX + jQuery
-
-HTML5 + CSS3
-
-Bootstrap (opcional)
-
-Patrón MVC personalizado
-
-📄 Licencia
-Este sistema es de uso libre para fines educativos y comerciales.
-Desarrollado por Carlos Lafarga.
+5. **Listo para usar:**
+   - Accede a la URL configurada y utiliza las credenciales iniciales definidas en los datos de prueba.

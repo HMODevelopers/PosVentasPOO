@@ -1,7 +1,11 @@
 <?php
 require_once '../includes/config.php';
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 session_unset();
 session_destroy();
 

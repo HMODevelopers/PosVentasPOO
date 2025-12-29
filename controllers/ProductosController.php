@@ -1,6 +1,8 @@
 <?php
 // NOTA: evitamos fijar aquí el header JSON global para no estorbar al Excel.
 // Ponemos el header JSON en cada case que devuelve JSON.
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__);
 
 include_once '../models/ProductoModel.php';
 $productoModel = new ProductoModel();

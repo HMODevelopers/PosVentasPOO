@@ -7,6 +7,8 @@ ini_set('session.gc_maxlifetime', (string)$SESSION_LIFETIME);
 session_set_cookie_params($SESSION_LIFETIME);
 
 session_start();
+require_once __DIR__ . '/../includes/controller_guard.php';
+controller_guard(__FILE__, null, false);
 require_once '../includes/db.php';
 require_once '../includes/acl.php';
 
