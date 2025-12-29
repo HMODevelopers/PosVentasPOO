@@ -6,6 +6,18 @@ require __DIR__ . '/../models/VentaModel.php';
 /* ============ HELPERS ============ */
 function mxn($n){ return '$'.number_format((float)$n, 2, '.', ','); }
 function fechaMx($s){ $d = $s ? new DateTime($s) : new DateTime(); return $d->format('d/m/Y h:i a'); }
+function fmtCantidad($cantidad): string {
+    $raw = trim((string)$cantidad);
+    if ($raw === '') return '0';
+    $norm = str_replace(',', '.', $raw);
+    if (!is_numeric($norm)) {
+        $norm = (string)(float)$cantidad;
+    }
+    if (strpos($norm, '.') !== false) {
+        $norm = rtrim(rtrim($norm, '0'), '.');
+    }
+    return $norm === '' ? '0' : $norm;
+}
 
 /* ============ VALIDAR PARAMS ============ */
 $idVenta = isset($_GET['id_venta']) ? (int)$_GET['id_venta'] : 0;
@@ -86,7 +98,7 @@ function itemRow($cantidad, $codigo, $descripcion, $precio, $importe) {
     $descW = COLS - $cantW - $precW - $impW - 2;
 
     // Cantidad centrada
-    $cantTxt = rtrim(rtrim(number_format((float)$cantidad, 2, '.', ''), '0'), '.');
+    $cantTxt = fmtCantidad($cantidad);
     $cantCell = padCenter($cantTxt, $cantW);
 
     // Concatenar código al final de la descripción

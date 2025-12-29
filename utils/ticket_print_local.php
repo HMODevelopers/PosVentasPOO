@@ -39,6 +39,18 @@ function outJson(array $data, int $status=200): void {
   exit;
 }
 function mxn($n){ return '$'.number_format((float)$n, 2, '.', ','); }
+function fmtCantidad($cantidad): string {
+  $raw = trim((string)$cantidad);
+  if ($raw === '') return '0';
+  $norm = str_replace(',', '.', $raw);
+  if (!is_numeric($norm)) {
+    $norm = (string)(float)$cantidad;
+  }
+  if (strpos($norm, '.') !== false) {
+    $norm = rtrim(rtrim($norm, '0'), '.');
+  }
+  return $norm === '' ? '0' : $norm;
+}
 function fechaMx($s){ $d=$s?new DateTime($s):new DateTime(); return $d->format('d/m/Y h:i a'); }
 
 const COLS=42; const CANT_W=6; const PREC_W=10; const IMP_W=10; const GAP=2;
@@ -63,7 +75,7 @@ function wrapLines($text,$width=DESC_W){
 }
 function itemRow($cantidad,$codigo,$descripcion,$precio,$importe){
   $cantW=6;$impW=10;$precW=10;$descW=COLS-$cantW-$precW-$impW-2;
-  $cantTxt=rtrim(rtrim(number_format((float)$cantidad,2,'.',''),'0'),'.');
+  $cantTxt=fmtCantidad($cantidad);
   $cantCell=padCenter($cantTxt,$cantW);
   if(!empty($codigo)) $descripcion="[$codigo] ".$descripcion;
   $precTxt=mxn($precio); $impTxt=mxn($importe);

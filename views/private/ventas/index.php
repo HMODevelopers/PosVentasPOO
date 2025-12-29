@@ -789,9 +789,23 @@ function armarArticuloLineaJS(codigo, producto, descripcion, max = MAX_ART_CHARS
   return limitarTextoJS(prefix + base, max);
 }
 
+function formatCantidadJS(value){
+  const raw = (value ?? '').toString().trim();
+  if (!raw) return '0';
+  const normalized = raw.replace(',', '.');
+  if (!Number.isNaN(Number(normalized))) {
+    return normalized.includes('.')
+      ? normalized.replace(/0+$/, '').replace(/\.$/, '') || '0'
+      : normalized;
+  }
+  // Último recurso: usa el número nativo sin redondear la representación de cadena
+  const num = Number(value || 0);
+  const txt = num.toString();
+  return txt.includes('.') ? txt.replace(/0+$/, '').replace(/\.$/, '') : txt;
+}
+
 function renderTkItem({ cantidad, articulo, precio_unitario, subtotal }){
-  const cant   = (Number(cantidad || 0)).toFixed(2)
-                  .replace(/\.00$/, '.0').replace(/\.0$/, '').replace(/\.$/, '');
+  const cant   = formatCantidadJS(cantidad);
   const precio = mxn(precio_unitario || 0);
   const total  = mxn(subtotal || 0);
   return `
@@ -858,9 +872,9 @@ window.abrirTicket = function(idVenta){
 
     let html = '', total = 0;
     det.forEach(d=>{
-      const c = Number(d.cantidad || 0);
+      const cantNum = Number((d.cantidad ?? 0).toString().replace(',','.'));
       const u = Number(d.precio_unitario || 0);
-      const s = Number(d.subtotal ?? (c * u));
+      const s = Number(d.subtotal ?? (cantNum * u));
       total += s;
 
       const codigo      = d.codigo || d.clave || d.sku || '';
@@ -869,7 +883,7 @@ window.abrirTicket = function(idVenta){
       const articulo    = armarArticuloLineaJS(codigo, producto, descripcion, MAX_ART_CHARS);
 
       html += renderTkItem({
-        cantidad: c,
+        cantidad: d.cantidad,
         articulo,
         precio_unitario: u,
         subtotal: s

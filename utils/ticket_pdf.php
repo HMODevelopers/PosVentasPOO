@@ -10,6 +10,22 @@ require __DIR__ . '/../models/VentaModel.php';
 /* ===================== Helpers ===================== */
 function mxn($n){ return '$'.number_format((float)$n, 2, '.', ','); }
 function fechaMx($s){ $d = $s ? new DateTime($s) : new DateTime(); return $d->format('d/m/Y h:i a'); }
+function fmtCantidad($cantidad): string {
+  $raw = trim((string)$cantidad);
+  if ($raw === '') return '0';
+
+  // Normaliza separador decimal sin alterar los decimales originales
+  $norm = str_replace(',', '.', $raw);
+  if (!is_numeric($norm)) {
+    $norm = (string)(float)$cantidad;
+  }
+
+  if (strpos($norm, '.') !== false) {
+    $norm = rtrim(rtrim($norm, '0'), '.');
+  }
+
+  return $norm === '' ? '0' : $norm;
+}
 
 // 203 dpi ⇒ 1 dot ≈ 25.4/203 ≈ 0.125 mm
 function mmPorDot(int $dpi = 203): float { return 25.4 / $dpi; }
@@ -260,7 +276,8 @@ $pdf->SetFont('Courier', $BODY_STYLE, $FS_BODY);
 $totalCalc = 0.0;
 
 foreach ($detalles as $d) {
-  $cant   = (float)($d['cantidad'] ?? 0);
+  $cantRaw = $d['cantidad'] ?? 0;
+  $cant   = (float)$cantRaw;
   $precio = (float)($d['precio_unitario'] ?? 0);
   $imp    = isset($d['subtotal']) ? (float)$d['subtotal'] : $cant * $precio;
   $totalCalc += $imp;
@@ -276,7 +293,7 @@ foreach ($detalles as $d) {
 
   // CANT (oscurecida) — sin salto
   $pdf->SetFont('Courier','B', $FS_BODY);
-  $cellDark($pdf, $W_CANT, $LH, rtrim(rtrim(number_format($cant,2,'.',''),'0'),'.'), 'L', false);
+  $cellDark($pdf, $W_CANT, $LH, fmtCantidad($cantRaw), 'L', false);
   $pdf->SetFont('Courier', $BODY_STYLE, $FS_BODY);
 
   // ART (multilínea según ancho)
