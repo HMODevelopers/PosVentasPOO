@@ -27,9 +27,9 @@ function env(string $key, $default = null) {
 
 loadEnv(__DIR__ . '/../.env');
 
-define('DB_HOST', env('DB_HOST', 'localhost'));
-define('DB_NAME', env('DB_NAME', 'refacc26_ventas_db'));
-define('DB_USER', env('DB_USER', 'root'));
+define('DB_HOST', env('DB_HOST', ''));
+define('DB_NAME', env('DB_NAME', ''));
+define('DB_USER', env('DB_USER', ''));
 define('DB_PASS', env('DB_PASS', ''));
 define('DB_CHARSET', env('DB_CHARSET', 'utf8mb4'));
 $dbPort = env('DB_PORT', '');
