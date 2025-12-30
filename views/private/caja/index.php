@@ -285,9 +285,11 @@ session_start();
 
     // IDs de formas de pago (AJUSTA según tu catálogo real)
     const ID_FP = {
-      efectivo: 1,      // 1 = Efectivo
-      tarjeta: 4,       // 4 = Tarjeta (ejemplo)
-      transferencia: 3  // 3 = Transferencia (ejemplo)
+      efectivo: 1,           // 1 = Efectivo
+      tarjeta: 4,            // 4 = Tarjeta (crédito)
+      tarjetaCredito: 4,     // 4 = Tarjeta de crédito
+      tarjetaDebito: 28,     // 28 = Tarjeta de débito
+      transferencia: 3       // 3 = Transferencia (ejemplo)
     };
 
     // ============================================================
@@ -1009,9 +1011,19 @@ session_start();
               <label class="form-label">Efectivo</label>
               <input id="m_efectivo" type="number" min="0" step="0.01" class="swal2-input" style="width:auto" value="${fix2(total)}">
             </div>
+            ${fpSlug === 'mixto_efectivo_tarjeta' ? `
+              <div class="mb-2">
+                <label class="form-label">Tipo de tarjeta</label>
+                <select id="m_tipo_tarjeta" class="swal2-select" style="width:auto">
+                  <option value="">Selecciona…</option>
+                  <option value="credito">Tarjeta de crédito</option>
+                  <option value="debito">Tarjeta de débito</option>
+                </select>
+              </div>
+            ` : ''}
             <div class="mb-2">
               <label class="form-label">${labelSecundaria}</label>
-              <input id="m_secundario" type="number" min="0" step="0.01" class="swal2-input" style="width:auto" value="0.00">
+              <input id="m_secundario" type="number" min="0" step="0.01" class="swal2-input" style="width:auto" value="0.00" ${fpSlug === 'mixto_efectivo_tarjeta' ? 'disabled' : ''}>
             </div>
           </div>`,
           focusConfirm:false,
@@ -1020,15 +1032,36 @@ session_start();
           preConfirm:()=>{
             const ef = Number(document.getElementById('m_efectivo').value || 0);
             const ms = Number(document.getElementById('m_secundario').value || 0);
-            if ((ef + ms) < total) {
-              Swal.showValidationMessage('La suma de los montos debe ser ≥ total.');
+            const tipoTarjeta = document.getElementById('m_tipo_tarjeta')?.value || '';
+
+            if (ms > 0 && fpSlug === 'mixto_efectivo_tarjeta' && !tipoTarjeta) {
+              Swal.showValidationMessage('Selecciona el tipo de tarjeta para capturar el monto.');
               return false;
             }
-            return { ef, ms };
+
+            const suma = Number(fix2(ef + ms));
+            const totalRed = Number(fix2(total));
+            if (suma !== totalRed) {
+              Swal.showValidationMessage('La suma de los montos debe coincidir con el total.');
+              return false;
+            }
+
+            return { ef, ms, tipoTarjeta };
+          },
+          didOpen:()=>{
+            const $tipo = document.getElementById('m_tipo_tarjeta');
+            const $montoTar = document.getElementById('m_secundario');
+            if ($tipo && $montoTar) {
+              $tipo.addEventListener('change', ()=>{
+                const tieneTipo = !!$tipo.value;
+                $montoTar.disabled = !tieneTipo;
+                if (!tieneTipo) { $montoTar.value = '0.00'; }
+              });
+            }
           }
         }).then(res=>{
           if(res.isConfirmed){
-            const {ef, ms} = res.value;
+            const {ef, ms, tipoTarjeta} = res.value;
             const cambio = Math.max(0, (ef + ms) - total);
 
             const pagosArr = [];
@@ -1046,7 +1079,7 @@ session_start();
             // Segundo medio (tarjeta o transferencia)
             const tipoSec = (fpSlug === 'mixto_efectivo_tarjeta' ? 'tarjeta' : 'transferencia');
             const idFPsec = (fpSlug === 'mixto_efectivo_tarjeta'
-                             ? ID_FP.tarjeta
+                             ? (tipoTarjeta === 'debito' ? ID_FP.tarjetaDebito : ID_FP.tarjetaCredito)
                              : ID_FP.transferencia);
 
             if (ms > 0) {
