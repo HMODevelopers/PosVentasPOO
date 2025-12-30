@@ -321,6 +321,20 @@ class VentaModel
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
+    public function obtenerPagosVenta($idVenta)
+    {
+        $st = $this->conn->prepare(
+            "SELECT pv.*, fp.descripcion
+               FROM pagos_venta pv
+               LEFT JOIN formas_pago fp ON fp.id_forma_pago = pv.id_forma_pago
+              WHERE pv.id_venta = :id
+                AND (pv.activo = 1 OR pv.activo IS NULL)"
+        );
+        $st->bindValue(':id',$idVenta,\PDO::PARAM_INT);
+        $st->execute();
+        return $st->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
     /* ========================= Folios ========================= */
     public function sugerirFolioPorFecha(?string $fecha = null): array
     {
@@ -382,7 +396,7 @@ class VentaModel
      * - Usa el folio como referencia_pago.
      * - Soporta efectivo, tarjeta, transferencia y mixto (2 renglones).
      */
-    private function registrarPagosVenta(int $idVenta,string $folio,string $estatusBD,float $total,array $datosVenta): void 
+    private function registrarPagosVenta(int $idVenta,string $folio,string $estatusBD,float $total,array $datosVenta): void
     {
         // Guardada o Crédito: no registrar pagos aquí
         if (strcasecmp($estatusBD, 'Activa') !== 0) {
@@ -444,6 +458,38 @@ class VentaModel
         }
 
         // Para tipo 'credito' no se registra aquí; se utiliza ventas_abonos.
+    }
+
+    private function reemplazarPagosVenta(int $idVenta, string $folio, string $estatusBD, float $total, ?int $idFormaPago, ?array $pagos = null): void
+    {
+        $this->conn->prepare("DELETE FROM pagos_venta WHERE id_venta = :id")->execute([':id'=>$idVenta]);
+
+        if (strcasecmp($estatusBD, 'Activa') !== 0) {
+            return;
+        }
+
+        $pagosArr = is_array($pagos) ? $pagos : [];
+        if (!empty($pagosArr)) {
+            $suma = 0.0;
+            foreach ($pagosArr as $p) {
+                $idFp  = (int)($p['id_forma_pago'] ?? 0);
+                $monto = (float)($p['monto'] ?? 0);
+                if ($idFp <= 0 || $monto <= 0) {
+                    throw new \Exception('Cada pago del esquema mixto debe tener forma de pago y monto mayor a 0.');
+                }
+                $suma += $monto;
+                $this->insertarPagoVenta($idVenta, $idFp, $monto, $folio);
+            }
+
+            if ($total > 0 && abs($suma - $total) > 0.05) {
+                throw new \Exception('La suma de los pagos mixtos no coincide con el total de la venta.');
+            }
+            return;
+        }
+
+        if ($idFormaPago !== null && $idFormaPago > 0) {
+            $this->insertarPagoVenta($idVenta, $idFormaPago, $total, $folio);
+        }
     }
 
     /* ========================= Crear venta ========================= */
@@ -728,7 +774,7 @@ class VentaModel
     }
 
     /* ========================= Editar venta ========================= */
-    public function actualizarVenta(array $datosVenta, ?array $detalles = null)
+    public function actualizarVenta(array $datosVenta, ?array $detalles = null, ?array $pagosMixtos = null)
     {
         try {
             $this->conn->beginTransaction();
@@ -811,6 +857,9 @@ class VentaModel
             }
 
             /* ===== CON DETALLE ===== */
+            if ($pagosMixtos !== null && !is_array($pagosMixtos)) {
+                $pagosMixtos = [];
+            }
             $stDetAct = $this->conn->prepare(
                 "SELECT id_producto, cantidad, precio_unitario
                  FROM ventas_detalle
@@ -937,6 +986,8 @@ class VentaModel
             $stUpV->bindValue(':estatus',$estatusBD);
             $stUpV->bindValue(':id',$idVenta,\PDO::PARAM_INT);
             $stUpV->execute();
+
+            $this->reemplazarPagosVenta($idVenta, $folioVenta, $estatusBD, $totalNuevo, $idFormaPago, $pagosMixtos);
 
             $this->registrarBitacora(
                 $idUsuario,'ventas','UPDATE',$idVenta,'Edición de venta',

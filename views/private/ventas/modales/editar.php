@@ -39,6 +39,20 @@
                   </div>
                 </div>
 
+                <div id="ed-wrapMixto" class="row g-2 mb-2 d-none">
+                  <div class="col-12 col-md-3">
+                    <label class="form-label mb-1">Efectivo</label>
+                    <input type="number" min="0" step="0.01" class="form-control" id="ed-mixto-efectivo" value="0">
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <label class="form-label mb-1">Tarjeta</label>
+                    <input type="number" min="0" step="0.01" class="form-control" id="ed-mixto-tarjeta" value="0">
+                  </div>
+                  <div class="col-12 col-md-6 d-flex align-items-end">
+                    <div class="text-muted small" id="ed-helpMixto">La suma debe coincidir con el total de la venta.</div>
+                  </div>
+                </div>
+
                 <!-- Info fija (solo informativa) -->
                 <div class="row g-2 mb-2">
                   <div class="col-sm-4">
@@ -74,6 +88,7 @@
                         <tr>
                           <th>Producto</th>
                           <th class="text-center" style="width:210px;">Cant.</th>
+                          <th class="text-end" style="width:140px;">Costo unitario</th>
                           <th class="text-end" style="width:160px;">Subtotal</th>
                           <th class="text-end" style="width:54px;"></th>
                         </tr>

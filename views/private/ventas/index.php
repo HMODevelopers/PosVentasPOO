@@ -1335,10 +1335,16 @@ const $tbody     = $('#ed-tbody');
 const $totalEd   = $('#ed-total');
 const $btnSave   = $('#btnGuardarEdicion');
 const $errEd     = $('#ed-error');
+const $wrapMixto = $('#ed-wrapMixto');
+const $mixEfec   = $('#ed-mixto-efectivo');
+const $mixTar    = $('#ed-mixto-tarjeta');
+const $mixHelp   = $('#ed-helpMixto');
 
 let edVentaId = 0;
 let carrito   = [];
 let debTimer = null;
+let pagosVenta = [];
+let edIdsPago = { efectivo:null, tarjeta:null, mixto:null };
 
 function vendibleDe(det){ return Math.max(0, num(det.stock_actual ?? det.existencia) - num(det.stock_minimo)); }
 function mapTipoPrecioId(slug){ const m={publico:1, taller:2, proveedor:3}; return m[slug]||1; }
@@ -1379,6 +1385,18 @@ function cargarClientes(selected){
     });
 }
 
+function ed_setIdsPago(){
+  edIdsPago = {efectivo:null, tarjeta:null, mixto:null};
+  $selForma.find('option').each(function(){
+    const val = $(this).val();
+    const txt = norm($(this).text());
+    if (!val) return;
+    if (txt.includes('mixto')) edIdsPago.mixto = Number(val);
+    if (txt.includes('efectivo')) edIdsPago.efectivo = Number(val);
+    if (txt.includes('tarjeta')) edIdsPago.tarjeta = Number(val);
+  });
+}
+
 function cargarFormasPago(selected, fallbackText){
   $.get(`${FORMASPAGO_URL}`,{accion:'listar_select'})
     .done(r=>{
@@ -1395,11 +1413,14 @@ function cargarFormasPago(selected, fallbackText){
         $selForma.append(opt);
       });
 
+      ed_setIdsPago();
+
       if (selected!=null) {
         $selForma.val(String(selected));
       } else if (fallbackText){
         $selForma.find('option').filter(function(){return $(this).text()===fallbackText;}).prop('selected',true);
       }
+      ed_toggleMixtoUI();
     })
     .fail(()=>{
       $selForma.empty()
@@ -1407,7 +1428,9 @@ function cargarFormasPago(selected, fallbackText){
         .append('<option value="2">Tarjeta</option>')
         .append('<option value="3">Mixto</option>')
         .append('<option value="99">Crédito</option>');
+      ed_setIdsPago();
       if (selected!=null) $selForma.val(String(selected));
+      ed_toggleMixtoUI();
     });
 }
 
@@ -1514,6 +1537,90 @@ function precioDeItemCarrito(it){
   return Number(it.precio_publico||0);
 }
 
+function ed_totalCarrito(){
+  return carrito.reduce((acc,it)=>{
+    const qty = Number(it.cantidad) || 0;
+    return acc + qty * precioDeItemCarrito(it);
+  },0);
+}
+
+function ed_esMixtoSeleccionado(){
+  const val = ($selForma.val() ?? '').toString().trim();
+  if (edIdsPago.mixto && val === String(edIdsPago.mixto)) return true;
+  const txt = norm($selForma.find('option:selected').text());
+  return txt.includes('mixto');
+}
+
+function ed_obtenerIdPagoPorTexto(buscar){
+  const target = norm(buscar);
+  let found = null;
+  $selForma.find('option').each(function(){
+    const txt = norm($(this).text());
+    if (txt.includes(target)) { found = Number($(this).val()); return false; }
+  });
+  return found;
+}
+
+function ed_poblarPagosMixtoDesdeBD(){
+  if (!ed_esMixtoSeleccionado()) { return; }
+  let ef=0, tar=0;
+  pagosVenta.forEach(p=>{
+    const txt = norm(p.descripcion || p.forma_pago || '');
+    if (txt.includes('efectivo')) ef += Number(p.monto||0);
+    if (txt.includes('tarjeta'))  tar += Number(p.monto||0);
+  });
+  $mixEfec.val(fix2(ef));
+  $mixTar.val(fix2(tar));
+  ed_validarMixto(false);
+}
+
+function ed_toggleMixtoUI(){
+  if (ed_esMixtoSeleccionado()){
+    $wrapMixto.removeClass('d-none');
+    ed_poblarPagosMixtoDesdeBD();
+  } else {
+    $wrapMixto.addClass('d-none');
+  }
+}
+
+function ed_validarMixto(showMsg = true){
+  if (!ed_esMixtoSeleccionado()) return {ok:true, pagos:[]};
+
+  const total = ed_totalCarrito();
+  const ef = num($mixEfec.val());
+  const tar = num($mixTar.val());
+  const suma = ef + tar;
+  const diff = Math.abs(suma - total);
+
+  if (total > 0 && diff > 0.05){
+    if (showMsg) {
+      $mixHelp.removeClass('text-muted').text('La suma del pago mixto debe coincidir con el total.');
+    }
+    return {ok:false, msg:'La suma del pago mixto no coincide con el total.'};
+  }
+
+  if (suma <= 0){
+    if (showMsg) {
+      $mixHelp.removeClass('text-muted').text('Captura al menos un monto para el pago mixto.');
+    }
+    return {ok:false, msg:'Captura al menos un monto para el pago mixto.'};
+  }
+
+  const pagos = [];
+  const idEf = edIdsPago.efectivo || ed_obtenerIdPagoPorTexto('efectivo');
+  const idTar = edIdsPago.tarjeta  || ed_obtenerIdPagoPorTexto('tarjeta');
+
+  if (ef > 0 && idEf) pagos.push({ id_forma_pago:idEf, monto:ef });
+  if (tar > 0 && idTar) pagos.push({ id_forma_pago:idTar, monto:tar });
+
+  if (!pagos.length){
+    return {ok:false, msg:'No se pudieron armar los pagos mixtos.'};
+  }
+
+  $mixHelp.addClass('text-muted').text('La suma debe coincidir con el total de la venta.');
+  return {ok:true, pagos, suma};
+}
+
 function pintarCarrito(){
   const tb=$tbody.empty();
   if(!carrito.length){
@@ -1558,6 +1665,12 @@ function pintarCarrito(){
         <td class="text-end">
           <input type="number" min="0" step="0.01"
                  class="form-control form-control-sm text-end"
+                 value="${fix2(unit)}" data-ed-unit="${idx}"
+                 title="Editar costo unitario">
+        </td>
+        <td class="text-end">
+          <input type="number" min="0" step="0.01"
+                 class="form-control form-control-sm text-end"
                  value="${fix2(subtotal)}" data-ed-sub="${idx}"
                  title="Editar subtotal (ajusta el precio unitario automáticamente)">
         </td>
@@ -1567,6 +1680,7 @@ function pintarCarrito(){
       </tr>`);
   });
   $totalEd.text(mxn(total));
+  if (!$wrapMixto.hasClass('d-none')) ed_validarMixto(false);
 }
 
 $tbody.on('click','button[data-ed-inc]', function(){
@@ -1589,6 +1703,12 @@ $tbody.on('change','input[data-ed-qty]', function(){
   if (val>max){ val=max; toastr.info('Se ajustó a máximo vendible.'); }
   carrito[i].cantidad=val; pintarCarrito();
 });
+$tbody.on('change','input[data-ed-unit]', function(){
+  const i=Number(this.dataset.edUnit); if(isNaN(i)||!carrito[i]) return;
+  let unit=Number(this.value); if(isNaN(unit)||unit<0) unit=0;
+  carrito[i].override_unit = unit;
+  pintarCarrito();
+});
 $tbody.on('change','input[data-ed-sub]', function(){
   const i=Number(this.dataset.edSub); if(isNaN(i)||!carrito[i]) return;
   let sub=Number(this.value); if(isNaN(sub)||sub<0) sub=0;
@@ -1602,6 +1722,8 @@ $tbody.on('click','button[data-ed-del]', function(){
 });
 
 $tpPrecio.on('change', pintarCarrito);
+$selForma.on('change', ed_toggleMixtoUI);
+$mixEfec.add($mixTar).on('change', ()=> ed_validarMixto());
 
 $('#btnGuardarEdicion').on('click', function(){
   if (!edVentaId){ toastr.error('No hay venta cargada.'); return; }
@@ -1609,6 +1731,7 @@ $('#btnGuardarEdicion').on('click', function(){
 
   const $opt = $selForma.find('option:selected');
   const esCredito = isCreditoByOption($opt);
+  const esMixto = ed_esMixtoSeleccionado();
 
   const idClienteSel = $selCliente.val() ? Number($selCliente.val()) : null;
   if (esCredito && !idClienteSel){
@@ -1618,8 +1741,19 @@ $('#btnGuardarEdicion').on('click', function(){
   }
 
   const id_forma_pago = $selForma.val() ? Number($selForma.val()) : null;
+  if (!id_forma_pago){
+    toastr.error('Selecciona una forma de pago.');
+    return;
+  }
   const nuevoEstatus = esCredito ? 'Credito' : 'Activa';
   const id_tipo_precio = mapTipoPrecioId($tpPrecio.val());
+
+  let pagos = [];
+  if (esMixto){
+    const mix = ed_validarMixto(true);
+    if (!mix.ok){ toastr.error(mix.msg); return; }
+    pagos = mix.pagos;
+  }
 
   const venta = {
     id_venta: edVentaId,
@@ -1627,7 +1761,8 @@ $('#btnGuardarEdicion').on('click', function(){
     id_cliente: idClienteSel ?? null,
     id_forma_pago: id_forma_pago ?? null,
     id_tipo_precio: id_tipo_precio,
-    estatus: nuevoEstatus
+    estatus: nuevoEstatus,
+    tipo_pago: esMixto ? 'mixto' : undefined
   };
   const detalles = carrito.map(it=>{
     const unit = precioDeItem(it);
@@ -1635,7 +1770,7 @@ $('#btnGuardarEdicion').on('click', function(){
     return { id_producto: it.id_producto, cantidad: cant, precio_unitario: unit, subtotal: cant*unit };
   });
 
-  const payload = { venta, detalles };
+  const payload = { venta, detalles, pagos };
 
   const $b=$(this), txt=$b.html();
   $b.prop('disabled',true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Guardando...');
@@ -1657,11 +1792,12 @@ window.abrirEditarVenta = function(idVenta){
   edVentaId = Number(idVenta);
   $errEd.addClass('d-none').empty();
   $('#ed-buscar').val(''); $sug.hide().empty();
-  carrito=[]; pintarCarrito();
+  carrito=[]; pagosVenta=[]; $mixEfec.val('0'); $mixTar.val('0'); $wrapMixto.addClass('d-none'); pintarCarrito();
 
   $.get(VENTAS_URL,{accion:'detalle', id_venta: edVentaId}, function(r){
     if (!r || !r.venta){ $errEd.removeClass('d-none').text('No se encontró la venta.'); return; }
     const v=r.venta, det=r.detalles||[];
+    pagosVenta = r.pagos || [];
 
     $edFolio.text(v.folio||'—');
     $edEst.html(' '+getBadge(v.estatus||'—'));
@@ -1709,6 +1845,7 @@ window.abrirEditarVenta = function(idVenta){
 
     Promise.all(proms).then(()=>{
       pintarCarrito();
+      ed_toggleMixtoUI();
       $('#modalEditarVenta').modal('show');
     });
   },'json').fail(()=> $errEd.removeClass('d-none').text('Error al cargar la venta.'));

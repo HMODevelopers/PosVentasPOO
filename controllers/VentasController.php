@@ -114,6 +114,7 @@ class VentasController
             if (!$venta) self::jsonError('Venta no encontrada.', 404);
 
             $detalles = $ventaModel->obtenerDetalleVenta($idVenta);
+            $pagos    = method_exists($ventaModel, 'obtenerPagosVenta') ? $ventaModel->obtenerPagosVenta($idVenta) : [];
 
             // El modelo ya trae en $venta: abonado, saldo, estatus_credito y abonos[]
             $abonos  = $venta['abonos'] ?? [];
@@ -137,7 +138,8 @@ class VentasController
                 'saldo'           => round($saldo, 2),
                 'estatus_credito' => $venta['estatus_credito'] ?? 'N/A',
                 'costo_total'     => round($costo_total, 2),
-                'utilidad_total'  => round($util_total, 2)
+                'utilidad_total'  => round($util_total, 2),
+                'pagos'           => $pagos
             ], JSON_UNESCAPED_UNICODE);
 
             break;
@@ -301,6 +303,7 @@ class VentasController
             $data     = $raw ?: [];
             $venta    = $data['venta']    ?? [];
             $detalles = $data['detalles'] ?? [];
+            $pagos    = $data['pagos']    ?? [];
 
             $idVenta = self::asInt($venta['id_venta'] ?? 0);
             if ($idVenta <= 0) self::jsonError('venta.id_venta es requerido.');
@@ -322,7 +325,7 @@ class VentasController
 
             if (!is_array($detalles)) $detalles = [];
 
-            $resp = $ventaModel->actualizarVenta($venta, $detalles);
+            $resp = $ventaModel->actualizarVenta($venta, $detalles, $pagos);
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }
