@@ -308,7 +308,7 @@ session_start();
       return formasPagoActivas
         .filter(fp => {
           const d = norm(fp.descripcion);
-          const activo = (fp.activo ?? 1) === 1;
+          const activo = Number(fp.activo ?? 1) === 1;
           const esTarjeta = d.includes('tarjeta');
           const esMixto = d.includes('mixto');
           return activo && esTarjeta && !esMixto;
@@ -1074,10 +1074,10 @@ session_start();
 
         Swal.fire({
           title:'Cobro mixto',
-          html:`<div class="text-start" style="overflow-x:hidden;">
+          html:`<div class="text-start px-1">
             <p class="mb-3">Total a pagar: <b>${mxn(total)}</b></p>
-            <div class="container-fluid px-0">
-              <div class="row g-3">
+            <div class="container-fluid p-0">
+              <div class="row g-3 align-items-start">
                 <div class="col-12 col-md-6">
                   <label class="form-label mb-1" for="m_efectivo">Efectivo</label>
                   <input id="m_efectivo" type="number" min="0" step="0.01" class="form-control" value="${fix2(total)}">
@@ -1103,7 +1103,9 @@ session_start();
           focusConfirm:false,
           showCancelButton:true,
           confirmButtonText:'Cobrar',
-          customClass:{ actions:'swal2-actions justify-content-center gap-2' },
+          customClass:{
+            actions:'swal2-actions justify-content-center gap-3 flex-wrap'
+          },
           preConfirm:()=>{
             const ef = Number(document.getElementById('m_efectivo').value || 0);
             const ms = Number(document.getElementById('m_secundario').value || 0);
@@ -1138,6 +1140,13 @@ session_start();
           if(res.isConfirmed){
             const {ef, ms, tipoTarjetaId} = res.value;
             const cambio = Math.max(0, (ef + ms) - total);
+
+            console.debug('Mixto seleccionado', {
+              tipo: fpSlug,
+              tipoTarjetaId,
+              montoTarjeta: ms,
+              montoEfectivo: ef
+            });
 
             const pagosArr = [];
 

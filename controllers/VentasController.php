@@ -62,6 +62,8 @@ class VentasController
             $detalles = $data['detalles'] ?? [];
             $pagos    = $data['pagos']    ?? []; // NUEVO: pagos para venta mixta
 
+            error_log('[VENTA] Forma pago principal UI='.json_encode($venta['id_forma_pago'] ?? null).' pagos='.json_encode($pagos));
+
             // Sesión robusta
             $usr                = $_SESSION['usuario'] ?? [];
             $id_usuario_sesion  = $usr['id_usuario']  ?? ($usr['id'] ?? ($_SESSION['id_usuario'] ?? null));

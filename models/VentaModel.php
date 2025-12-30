@@ -399,6 +399,7 @@ class VentaModel
     private function insertarPagoVenta(int $idVenta, int $idFormaPago, float $monto, string $referencia): void
     {
         $this->asegurarFormaPagoActiva($idFormaPago);
+        error_log("[VENTA] insertarPagoVenta id_venta={$idVenta}, id_forma_pago={$idFormaPago}, monto={$monto}, ref={$referencia}");
         $st = $this->conn->prepare(
             "INSERT INTO pagos_venta
              (id_venta, id_forma_pago, monto, referencia_pago, activo, fecha_creacion)
@@ -418,10 +419,40 @@ class VentaModel
      * - Usa el folio como referencia_pago.
      * - Soporta efectivo, tarjeta, transferencia y mixto (2 renglones).
      */
-    private function registrarPagosVenta(int $idVenta,string $folio,string $estatusBD,float $total,array $datosVenta): void
+    private function registrarPagosVenta(int $idVenta,string $folio,string $estatusBD,float $total,array $datosVenta, ?array $pagosMixtos = null): void
     {
         // Guardada o Crédito: no registrar pagos aquí
         if (strcasecmp($estatusBD, 'Activa') !== 0) {
+            return;
+        }
+
+        $pagosRecibidos = is_array($pagosMixtos) ? array_values($pagosMixtos) : [];
+        if (!empty($pagosRecibidos)) {
+            $suma = 0.0;
+            error_log('[VENTA] Pagos mixtos recibidos UI='.json_encode($pagosRecibidos));
+
+            foreach ($pagosRecibidos as $p) {
+                $idFp  = (int)($p['id_forma_pago'] ?? 0);
+                $monto = (float)($p['monto'] ?? 0);
+                $ref   = isset($p['referencia_pago']) && $p['referencia_pago'] !== ''
+                    ? (string)$p['referencia_pago']
+                    : $folio;
+
+                if ($idFp <= 0 || $monto <= 0) {
+                    throw new \Exception('Cada pago del esquema mixto debe tener forma de pago y monto mayor a 0.');
+                }
+
+                $this->asegurarFormaPagoActiva($idFp);
+                $suma += $monto;
+
+                error_log("[VENTA] Insertando pago mixto id_venta={$idVenta}, id_forma_pago={$idFp}, monto={$monto}");
+                $this->insertarPagoVenta($idVenta, $idFp, $monto, $ref);
+            }
+
+            if ($total > 0 && abs($suma - $total) > 0.05) {
+                throw new \Exception('La suma de los pagos mixtos no coincide con el total de la venta.');
+            }
+
             return;
         }
 
@@ -515,7 +546,7 @@ class VentaModel
     }
 
     /* ========================= Crear venta ========================= */
-    public function crearVenta(array $datosVenta, array $detalles)
+    public function crearVenta(array $datosVenta, array $detalles, ?array $pagosMixtos = null)
     {
         $MAX_REINT = 6;
 
@@ -739,7 +770,7 @@ class VentaModel
 
                     // 👉 Registrar pagos (pagos_venta) con referencia = folio
                     try {
-                        $this->registrarPagosVenta($idVenta, $folio, $estatusBD, $total, $datosVenta);
+                        $this->registrarPagosVenta($idVenta, $folio, $estatusBD, $total, $datosVenta, $pagosMixtos);
                     } catch (\Throwable $th) {
                         // si falla, no aborta la venta; solo no registra pagos
                     }
