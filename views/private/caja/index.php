@@ -101,6 +101,42 @@ session_start();
       z-index: 1;
       background: #f8f9fa;
     }
+
+    .mixto-popup{
+      max-width: 560px !important;
+      width: calc(100vw - 32px) !important;
+      border-radius: 14px;
+    }
+
+    .mixto-html{
+      margin: 0 !important;
+      overflow-x: hidden !important;
+    }
+
+    .mixto-wrap{ text-align: left; }
+    .mixto-total{ margin: 0 0 12px; font-size: 1.05rem; }
+
+    .mixto-grid{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    @media (min-width: 768px){
+      .mixto-grid{
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .mixto-span-2{ grid-column: span 2; }
+    }
+
+    .mixto-actions{
+      display: flex !important;
+      justify-content: center !important;
+      gap: 12px !important;
+      flex-wrap: wrap;
+    }
+
   </style>
 </head>
 <body>
@@ -1047,155 +1083,188 @@ session_start();
 
       // ===== Mixtos
       if (fpSlug === 'mixto_efectivo_tarjeta' || fpSlug === 'mixto_efectivo_transferencia') {
-        const idEf = asegurarIdFP(ID_FP.efectivo, 'efectivo');
-        if (!idEf) return;
+      // Obtén IDs desde catálogo (no hardcode)
+      const idEf = asegurarIdFP(ID_FP.efectivo, 'efectivo');
+      if (!idEf) return;
 
-        const labelSecundaria = fpSlug === 'mixto_efectivo_tarjeta'
-          ? 'Tarjeta'
-          : 'Transferencia';
+      const labelSecundaria = fpSlug === 'mixto_efectivo_tarjeta'
+        ? 'Tarjeta'
+        : 'Transferencia';
 
-        let opcionesTar = [];
-        if (fpSlug === 'mixto_efectivo_tarjeta') {
-          opcionesTar = opcionesTarjeta();
-          if (!opcionesTar.length) {
-            Swal.fire({
-              icon:'error',
-              title:'Configura las formas de pago',
-              text:'No hay formas de pago activas de tipo tarjeta. Agrega o activa alguna en el catálogo para cobrar con tarjeta.',
+      // Opciones de tarjeta desde forma_pago (sin "Mixto")
+      let opcionesTar = [];
+      if (fpSlug === 'mixto_efectivo_tarjeta') {
+        opcionesTar = opcionesTarjeta(); // <- usa tu catálogo ya cargado
+        if (!opcionesTar.length) {
+          Swal.fire({
+            icon: 'error',
+            title: 'Configura las formas de pago',
+            text: 'No hay formas de pago activas de tipo tarjeta. Agrega o activa alguna en el catálogo para cobrar con tarjeta.',
+          });
+          return;
+        }
+      }
+
+      const idTransfer = fpSlug === 'mixto_efectivo_transferencia'
+        ? asegurarIdFP(ID_FP.transferencia, 'transferencia')
+        : null;
+
+      if (fpSlug === 'mixto_efectivo_transferencia' && !idTransfer) return;
+
+      Swal.fire({
+        title: 'Cobro mixto',
+        html: `
+          <div class="mixto-wrap">
+            <div class="mixto-total">
+              Total a pagar: <b>${mxn(total)}</b>
+            </div>
+
+            <div class="mixto-grid">
+              <div class="mixto-field">
+                <label class="form-label mb-1" for="m_efectivo">Efectivo</label>
+                <input id="m_efectivo" type="number" min="0" step="0.01"
+                      class="form-control" value="${fix2(total)}">
+              </div>
+
+              ${fpSlug === 'mixto_efectivo_tarjeta' ? `
+                <div class="mixto-field">
+                  <label class="form-label mb-1" for="m_tipo_tarjeta">Tipo de tarjeta</label>
+                  <select id="m_tipo_tarjeta" class="form-select">
+                    <option value="">Seleccione tipo de tarjeta…</option>
+                    ${opcionesTar.map(fp => `<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`).join('')}
+                  </select>
+                </div>
+
+                <div class="mixto-field mixto-span-2">
+                  <label class="form-label mb-1" for="m_secundario">Monto tarjeta</label>
+                  <input id="m_secundario" type="number" min="0" step="0.01"
+                        class="form-control" value="0.00" disabled>
+                </div>
+              ` : `
+                <div class="mixto-field">
+                  <label class="form-label mb-1" for="m_secundario">${labelSecundaria}</label>
+                  <input id="m_secundario" type="number" min="0" step="0.01"
+                        class="form-control" value="0.00">
+                </div>
+              `}
+            </div>
+          </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Cobrar',
+        cancelButtonText: 'Cancelar',
+
+        // Clases para diseño limpio
+        customClass: {
+          popup: 'mixto-popup',
+          htmlContainer: 'mixto-html',
+          actions: 'mixto-actions'
+        },
+
+        // Importante si estás usando botones bootstrap custom
+        buttonsStyling: false,
+
+        preConfirm: () => {
+          const ef = Number(document.getElementById('m_efectivo').value || 0);
+          const ms = Number(document.getElementById('m_secundario').value || 0);
+          const tipoTarjetaId = document.getElementById('m_tipo_tarjeta')?.value || '';
+
+          // Si hay monto tarjeta, obligar seleccionar tipo
+          if (fpSlug === 'mixto_efectivo_tarjeta' && ms > 0 && !tipoTarjetaId) {
+            Swal.showValidationMessage('Selecciona el tipo de tarjeta antes de capturar el monto.');
+            return false;
+          }
+
+          // Validar suma exacta contra total (2 decimales)
+          const suma = Number(fix2(ef + ms));
+          const totalRed = Number(fix2(total));
+          if (suma !== totalRed) {
+            Swal.showValidationMessage('La suma de los montos debe coincidir con el total.');
+            return false;
+          }
+
+          return { ef, ms, tipoTarjetaId };
+        },
+
+        didOpen: () => {
+          const $tipo = document.getElementById('m_tipo_tarjeta');
+          const $montoTar = document.getElementById('m_secundario');
+
+          // Habilitar monto tarjeta solo si elige tipo
+          if ($tipo && $montoTar) {
+            $tipo.addEventListener('change', () => {
+              const tieneTipo = !!$tipo.value;
+              $montoTar.disabled = !tieneTipo;
+              if (!tieneTipo) $montoTar.value = '0.00';
             });
-            return;
           }
         }
 
-        const idTransfer = fpSlug === 'mixto_efectivo_transferencia'
-          ? asegurarIdFP(ID_FP.transferencia, 'transferencia')
-          : null;
-        if (fpSlug === 'mixto_efectivo_transferencia' && !idTransfer) return;
+      }).then(res => {
+        if (!res.isConfirmed) return;
 
-        Swal.fire({
-          title:'Cobro mixto',
-          html:`<div class="text-start px-1">
-            <p class="mb-3">Total a pagar: <b>${mxn(total)}</b></p>
-            <div class="container-fluid p-0">
-              <div class="row g-3 align-items-start">
-                <div class="col-12 col-md-6">
-                  <label class="form-label mb-1" for="m_efectivo">Efectivo</label>
-                  <input id="m_efectivo" type="number" min="0" step="0.01" class="form-control" value="${fix2(total)}">
-                </div>
-                <div class="col-12 col-md-6">
-                  ${fpSlug === 'mixto_efectivo_tarjeta' ? `
-                    <div class="mb-2">
-                      <label class="form-label mb-1" for="m_tipo_tarjeta">Tipo de tarjeta</label>
-                      <select id="m_tipo_tarjeta" class="form-select">
-                        <option value="">Seleccione tipo de tarjeta…</option>
-                        ${opcionesTar.map(fp => `<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`).join('')}
-                      </select>
-                    </div>
-                  ` : ''}
-                  <div>
-                    <label class="form-label mb-1" for="m_secundario">${labelSecundaria}</label>
-                    <input id="m_secundario" type="number" min="0" step="0.01" class="form-control" value="0.00" ${fpSlug === 'mixto_efectivo_tarjeta' ? 'disabled' : ''}>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>`,
-          focusConfirm:false,
-          showCancelButton:true,
-          confirmButtonText:'Cobrar',
-          customClass:{
-            actions:'swal2-actions justify-content-center gap-3 flex-wrap'
-          },
-          preConfirm:()=>{
-            const ef = Number(document.getElementById('m_efectivo').value || 0);
-            const ms = Number(document.getElementById('m_secundario').value || 0);
-            const tipoTarjetaId = document.getElementById('m_tipo_tarjeta')?.value || '';
+        const { ef, ms, tipoTarjetaId } = res.value;
+        const cambio = Math.max(0, (ef + ms) - total);
 
-            if (ms > 0 && fpSlug === 'mixto_efectivo_tarjeta' && !tipoTarjetaId) {
-              Swal.showValidationMessage('Selecciona el tipo de tarjeta antes de capturar el monto.');
-              return false;
-            }
-
-            const suma = Number(fix2(ef + ms));
-            const totalRed = Number(fix2(total));
-            if (suma !== totalRed) {
-              Swal.showValidationMessage('La suma de los montos debe coincidir con el total.');
-              return false;
-            }
-
-            return { ef, ms, tipoTarjetaId };
-          },
-          didOpen:()=>{
-            const $tipo = document.getElementById('m_tipo_tarjeta');
-            const $montoTar = document.getElementById('m_secundario');
-            if ($tipo && $montoTar) {
-              $tipo.addEventListener('change', ()=>{
-                const tieneTipo = !!$tipo.value;
-                $montoTar.disabled = !tieneTipo;
-                if (!tieneTipo) { $montoTar.value = '0.00'; }
-              });
-            }
-          }
-        }).then(res=>{
-          if(res.isConfirmed){
-            const {ef, ms, tipoTarjetaId} = res.value;
-            const cambio = Math.max(0, (ef + ms) - total);
-
-            console.debug('Mixto seleccionado', {
-              tipo: fpSlug,
-              tipoTarjetaId,
-              montoTarjeta: ms,
-              montoEfectivo: ef
-            });
-
-            const pagosArr = [];
-
-            // Efectivo
-            if (ef > 0) {
-              pagosArr.push({
-                id_forma_pago: idEf,
-                tipo: 'efectivo',
-                monto: ef,
-                referencia: ''
-              });
-            }
-
-            // Segundo medio (tarjeta o transferencia)
-            const tipoSec = (fpSlug === 'mixto_efectivo_tarjeta' ? 'tarjeta' : 'transferencia');
-            const idFPsec = (fpSlug === 'mixto_efectivo_tarjeta'
-                             ? Number(tipoTarjetaId || 0)
-                             : idTransfer);
-
-            if (ms > 0) {
-              if (!idFPsec) {
-                Swal.fire({
-                  icon:'error',
-                  title:'Forma de pago faltante',
-                  text:`No se encontró la forma de pago para ${tipoSec}.`
-                });
-                return;
-              }
-              pagosArr.push({
-                id_forma_pago: idFPsec,
-                tipo: tipoSec,
-                monto: ms,
-                referencia: ''
-              });
-            }
-
-            const pagosInfo = {
-              tipo:'mixto',
-              recibido_efectivo: ef,
-              cambio
-            };
-            if (tipoSec === 'tarjeta') pagosInfo.recibido_tarjeta = ms;
-            else pagosInfo.recibido_transferencia = ms;
-
-            registrarVenta({ estatus:'Activa', pagosInfo, pagosArr });
-          }
+        // Debug: confirma lo que el usuario eligió
+        console.debug('Mixto seleccionado', {
+          tipo: fpSlug,
+          tipoTarjetaId,
+          montoTarjeta: ms,
+          montoEfectivo: ef
         });
-        return;
-      }
+
+        const pagosArr = [];
+
+        // Efectivo
+        if (ef > 0) {
+          pagosArr.push({
+            id_forma_pago: idEf,
+            tipo: 'efectivo',
+            monto: ef,
+            referencia: ''
+          });
+        }
+
+        // Segundo medio (tarjeta o transferencia)
+        const tipoSec = (fpSlug === 'mixto_efectivo_tarjeta' ? 'tarjeta' : 'transferencia');
+        const idFPsec = (fpSlug === 'mixto_efectivo_tarjeta'
+          ? Number(tipoTarjetaId || 0)
+          : idTransfer);
+
+        if (ms > 0) {
+          if (!idFPsec) {
+            Swal.fire({
+              icon: 'error',
+              title: 'Forma de pago faltante',
+              text: `No se encontró la forma de pago para ${tipoSec}.`
+            });
+            return;
+          }
+
+          pagosArr.push({
+            id_forma_pago: idFPsec,
+            tipo: tipoSec,
+            monto: ms,
+            referencia: ''
+          });
+        }
+
+        const pagosInfo = {
+          tipo: 'mixto',
+          recibido_efectivo: ef,
+          cambio
+        };
+        if (tipoSec === 'tarjeta') pagosInfo.recibido_tarjeta = ms;
+        else pagosInfo.recibido_transferencia = ms;
+
+        registrarVenta({ estatus: 'Activa', pagosInfo, pagosArr });
+      });
+
+      return;
+    }
+
 
       // ===== Tarjeta / Transferencia "simples"
       if (fpSlug === 'tarjeta' || fpSlug === 'transferencia'){
