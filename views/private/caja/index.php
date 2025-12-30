@@ -283,14 +283,53 @@ session_start();
     const num  = v => parseFloat(v ?? 0) || 0;
     const normalize = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 
-    // IDs de formas de pago (AJUSTA según tu catálogo real)
+    function actualizarIDsFormasPago(arr){
+      formasPagoActivas = Array.isArray(arr) ? arr : [];
+      const norm = normalize;
+
+      const esEfectivo = fp => fp && (fp.clave_sat === '01' || norm(fp.descripcion).includes('efectivo'));
+      const esTransfer = fp => fp && (fp.clave_sat === '03' || norm(fp.descripcion).includes('transfer'));
+      const esTarjeta = fp => fp && norm(fp.descripcion).includes('tarjeta');
+      const esCredito = fp => esTarjeta(fp) && (norm(fp.descripcion).includes('credito') || norm(fp.descripcion).includes('crédito'));
+      const esDebito  = fp => esTarjeta(fp) && norm(fp.descripcion).includes('debito');
+
+      ID_FP.efectivo       = (arr.find(esEfectivo)     || {}).id_forma_pago ?? null;
+      ID_FP.transferencia  = (arr.find(esTransfer)     || {}).id_forma_pago ?? null;
+      ID_FP.tarjetaCredito = (arr.find(esCredito)      || {}).id_forma_pago ?? null;
+      ID_FP.tarjetaDebito  = (arr.find(esDebito)       || {}).id_forma_pago ?? null;
+
+      const tarjetaHallada = arr.find(esTarjeta);
+      ID_FP.tarjeta        = (tarjetaHallada?.id_forma_pago) ?? ID_FP.tarjetaCredito ?? ID_FP.tarjetaDebito;
+
+    }
+
+    function opcionesTarjeta(){
+      const norm = normalize;
+      return formasPagoActivas.filter(fp => norm(fp.descripcion).includes('tarjeta'));
+    }
+
+    function asegurarIdFP(id, etiqueta){
+      const val = Number(id || 0);
+      if(!val){
+        Swal.fire({
+          icon:'error',
+          title:'Forma de pago no disponible',
+          text:`No se encontró la forma de pago de ${etiqueta}. Verifica el catálogo de formas de pago activas.`
+        });
+        return null;
+      }
+      return val;
+    }
+
     const ID_FP = {
-      efectivo: 1,           // 1 = Efectivo
-      tarjeta: 4,            // 4 = Tarjeta (crédito)
-      tarjetaCredito: 4,     // 4 = Tarjeta de crédito
-      tarjetaDebito: 28,     // 28 = Tarjeta de débito
-      transferencia: 3       // 3 = Transferencia (ejemplo)
+      efectivo: null,
+      tarjeta: null,
+      tarjetaCredito: null,
+      tarjetaDebito: null,
+      transferencia: null
     };
+
+    let formasPagoActivas = [];
 
     // ============================================================
     // 2) ESTADO EN MEMORIA
@@ -439,21 +478,20 @@ session_start();
             return;
           }
 
+          actualizarIDsFormasPago(arr);
+
           arr.forEach(fp=>{
             sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
           });
 
-          // 👉 Forzar como default el id_forma_pago = 1 (Efectivo)
-          const idDefault = (arr.find(fp => Number(fp.id_forma_pago) === ID_FP.efectivo) || arr[0]).id_forma_pago;
+          const efectivo = ID_FP.efectivo || (arr[0]?.id_forma_pago ?? '');
+          const idDefault = (arr.find(fp => Number(fp.id_forma_pago) === Number(efectivo)) || arr[0]).id_forma_pago;
           sel.val(idDefault);
         })
         .fail(()=>{
           const sel = $('#selFormaPago').empty();
-          sel.append(`
-            <option value="${ID_FP.efectivo}" selected>Efectivo</option>
-            <option value="${ID_FP.tarjeta}">Tarjeta</option>
-            <option value="">Mixto (configurar)</option>
-          `);
+          sel.append(`<option value="">(sin formas de pago)</option>`);
+          toastr.error('No se pudieron cargar las formas de pago.');
         });
     }
 
@@ -963,6 +1001,9 @@ session_start();
 
       // ===== Efectivo
       if(fpSlug === 'efectivo'){
+        const idEf = asegurarIdFP(ID_FP.efectivo, 'efectivo');
+        if (!idEf) return;
+
         Swal.fire({
           title: 'Cobro en efectivo',
           html: `<p>Total a pagar: <b>${mxn(total)}</b></p>`,
@@ -981,7 +1022,7 @@ session_start();
             const recibido=Number(res.value), cambio=recibido-total;
 
             const pagosArr = [{
-              id_forma_pago: ID_FP.efectivo,
+              id_forma_pago: idEf,
               tipo: 'efectivo',
               monto: total,
               referencia: ''
@@ -999,31 +1040,55 @@ session_start();
 
       // ===== Mixtos
       if (fpSlug === 'mixto_efectivo_tarjeta' || fpSlug === 'mixto_efectivo_transferencia') {
+        const idEf = asegurarIdFP(ID_FP.efectivo, 'efectivo');
+        if (!idEf) return;
+
         const labelSecundaria = fpSlug === 'mixto_efectivo_tarjeta'
           ? 'Tarjeta'
           : 'Transferencia';
 
+        let opcionesTar = [];
+        if (fpSlug === 'mixto_efectivo_tarjeta') {
+          opcionesTar = opcionesTarjeta();
+          if (!opcionesTar.length) {
+            Swal.fire({
+              icon:'error',
+              title:'Configura las formas de pago',
+              text:'No hay formas de pago activas de tipo tarjeta. Agrega o activa alguna en el catálogo para cobrar con tarjeta.',
+            });
+            return;
+          }
+        }
+
+        const idTransfer = fpSlug === 'mixto_efectivo_transferencia'
+          ? asegurarIdFP(ID_FP.transferencia, 'transferencia')
+          : null;
+        if (fpSlug === 'mixto_efectivo_transferencia' && !idTransfer) return;
+
         Swal.fire({
           title:'Cobro mixto',
           html:`<div class="text-start">
-            <p>Total a pagar: <b>${mxn(total)}</b></p>
-            <div class="mb-2">
-              <label class="form-label">Efectivo</label>
-              <input id="m_efectivo" type="number" min="0" step="0.01" class="swal2-input" style="width:auto" value="${fix2(total)}">
-            </div>
-            ${fpSlug === 'mixto_efectivo_tarjeta' ? `
-              <div class="mb-2">
-                <label class="form-label">Tipo de tarjeta</label>
-                <select id="m_tipo_tarjeta" class="swal2-select" style="width:auto">
-                  <option value="">Selecciona…</option>
-                  <option value="credito">Tarjeta de crédito</option>
-                  <option value="debito">Tarjeta de débito</option>
-                </select>
+            <p class="mb-3">Total a pagar: <b>${mxn(total)}</b></p>
+            <div class="row g-3 align-items-end">
+              <div class="col-12 col-md-6">
+                <label class="form-label" for="m_efectivo">Efectivo</label>
+                <input id="m_efectivo" type="number" min="0" step="0.01" class="form-control" value="${fix2(total)}">
               </div>
-            ` : ''}
-            <div class="mb-2">
-              <label class="form-label">${labelSecundaria}</label>
-              <input id="m_secundario" type="number" min="0" step="0.01" class="swal2-input" style="width:auto" value="0.00" ${fpSlug === 'mixto_efectivo_tarjeta' ? 'disabled' : ''}>
+              <div class="col-12 col-md-6">
+                ${fpSlug === 'mixto_efectivo_tarjeta' ? `
+                  <div class="mb-3 mb-md-2">
+                    <label class="form-label" for="m_tipo_tarjeta">Tipo de tarjeta</label>
+                    <select id="m_tipo_tarjeta" class="form-select">
+                      <option value="">Selecciona…</option>
+                      ${opcionesTar.map(fp => `<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`).join('')}
+                    </select>
+                  </div>
+                ` : ''}
+                <div>
+                  <label class="form-label" for="m_secundario">${labelSecundaria}</label>
+                  <input id="m_secundario" type="number" min="0" step="0.01" class="form-control" value="0.00" ${fpSlug === 'mixto_efectivo_tarjeta' ? 'disabled' : ''}>
+                </div>
+              </div>
             </div>
           </div>`,
           focusConfirm:false,
@@ -1032,10 +1097,10 @@ session_start();
           preConfirm:()=>{
             const ef = Number(document.getElementById('m_efectivo').value || 0);
             const ms = Number(document.getElementById('m_secundario').value || 0);
-            const tipoTarjeta = document.getElementById('m_tipo_tarjeta')?.value || '';
+            const tipoTarjetaId = document.getElementById('m_tipo_tarjeta')?.value || '';
 
-            if (ms > 0 && fpSlug === 'mixto_efectivo_tarjeta' && !tipoTarjeta) {
-              Swal.showValidationMessage('Selecciona el tipo de tarjeta para capturar el monto.');
+            if (ms > 0 && fpSlug === 'mixto_efectivo_tarjeta' && !tipoTarjetaId) {
+              Swal.showValidationMessage('Selecciona el tipo de tarjeta antes de capturar el monto.');
               return false;
             }
 
@@ -1046,7 +1111,7 @@ session_start();
               return false;
             }
 
-            return { ef, ms, tipoTarjeta };
+            return { ef, ms, tipoTarjetaId };
           },
           didOpen:()=>{
             const $tipo = document.getElementById('m_tipo_tarjeta');
@@ -1061,7 +1126,7 @@ session_start();
           }
         }).then(res=>{
           if(res.isConfirmed){
-            const {ef, ms, tipoTarjeta} = res.value;
+            const {ef, ms, tipoTarjetaId} = res.value;
             const cambio = Math.max(0, (ef + ms) - total);
 
             const pagosArr = [];
@@ -1069,7 +1134,7 @@ session_start();
             // Efectivo
             if (ef > 0) {
               pagosArr.push({
-                id_forma_pago: ID_FP.efectivo,
+                id_forma_pago: idEf,
                 tipo: 'efectivo',
                 monto: ef,
                 referencia: ''
@@ -1079,10 +1144,18 @@ session_start();
             // Segundo medio (tarjeta o transferencia)
             const tipoSec = (fpSlug === 'mixto_efectivo_tarjeta' ? 'tarjeta' : 'transferencia');
             const idFPsec = (fpSlug === 'mixto_efectivo_tarjeta'
-                             ? (tipoTarjeta === 'debito' ? ID_FP.tarjetaDebito : ID_FP.tarjetaCredito)
-                             : ID_FP.transferencia);
+                             ? Number(tipoTarjetaId || 0)
+                             : idTransfer);
 
             if (ms > 0) {
+              if (!idFPsec) {
+                Swal.fire({
+                  icon:'error',
+                  title:'Forma de pago faltante',
+                  text:`No se encontró la forma de pago para ${tipoSec}.`
+                });
+                return;
+              }
               pagosArr.push({
                 id_forma_pago: idFPsec,
                 tipo: tipoSec,
@@ -1107,13 +1180,15 @@ session_start();
 
       // ===== Tarjeta / Transferencia "simples"
       if (fpSlug === 'tarjeta' || fpSlug === 'transferencia'){
+        const idFP = (fpSlug==='tarjeta' ? asegurarIdFP(ID_FP.tarjeta, 'tarjeta') : asegurarIdFP(ID_FP.transferencia, 'transferencia'));
+        if (!idFP) return;
+
         Swal.fire({
           title: (fpSlug==='tarjeta'?'Cobro con tarjeta':'Cobro por transferencia'),
           html:`<p>Total a cobrar: <b>${mxn(total)}</b></p>`,
           icon:'question', showCancelButton:true, confirmButtonText:'Confirmar'
         }).then(res=>{
           if(res.isConfirmed){
-            const idFP = (fpSlug==='tarjeta' ? ID_FP.tarjeta : ID_FP.transferencia);
             const pagosArr = [{
               id_forma_pago: idFP,
               tipo: fpSlug,

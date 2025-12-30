@@ -69,14 +69,14 @@ class VentaModel
     private function buscarIdFormaPagoPorTipo(string $tipo): ?int
     {
         $tipo = strtolower(trim($tipo));
-        $sql  = "SELECT id_forma_pago FROM formas_pago WHERE ";
+        $sql  = "SELECT id_forma_pago FROM formas_pago WHERE activo = 1 AND ";
 
         if ($tipo === 'efectivo') {
-            $sql .= "LOWER(descripcion) LIKE '%efectivo%'";
+            $sql .= "(LOWER(descripcion) LIKE '%efectivo%' OR clave_sat = '01')";
         } elseif ($tipo === 'tarjeta') {
             $sql .= "LOWER(descripcion) LIKE '%tarjeta%'";
         } elseif ($tipo === 'transferencia') {
-            $sql .= "LOWER(descripcion) LIKE '%transfer%'";
+            $sql .= "(LOWER(descripcion) LIKE '%transfer%' OR clave_sat = '03')";
         } else {
             return null;
         }
@@ -89,6 +89,27 @@ class VentaModel
             return $id ? (int)$id : null;
         } catch (\Throwable $th) {
             return null;
+        }
+    }
+
+    /** Valida que la forma de pago exista y esté activa. */
+    private function asegurarFormaPagoActiva(int $idFormaPago): void
+    {
+        if ($idFormaPago <= 0) {
+            throw new \Exception('id_forma_pago inválido.');
+        }
+
+        $st = $this->conn->prepare(
+            "SELECT activo FROM formas_pago WHERE id_forma_pago = :id LIMIT 1"
+        );
+        $st->execute([':id' => $idFormaPago]);
+        $activo = $st->fetchColumn();
+
+        if ($activo === false) {
+            throw new \Exception('La forma de pago no existe.');
+        }
+        if ((int)$activo !== 1) {
+            throw new \Exception('La forma de pago está inactiva.');
         }
     }
 
@@ -377,6 +398,7 @@ class VentaModel
     /** Inserta un renglón en pagos_venta. referencia_pago = folio. */
     private function insertarPagoVenta(int $idVenta, int $idFormaPago, float $monto, string $referencia): void
     {
+        $this->asegurarFormaPagoActiva($idFormaPago);
         $st = $this->conn->prepare(
             "INSERT INTO pagos_venta
              (id_venta, id_forma_pago, monto, referencia_pago, activo, fecha_creacion)
@@ -544,11 +566,7 @@ class VentaModel
                 $idFormaPago = null;
             } else {
                 if ($idFormaPago !== null) {
-                    $chk = $this->conn->prepare("SELECT 1 FROM formas_pago WHERE id_forma_pago = :id");
-                    $chk->execute([':id' => $idFormaPago]);
-                    if (!$chk->fetchColumn()) {
-                        throw new \Exception('Forma de pago inválida (no existe en formas_pago).');
-                    }
+                    $this->asegurarFormaPagoActiva($idFormaPago);
                 }
             }
 
@@ -810,6 +828,10 @@ class VentaModel
             $norm = $this->normalizarEstatusYFormaPago((string)($datosVenta['estatus'] ?? $ventaActual['estatus'] ?? 'Activa'), $idFormaPago, $idCliente);
             $estatusBD   = $norm['estatus'];
             $idFormaPago = $norm['id_fp'];
+
+            if ($idFormaPago !== null) {
+                $this->asegurarFormaPagoActiva($idFormaPago);
+            }
 
             /* ===== SOLO CABECERA ===== */
             if ($detalles === null) {
@@ -1168,6 +1190,8 @@ class VentaModel
                 $monto = (float)$p['monto'];
                 $ref   = trim((string)($p['referencia_pago'] ?? ''));
 
+                $this->asegurarFormaPagoActiva($idFp);
+
                 $ins->execute([
                     ':v'  => $idVenta,
                     ':fp' => $idFp,
@@ -1355,6 +1379,10 @@ class VentaModel
                 throw new \Exception('Para activar como Crédito se requiere seleccionar un cliente.');
             }
 
+            if (!$esMixto && $idFormaPago !== null) {
+                $this->asegurarFormaPagoActiva((int)$idFormaPago);
+            }
+
             // ==== ACTUALIZAR VENTAS (estatus + id_forma_pago) ====
             $params = [':id'=>$idVenta, ':est'=>$nuevoEstatus];
             $sql = "UPDATE ventas SET estatus=:est";
@@ -1408,6 +1436,7 @@ class VentaModel
                         if ($idFp <= 0 || $monto <= 0) {
                             throw new \Exception('Cada renglón de pago mixto debe tener forma de pago y monto mayor a 0.');
                         }
+                        $this->asegurarFormaPagoActiva($idFp);
                         $suma += $monto;
 
                         $stIns->execute([
