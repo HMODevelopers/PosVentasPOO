@@ -305,7 +305,14 @@ session_start();
 
     function opcionesTarjeta(){
       const norm = normalize;
-      return formasPagoActivas.filter(fp => norm(fp.descripcion).includes('tarjeta'));
+      return formasPagoActivas
+        .filter(fp => {
+          const d = norm(fp.descripcion);
+          const activo = (fp.activo ?? 1) === 1;
+          const esTarjeta = d.includes('tarjeta');
+          const esMixto = d.includes('mixto');
+          return activo && esTarjeta && !esMixto;
+        });
     }
 
     function asegurarIdFP(id, etiqueta){
@@ -1067,26 +1074,28 @@ session_start();
 
         Swal.fire({
           title:'Cobro mixto',
-          html:`<div class="text-start">
+          html:`<div class="text-start" style="overflow-x:hidden;">
             <p class="mb-3">Total a pagar: <b>${mxn(total)}</b></p>
-            <div class="row g-3 align-items-end">
-              <div class="col-12 col-md-6">
-                <label class="form-label" for="m_efectivo">Efectivo</label>
-                <input id="m_efectivo" type="number" min="0" step="0.01" class="form-control" value="${fix2(total)}">
-              </div>
-              <div class="col-12 col-md-6">
-                ${fpSlug === 'mixto_efectivo_tarjeta' ? `
-                  <div class="mb-3 mb-md-2">
-                    <label class="form-label" for="m_tipo_tarjeta">Tipo de tarjeta</label>
-                    <select id="m_tipo_tarjeta" class="form-select">
-                      <option value="">Selecciona…</option>
-                      ${opcionesTar.map(fp => `<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`).join('')}
-                    </select>
+            <div class="container-fluid px-0">
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label class="form-label mb-1" for="m_efectivo">Efectivo</label>
+                  <input id="m_efectivo" type="number" min="0" step="0.01" class="form-control" value="${fix2(total)}">
+                </div>
+                <div class="col-12 col-md-6">
+                  ${fpSlug === 'mixto_efectivo_tarjeta' ? `
+                    <div class="mb-2">
+                      <label class="form-label mb-1" for="m_tipo_tarjeta">Tipo de tarjeta</label>
+                      <select id="m_tipo_tarjeta" class="form-select">
+                        <option value="">Seleccione tipo de tarjeta…</option>
+                        ${opcionesTar.map(fp => `<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`).join('')}
+                      </select>
+                    </div>
+                  ` : ''}
+                  <div>
+                    <label class="form-label mb-1" for="m_secundario">${labelSecundaria}</label>
+                    <input id="m_secundario" type="number" min="0" step="0.01" class="form-control" value="0.00" ${fpSlug === 'mixto_efectivo_tarjeta' ? 'disabled' : ''}>
                   </div>
-                ` : ''}
-                <div>
-                  <label class="form-label" for="m_secundario">${labelSecundaria}</label>
-                  <input id="m_secundario" type="number" min="0" step="0.01" class="form-control" value="0.00" ${fpSlug === 'mixto_efectivo_tarjeta' ? 'disabled' : ''}>
                 </div>
               </div>
             </div>
@@ -1094,6 +1103,7 @@ session_start();
           focusConfirm:false,
           showCancelButton:true,
           confirmButtonText:'Cobrar',
+          customClass:{ actions:'swal2-actions justify-content-center gap-2' },
           preConfirm:()=>{
             const ef = Number(document.getElementById('m_efectivo').value || 0);
             const ms = Number(document.getElementById('m_secundario').value || 0);
