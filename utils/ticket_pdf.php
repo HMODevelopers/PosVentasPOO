@@ -127,7 +127,7 @@ function resumirPagosVenta(array $venta, array $pagos): array
 }
 
 $infoPagos     = resumirPagosVenta($venta, $pagos);
-$txtFormaPago  = 'Forma de pago: ' . $infoPagos['forma'];
+$txtFormaPago  = 'FORMA DE PAGO: ' . $infoPagos['forma'];
 $txtDesgloseFP = '';
 if (!empty($infoPagos['desglose'])) {
   $parts = [];

@@ -42,7 +42,7 @@
 
           <!-- FORMA DE PAGO -->
           <div class="tk-meta-line">
-            <strong>Forma de pago:</strong> <span id="tk-fp">—</span>
+            <strong>FORMA DE PAGO:</strong> <span id="tk-fp">—</span>
           </div>
           <div class="tk-meta-line d-none" id="wrap-tk-fp-det">
             <span id="tk-fp-det">—</span>
