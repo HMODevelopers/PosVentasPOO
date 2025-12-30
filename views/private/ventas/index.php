@@ -804,6 +804,31 @@ function formatCantidadJS(value){
   return txt.includes('.') ? txt.replace(/0+$/, '').replace(/\.$/, '') : txt;
 }
 
+function resumirPagosTicket(venta, pagos){
+  const activos = Array.isArray(pagos) ? pagos.filter(p => (p?.activo ?? 1) !== 0) : [];
+  const sumas = new Map();
+
+  activos.forEach(p => {
+    const desc = (p.descripcion || '').toString().trim() || 'Pago';
+    const monto = Number(p.monto || 0);
+    sumas.set(desc, (sumas.get(desc) || 0) + monto);
+  });
+
+  if (sumas.size > 1) {
+    const partes = [];
+    sumas.forEach((monto, desc) => partes.push(`${desc}: ${mxn(monto)}`));
+    return { forma: 'Mixto', desglose: partes.join('  ') };
+  }
+
+  if (sumas.size === 1) {
+    const [desc] = sumas.entries().next().value;
+    return { forma: desc || 'Pago', desglose: '' };
+  }
+
+  const fp = (venta?.forma_pago || '').toString().trim();
+  return { forma: fp || '—', desglose: '' };
+}
+
 function renderTkItem({ cantidad, articulo, precio_unitario, subtotal }){
   const cant   = formatCantidadJS(cantidad);
   const precio = mxn(precio_unitario || 0);
@@ -836,6 +861,10 @@ window.abrirTicket = function(idVenta){
   // ← reset cliente siempre
   $('#tk-cliente').text('—');
   $('#wrap-tk-cliente').addClass('d-none');
+  // ← reset forma de pago
+  $('#tk-fp').text('—');
+  $('#tk-fp-det').text('—');
+  $('#wrap-tk-fp-det').addClass('d-none');
 
   $('#tk-idventa').val(idVenta);
 
@@ -869,6 +898,16 @@ window.abrirTicket = function(idVenta){
       $('#wrap-tk-cliente').addClass('d-none');
     }
     // =======================================
+
+    const infoPagos = resumirPagosTicket(v, resp.pagos || []);
+    $('#tk-fp').text(infoPagos.forma || '—');
+    if (infoPagos.desglose) {
+      $('#tk-fp-det').text(infoPagos.desglose);
+      $('#wrap-tk-fp-det').removeClass('d-none');
+    } else {
+      $('#tk-fp-det').text('—');
+      $('#wrap-tk-fp-det').addClass('d-none');
+    }
 
     let html = '', total = 0;
     det.forEach(d=>{

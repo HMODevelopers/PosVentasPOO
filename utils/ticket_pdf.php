@@ -92,6 +92,50 @@ $ventaModel = new VentaModel();
 $venta    = $ventaModel->obtenerVentaPorId($idVenta);
 if (!$venta) { http_response_code(404); exit('Venta no encontrada'); }
 $detalles = $ventaModel->obtenerDetalleVenta($idVenta);
+$pagos    = method_exists($ventaModel, 'obtenerPagosVenta') ? $ventaModel->obtenerPagosVenta($idVenta) : [];
+
+// Resumen de pagos para forma de pago + desglose
+function resumirPagosVenta(array $venta, array $pagos): array
+{
+  $sumas = [];
+  foreach ($pagos as $p) {
+    if (isset($p['activo']) && (int)$p['activo'] === 0) continue;
+    $desc  = trim((string)($p['descripcion'] ?? ''));
+    $monto = (float)($p['monto'] ?? 0);
+    if (!isset($sumas[$desc])) $sumas[$desc] = 0.0;
+    $sumas[$desc] += $monto;
+  }
+
+  if (count($sumas) > 1) {
+    $desglose = [];
+    foreach ($sumas as $desc => $monto) {
+      $desglose[] = [
+        'desc'  => $desc !== '' ? $desc : 'Pago',
+        'monto' => $monto,
+      ];
+    }
+    return ['forma' => 'Mixto', 'desglose' => $desglose];
+  }
+
+  if (count($sumas) === 1) {
+    $desc = array_keys($sumas)[0];
+    return ['forma' => ($desc !== '' ? $desc : 'Pago'), 'desglose' => []];
+  }
+
+  $descVenta = trim((string)($venta['forma_pago'] ?? ''));
+  return ['forma' => ($descVenta !== '' ? $descVenta : '—'), 'desglose' => []];
+}
+
+$infoPagos     = resumirPagosVenta($venta, $pagos);
+$txtFormaPago  = 'Forma de pago: ' . $infoPagos['forma'];
+$txtDesgloseFP = '';
+if (!empty($infoPagos['desglose'])) {
+  $parts = [];
+  foreach ($infoPagos['desglose'] as $p) {
+    $parts[] = ($p['desc'] ?? 'Pago') . ': ' . mxn($p['monto'] ?? 0);
+  }
+  $txtDesgloseFP = implode('  ', $parts);
+}
 
 /* ========= ESTATUS + CLIENTE (para usar en todo el ticket) ========= */
 // Estatus: usa el que venga; si no, infiere por cancelada / id_forma_pago
@@ -160,10 +204,14 @@ $alto += snapMM(5, $DPI);                   // título
 $alto += 6 * snapMM(4, $DPI);               // 6 líneas de datos fiscales
 $alto += $GAP + $LINE_W + $GAP;             // separador
 
-// Meta: FECHA, FOLIO, ESTATUS (+ CLIENTE si crédito) + separador
+// Meta: FECHA, FOLIO, ESTATUS (+ CLIENTE si crédito) + FORMA DE PAGO + separador
 $lineasMeta = 3; // FECHA, FOLIO, ESTATUS
 if ($esCredito && $nombreCliente !== '') {
   $lineasMeta++; // CLIENTE
+}
+$lineasMeta += contarLineasFPDF($probe, utf8_decode($txtFormaPago), $PAGE_WU);
+if ($txtDesgloseFP !== '') {
+  $lineasMeta += contarLineasFPDF($probe, utf8_decode($txtDesgloseFP), $PAGE_WU);
 }
 $alto += $lineasMeta * snapMM(4, $DPI);
 $alto += $GAP + $LINE_W + $GAP;
@@ -260,6 +308,12 @@ $pdf->Cell(0, snapMM(4,$DPI), 'ESTATUS: '.$estatus, 0, 1, 'L');
 // SOLO cuando sea crédito y tengamos nombre de cliente
 if ($esCredito && $nombreCliente !== '') {
   $pdf->Cell(0, snapMM(4,$DPI), 'CLIENTE: '.utf8_decode($nombreCliente), 0, 1, 'L');
+}
+
+// FORMA DE PAGO + DESGLOSE
+$pdf->Cell(0, snapMM(4,$DPI), utf8_decode($txtFormaPago), 0, 1, 'L');
+if ($txtDesgloseFP !== '') {
+  $pdf->MultiCell(0, snapMM(4,$DPI), utf8_decode($txtDesgloseFP), 0, 'L');
 }
 
 $pdf->Ln($GAP); $y=$pdf->GetY(); $pdf->Line($X0, $y, $X1, $y); $pdf->Ln($GAP);
