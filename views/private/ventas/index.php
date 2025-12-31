@@ -15,6 +15,8 @@ session_start();
     }
 
     require_once __DIR__ . '/../../../includes/config.php';
+    require_once __DIR__ . '/../../../includes/constants.php';
+    $ID_GRUPO_ACUMULADOR = defined('ID_GRUPO_ACUMULADOR') ? ID_GRUPO_ACUMULADOR : null;
 
     // ================================
     // Validar que haya usuario logueado
@@ -333,6 +335,7 @@ const fechaMx = dt => {
 
 // Endpoints (centralizados)
 const BASE = BASE_URL;
+const ID_GRUPO_ACUMULADOR = <?= $ID_GRUPO_ACUMULADOR !== null ? (int)$ID_GRUPO_ACUMULADOR : 'null' ?>;
 const VENTAS_URL     = `${BASE}/controllers/VentasController.php`;
 const PRODUCTOS_URL  = `${BASE}/controllers/ProductosController.php`;
 const CLIENTES_URL   = `${BASE}/controllers/ClientesController.php`;
@@ -1386,6 +1389,10 @@ let pagosVenta = [];
 let edIdsPago = { efectivo:null, tarjeta:null, mixto:null };
 
 function vendibleDe(det){ return Math.max(0, num(det.stock_actual ?? det.existencia) - num(det.stock_minimo)); }
+const esProductoAcumulador = (it) => {
+  if (!ID_GRUPO_ACUMULADOR) return false;
+  return Number(it?.id_grupo ?? 0) === Number(ID_GRUPO_ACUMULADOR);
+};
 function mapTipoPrecioId(slug){ const m={publico:1, taller:2, proveedor:3}; return m[slug]||1; }
 
 function precioDeItem(it){
@@ -1548,16 +1555,29 @@ function agregarDesdeDetalle(p, originalCant=0){
   const idx = carrito.findIndex(x=>x.id_producto==p.id_producto);
   const itemBase = {
     id_producto:p.id_producto, codigo:p.codigo, descripcion:p.descripcion,
+    id_grupo: p.id_grupo ?? null,
     stock_actual:Number(p.stock_actual ?? p.existencia ?? 0),
     stock_minimo:Number(p.stock_minimo ?? 0),
     precio_publico:Number(p.precio_publico ?? 0),
     precio_taller:Number(p.precio_taller ?? 0),
     precio_proveedor:Number(p.precio_proveedor ?? 0),
     proveedor:p.proveedor ?? null,
-    original: Number(originalCant||0)
+    original: Number(originalCant||0),
+    numero_poliza: (p.numero_poliza ?? '').toString().trim()
   };
   const vendible=Math.max(0, itemBase.stock_actual - itemBase.stock_minimo);
   if(vendible<=0 && itemBase.original<=0){ toastr.warning('Sin stock disponible para vender.'); return; }
+  if (esProductoAcumulador(itemBase)) {
+    if (idx>=0) {
+      carrito[idx].cantidad = 1;
+      if (!carrito[idx].numero_poliza) carrito[idx].numero_poliza = itemBase.numero_poliza;
+    } else {
+      carrito.push({...itemBase, cantidad: 1});
+    }
+    pintarCarrito();
+    return;
+  }
+
   if(idx>=0){
     const max = itemBase.original + vendible;
     const next= Math.min(max, Number(carrito[idx].cantidad)+1);
@@ -1679,6 +1699,14 @@ function pintarCarrito(){
     total += subtotal;
     const vendible = Math.max(0, Number(it.stock_actual) - Number(it.stock_minimo));
     const max = Number(it.original||0) + vendible;
+    const requierePoliza = esProductoAcumulador(it);
+    const polizaHtml = requierePoliza ? `
+      <div class="mt-1">
+        <label class="form-label mb-0"><small>Número de póliza *</small></label>
+        <input type="text" class="form-control form-control-sm" data-ed-poliza="${idx}" maxlength="80"
+               pattern="[A-Za-z0-9-]+" value="${it.numero_poliza ? it.numero_poliza : ''}" placeholder="Captura póliza">
+      </div>` : '';
+    const qtyAttrs = requierePoliza ? 'min="1" step="1" readonly' : 'min="1" step="1"';
 
     tb.append(`
       <tr>
@@ -1690,15 +1718,17 @@ function pintarCarrito(){
                 Cod: ${it.codigo} ${it.proveedor?`· Prov: ${it.proveedor}`:``}
                 · Exist: <span class="badge ${Number(it.stock_actual)>0?'bg-success':'bg-secondary'} badge-stock">${fix2(it.stock_actual)}</span>
                 · Máx vendible: ${fix2(max)}
+                ${requierePoliza ? '· Requiere póliza' : ''}
               </div>
+              ${polizaHtml}
             </div>
           </div>
         </td>
         <td class="text-center">
           <div class="btn-group btn-group-sm" role="group">
-            <button class="btn btn-outline-danger" data-ed-dec="${idx}"><i class="mdi mdi-minus"></i></button>
-            <input type="number" min="1" step="1" class="form-control form-control-sm text-center w-70px" value="${fix2(it.cantidad)}" data-ed-qty="${idx}" data-max="${max}">
-            <button class="btn btn-outline-success" data-ed-inc="${idx}"><i class="mdi mdi-plus"></i></button>
+            <button class="btn btn-outline-danger" data-ed-dec="${idx}" ${requierePoliza ? 'disabled' : ''}><i class="mdi mdi-minus"></i></button>
+            <input type="number" ${qtyAttrs} class="form-control form-control-sm text-center w-70px" value="${fix2(it.cantidad)}" data-ed-qty="${idx}" data-max="${max}">
+            <button class="btn btn-outline-success" data-ed-inc="${idx}" ${requierePoliza ? 'disabled' : ''}><i class="mdi mdi-plus"></i></button>
           </div>
         </td>
         <td class="text-end">
@@ -1724,6 +1754,7 @@ function pintarCarrito(){
 
 $tbody.on('click','button[data-ed-inc]', function(){
   const i=Number(this.dataset.edInc); if(isNaN(i)||!carrito[i]) return;
+  if (esProductoAcumulador(carrito[i])) { carrito[i].cantidad = 1; pintarCarrito(); return; }
   const vendible=Math.max(0, Number(carrito[i].stock_actual) - Number(carrito[i].stock_minimo));
   const max = Number(carrito[i].original||0) + vendible;
   const next=Number(carrito[i].cantidad)+1;
@@ -1732,15 +1763,21 @@ $tbody.on('click','button[data-ed-inc]', function(){
 });
 $tbody.on('click','button[data-ed-dec]', function(){
   const i=Number(this.dataset.edDec); if(isNaN(i)||!carrito[i]) return;
+  if (esProductoAcumulador(carrito[i])) { carrito[i].cantidad = 1; pintarCarrito(); return; }
   carrito[i].cantidad=Math.max(1,Number(carrito[i].cantidad)-1);
   pintarCarrito();
 });
 $tbody.on('change','input[data-ed-qty]', function(){
   const i=Number(this.dataset.edQty); if(isNaN(i)||!carrito[i]) return;
+  if (esProductoAcumulador(carrito[i])) { carrito[i].cantidad = 1; this.value='1.00'; return; }
   let val=Math.max(1, Number(this.value||1));
   const max=Number(this.dataset.max||0);
   if (val>max){ val=max; toastr.info('Se ajustó a máximo vendible.'); }
   carrito[i].cantidad=val; pintarCarrito();
+});
+$tbody.on('input change','input[data-ed-poliza]', function(){
+  const i=Number(this.dataset.edPoliza); if(isNaN(i)||!carrito[i]) return;
+  carrito[i].numero_poliza = (this.value || '').trim();
 });
 $tbody.on('change','input[data-ed-unit]', function(){
   const i=Number(this.dataset.edUnit); if(isNaN(i)||!carrito[i]) return;
@@ -1764,9 +1801,20 @@ $tpPrecio.on('change', pintarCarrito);
 $selForma.on('change', ed_toggleMixtoUI);
 $mixEfec.add($mixTar).on('change', ()=> ed_validarMixto());
 
+function validarPolizasEdicion(){
+  if (!ID_GRUPO_ACUMULADOR) return true;
+  const faltante = carrito.find(it => esProductoAcumulador(it) && !(it.numero_poliza || '').trim());
+  if (faltante) {
+    toastr.error(`Captura el número de póliza para ${faltante.descripcion || 'la batería/acumulador'}.`);
+    return false;
+  }
+  return true;
+}
+
 $('#btnGuardarEdicion').on('click', function(){
   if (!edVentaId){ toastr.error('No hay venta cargada.'); return; }
   if (!carrito.length){ toastr.warning('Agrega productos a la orden'); return; }
+  if (!validarPolizasEdicion()) return;
 
   const $opt = $selForma.find('option:selected');
   const esCredito = isCreditoByOption($opt);
@@ -1805,8 +1853,15 @@ $('#btnGuardarEdicion').on('click', function(){
   };
   const detalles = carrito.map(it=>{
     const unit = precioDeItem(it);
-    const cant = Math.max(1, Number(it.cantidad)||1);
-    return { id_producto: it.id_producto, cantidad: cant, precio_unitario: unit, subtotal: cant*unit };
+    const baseCant = Math.max(1, Number(it.cantidad)||1);
+    const cant = esProductoAcumulador(it) ? 1 : baseCant;
+    return {
+      id_producto: it.id_producto,
+      cantidad: cant,
+      precio_unitario: unit,
+      subtotal: cant*unit,
+      numero_poliza: it.numero_poliza ? it.numero_poliza.trim() : null
+    };
   });
 
   const payload = { venta, detalles, pagos };
@@ -1860,6 +1915,7 @@ window.abrirEditarVenta = function(idVenta){
             id_producto:idp,
             codigo: p.codigo || d.codigo || '',
             descripcion: p.descripcion || d.producto || '',
+            id_grupo: p.id_grupo ?? d.id_grupo ?? null,
             stock_actual:Number(p.stock_actual ?? p.existencia ?? 0),
             stock_minimo:Number(p.stock_minimo ?? 0),
             precio_publico:Number(p.precio_publico ?? 0),
@@ -1867,8 +1923,10 @@ window.abrirEditarVenta = function(idVenta){
             precio_proveedor:Number(p.precio_proveedor ?? 0),
             proveedor:p.proveedor ?? null,
             original:Number(d.cantidad||0),
-            cantidad:Number(d.cantidad||0)
+            cantidad:Number(d.cantidad||0),
+            numero_poliza:(d.numero_poliza ?? '').toString().trim()
           };
+          if (esProductoAcumulador(item)) item.cantidad = 1;
           const unitVenta = Number(d.precio_unitario||0);
           const unitTipo  = (function(){
             const t=slug;

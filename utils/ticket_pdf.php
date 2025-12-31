@@ -220,16 +220,20 @@ $alto += $GAP + $LINE_W + $GAP;
 $alto += $LH;
 
 // Detalle
-foreach ($detalles as $d) {
-  $codigo = trim((string)($d['codigo'] ?? $d['clave'] ?? $d['sku'] ?? ''));
-  $prod   = trim((string)($d['producto'] ?? $d['nombre'] ?? ''));
-  $desc   = trim((string)($d['descripcion'] ?? ''));
+  foreach ($detalles as $d) {
+    $codigo = trim((string)($d['codigo'] ?? $d['clave'] ?? $d['sku'] ?? ''));
+    $prod   = trim((string)($d['producto'] ?? $d['nombre'] ?? ''));
+    $desc   = trim((string)($d['descripcion'] ?? ''));
+    $poliza = trim((string)($d['numero_poliza'] ?? ''));
 
   // UNA sola línea lógica: "[CODIGO] - Descripción/Producto" limitada
   $art = armarArticuloLinea($codigo, $prod, $desc, MAX_ART_CHARS);
 
   $lineas = contarLineasFPDF($probe, $art, $W_ART);
   $alto += max($LH, $lineas * $LH_DESC);
+  if ($poliza !== '') {
+    $alto += snapMM(4, $DPI);
+  }
 }
 
 // Totales + mensajes + cola (con extra)
@@ -339,6 +343,7 @@ foreach ($detalles as $d) {
   $codigo = trim((string)($d['codigo'] ?? $d['clave'] ?? $d['sku'] ?? ''));
   $prod   = trim((string)($d['producto'] ?? $d['nombre'] ?? ''));
   $desc   = trim((string)($d['descripcion'] ?? ''));
+  $poliza = trim((string)($d['numero_poliza'] ?? ''));
 
   // UNA sola línea visible, con límite
   $art = armarArticuloLinea($codigo, $prod, $desc, MAX_ART_CHARS);
@@ -367,6 +372,13 @@ foreach ($detalles as $d) {
 
   // Avanza al final de la fila real
   $pdf->SetY($y0 + $h);
+
+  if ($poliza !== '') {
+    $pdf->SetFont('Courier','', $FS_SM);
+    $pdf->Cell($W_CANT + $W_ART, $LH_DESC, utf8_decode('Póliza: '.$poliza), 0, 0, 'L');
+    $pdf->Cell($W_PREC + $W_TOT, $LH_DESC, '', 0, 1, 'R');
+    $pdf->SetFont('Courier', $BODY_STYLE, $FS_BODY);
+  }
 }
 
 /* ---------- Totales ---------- */

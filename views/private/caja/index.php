@@ -15,6 +15,8 @@ session_start();
     }
 
     require_once __DIR__ . '/../../../includes/config.php';
+    require_once __DIR__ . '/../../../includes/constants.php';
+    $ID_GRUPO_ACUMULADOR = defined('ID_GRUPO_ACUMULADOR') ? ID_GRUPO_ACUMULADOR : null;
 
     // ================================
     // Validar que haya usuario logueado
@@ -314,6 +316,7 @@ session_start();
     // 1) CONSTANTES & HELPERS DE FORMATO
     // ============================================================
     const BASE = BASE_URL;
+    const ID_GRUPO_ACUMULADOR = <?= $ID_GRUPO_ACUMULADOR !== null ? (int)$ID_GRUPO_ACUMULADOR : 'null' ?>;
     const mxn  = v => Number(v||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
     const fix2 = v => (Number(v||0)).toFixed(2);
     const num  = v => parseFloat(v ?? 0) || 0;
@@ -454,6 +457,11 @@ session_start();
       const m = { publico:1, taller:2, proveedor:3 };
       return m[slug] || 1;
     }
+
+    const esAcumulador = (it) => {
+      if (!ID_GRUPO_ACUMULADOR) return false;
+      return Number(it?.id_grupo ?? 0) === Number(ID_GRUPO_ACUMULADOR);
+    };
 
     // ============================================================
     // 4) SERVICIOS (AJAX) PARA CARGAR DATOS
@@ -660,6 +668,7 @@ session_start();
         id_producto: p.id_producto,
         codigo: p.codigo,
         descripcion: p.descripcion,
+        id_grupo: p.id_grupo ?? null,
         stock_total: stockTotal,       // stock real del sistema
         stock_actual: stockTotal,      // para compatibilidad si se usa en algún lado
         stock_minimo: Number(p.stock_minimo ?? 0),
@@ -667,7 +676,8 @@ session_start();
         precio_taller: Number(p.precio_taller ?? 0),
         precio_proveedor: Number(p.precio_proveedor ?? 0),
         proveedor: p.proveedor ?? null,
-        cantidad: 1
+        cantidad: 1,
+        numero_poliza: ''
       };
 
       carrito.push(itemBase);
@@ -702,6 +712,14 @@ session_start();
         const disponible = Math.max(0, stockTotal - usado);
 
         const badgeClass = disponible > 0 ? 'bg-success' : 'bg-secondary';
+        const requierePoliza = esAcumulador(it);
+        const polizaHtml = requierePoliza ? `
+          <div class="mt-1">
+            <label class="form-label mb-0"><small>Número de póliza *</small></label>
+            <input type="text" class="form-control form-control-sm" data-poliza="${idx}" maxlength="80"
+                   pattern="[A-Za-z0-9-]+" value="${it.numero_poliza ? it.numero_poliza : ''}" placeholder="Captura póliza">
+          </div>` : '';
+        const qtyAttrs = requierePoliza ? 'min="1" max="1" step="1" readonly' : 'min="0" step="1"';
 
         $tb.append(`
           <tr>
@@ -713,7 +731,9 @@ session_start();
                   <div class="small text-muted">
                     Cod: ${it.codigo} ${it.proveedor ? `· Prov: ${it.proveedor}` : ``}
                     · Exist total: <span class="badge ${badgeClass} badge-stock">${fix2(stockTotal)}</span>
+                    ${requierePoliza ? '· Requiere póliza' : ''}
                   </div>
+                  ${polizaHtml}
                 </div>
               </div>
             </td>
@@ -722,8 +742,7 @@ session_start();
             <td class="text-center">
               <div class="btn-group btn-group-sm" role="group">
                 <input type="number"
-                       min="0"
-                       step="1"
+                       ${qtyAttrs}
                        class="form-control form-control-sm text-center w-70px"
                        value="${fix2(cantidad)}"
                        data-qty="${idx}">
@@ -811,6 +830,12 @@ session_start();
       const i = Number(this.dataset.qty);
       if(isNaN(i) || !carrito[i]) return;
 
+      if (esAcumulador(carrito[i])) {
+        carrito[i].cantidad = 1;
+        this.value = '1.00';
+        return;
+      }
+
       let val = Number(this.value || 0);
       if (isNaN(val) || val <= 0) val = 0.01;
 
@@ -833,6 +858,12 @@ session_start();
 
       carrito[i].cantidad = Number(val.toFixed(2));
       pintarCarrito();
+    });
+
+    $('#tablaCarrito').on('input change','input[data-poliza]', function(){
+      const i = Number(this.dataset.poliza);
+      if (isNaN(i) || !carrito[i]) return;
+      carrito[i].numero_poliza = (this.value || '').trim();
     });
 
     /* ========== ELIMINAR ITEM ========== */
@@ -911,6 +942,20 @@ session_start();
       }));
     }
 
+    function validarPolizasCarrito(){
+      if (!ID_GRUPO_ACUMULADOR) return true;
+      const faltante = carrito.find(it => esAcumulador(it) && !(it.numero_poliza || '').trim());
+      if (faltante) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Número de póliza requerido',
+          text: `Captura el número de póliza para ${faltante.descripcion || 'la batería'}.`
+        });
+        return false;
+      }
+      return true;
+    }
+
     // ============================================================
     // 9) REGISTRO DE VENTA
     // ============================================================
@@ -918,6 +963,8 @@ session_start();
       const slugPrecio = $('#tpPrecio').val();
       const clienteVal = $('#selCliente').val();
       const idCliente  = clienteVal ? Number(clienteVal) : null;
+
+      if (!validarPolizasCarrito()) return;
 
       const payload = {
         venta: {
@@ -938,7 +985,8 @@ session_start();
             id_producto: it.id_producto,
             cantidad: cant,
             precio_unitario: unit,
-            subtotal: cant * unit
+            subtotal: cant * unit,
+            numero_poliza: it.numero_poliza ? it.numero_poliza.trim() : null
           };
         }),
         // 🔥 Aquí viajan los pagos para tabla pagos_venta

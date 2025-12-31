@@ -1,10 +1,13 @@
 <?php
 // models/VentaModel.php
 include_once '../includes/db.php';
+require_once __DIR__ . '/../includes/constants.php';
 
 class VentaModel
 {
     private $conn;
+    private static $idGrupoAcumulador = null;
+    private $productoCache = [];
 
     public function __construct()
     {
@@ -20,6 +23,57 @@ class VentaModel
     {
         $now = new \DateTime('now', $this->tzHerm());
         return ($fechaYmd ?: $now->format('Y-m-d')) . ' ' . $now->format('H:i:s');
+    }
+
+    /* ========================= Helpers de negocio ========================= */
+    private function obtenerIdGrupoAcumulador(): ?int
+    {
+        if (self::$idGrupoAcumulador !== null) return self::$idGrupoAcumulador;
+        if (defined('ID_GRUPO_ACUMULADOR')) {
+            self::$idGrupoAcumulador = ID_GRUPO_ACUMULADOR ?: null;
+            if (self::$idGrupoAcumulador !== null) return self::$idGrupoAcumulador;
+        }
+
+        try {
+            $stmt = $this->conn->query(
+                "SELECT id_grupo
+                   FROM cat_grupos
+                  WHERE LOWER(nombre_grupo) LIKE '%acumulador%'
+                  ORDER BY id_grupo ASC
+                  LIMIT 1"
+            );
+            $id = $stmt->fetchColumn();
+            if ($id !== false && $id !== null) {
+                self::$idGrupoAcumulador = (int)$id;
+                if (!defined('ID_GRUPO_ACUMULADOR')) {
+                    define('ID_GRUPO_ACUMULADOR', self::$idGrupoAcumulador);
+                }
+                return self::$idGrupoAcumulador;
+            }
+        } catch (\Throwable $th) {}
+
+        self::$idGrupoAcumulador = null;
+        return null;
+    }
+
+    private function obtenerProductoVenta(int $idProducto, bool $lock = true): array
+    {
+        if (isset($this->productoCache[$idProducto])) {
+            return $this->productoCache[$idProducto];
+        }
+
+        $sql = "SELECT id_producto, descripcion, id_grupo, stock_actual, stock_minimo, costo_neto
+                FROM productos
+                WHERE id_producto = :idp";
+        if ($lock) {
+            $sql .= " FOR UPDATE";
+        }
+
+        $st = $this->conn->prepare($sql);
+        $st->execute([':idp' => $idProducto]);
+        $prod = $st->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $this->productoCache[$idProducto] = $prod;
+        return $prod;
     }
 
     /* ========================= Helpers Crédito ========================= */
@@ -331,7 +385,7 @@ class VentaModel
     public function obtenerDetalleVenta($idVenta)
     {
         $st = $this->conn->prepare(
-            "SELECT vd.*, p.descripcion AS producto, p.codigo AS codigo
+            "SELECT vd.*, p.descripcion AS producto, p.codigo AS codigo, p.id_grupo AS id_grupo
              FROM ventas_detalle vd
              INNER JOIN productos p ON p.id_producto = vd.id_producto
              WHERE vd.id_venta = :id
@@ -656,14 +710,14 @@ class VentaModel
                     // ===== Helpers detalle / inventario
                     $stDet = $this->conn->prepare(
                         "INSERT INTO ventas_detalle
-                        (id_venta, id_producto, cantidad, precio_unitario, subtotal,
+                        (id_venta, id_producto, cantidad, precio_unitario, subtotal, numero_poliza,
                         costo_unitario, costo_subtotal, utilidad_subtotal, activo)
                         VALUES
-                        (:idv, :idp, :cant, :unit, :sub,
+                        (:idv, :idp, :cant, :unit, :sub, :pol,
                         :c_unit, :c_sub, :u_sub, 1)"
                     );
                     $stGet = $this->conn->prepare(
-                        "SELECT stock_actual, stock_minimo, costo_neto
+                        "SELECT stock_actual, stock_minimo, costo_neto, id_grupo, descripcion
                         FROM productos
                         WHERE id_producto = :idp
                         FOR UPDATE"
@@ -680,6 +734,7 @@ class VentaModel
                     );
 
                     $itemsBit = [];
+                    $idGrupoAcum = $this->obtenerIdGrupoAcumulador();
                     foreach ($detalles as $d) {
                         $idp  = (int)$d['id_producto'];
                         $cant = (float)$d['cantidad'];
@@ -690,6 +745,17 @@ class VentaModel
                         $p = $stGet->fetch(\PDO::FETCH_ASSOC);
                         if (!$p) {
                             throw new \Exception("Producto $idp no encontrado.");
+                        }
+
+                        $esAcumulador = $idGrupoAcum !== null && (int)($p['id_grupo'] ?? 0) === $idGrupoAcum;
+                        $poliza = trim((string)($d['numero_poliza'] ?? ''));
+                        if ($esAcumulador) {
+                            if (abs($cant - 1.0) > 0.0001) {
+                                throw new \Exception('Los acumuladores solo pueden venderse de uno en uno.');
+                            }
+                            if ($poliza === '') {
+                                throw new \Exception('Captura el número de póliza para la batería/acumulador.');
+                            }
                         }
 
                         $vendible = max(0.0, (float)$p['stock_actual'] - (float)$p['stock_minimo']);
@@ -707,6 +773,7 @@ class VentaModel
                             ':cant'   => $cant,
                             ':unit'   => $unit,
                             ':sub'    => $sub,
+                            ':pol'    => ($poliza !== '' ? $poliza : null),
                             ':c_unit' => $costoUnit,
                             ':c_sub'  => $costoSub,
                             ':u_sub'  => $utilSub
@@ -929,20 +996,55 @@ class VentaModel
                 $act[$pid]['precio_unitario'] = (float)$r['precio_unitario'];
             }
 
-            $nuevo = [];
+            $idGrupoAcum = $this->obtenerIdGrupoAcumulador();
+            $nuevoAgg = [];
+            $detallesNormalizados = [];
+            $totalNuevo = 0.0;
+
             foreach ($detalles as $d) {
-                $pid = (int)$d['id_producto'];
+                $pid = (int)($d['id_producto'] ?? 0);
                 $cant = (float)($d['cantidad'] ?? 0);
                 $unit = (float)($d['precio_unitario'] ?? 0);
-                if ($cant <= 0) continue;
-                if (!isset($nuevo[$pid])) $nuevo[$pid] = ['cantidad'=>0.0, 'precio_unitario'=>$unit];
-                $nuevo[$pid]['cantidad'] += $cant;
-                $nuevo[$pid]['precio_unitario'] = $unit;
+                $poliza = trim((string)($d['numero_poliza'] ?? ''));
+                if ($cant <= 0 || $pid <= 0) continue;
+
+                $prod = $this->obtenerProductoVenta($pid, true);
+                if (!$prod) throw new \Exception("Producto $pid no encontrado.");
+
+                $esAcumulador = $idGrupoAcum !== null && (int)($prod['id_grupo'] ?? 0) === $idGrupoAcum;
+                if ($esAcumulador) {
+                    if (abs($cant - 1.0) > 0.0001) {
+                        throw new \Exception('Los acumuladores solo pueden venderse de uno en uno.');
+                    }
+                    if ($poliza === '') {
+                        throw new \Exception('Captura el número de póliza para la batería/acumulador.');
+                    }
+                }
+
+                $sub = $cant * $unit;
+                $costoUnit = (float)($prod['costo_neto'] ?? 0);
+                $costoSub  = round($cant * $costoUnit, 2);
+                $utilSub   = round($sub - $costoSub, 2);
+
+                $detallesNormalizados[] = [
+                    'id_producto'       => $pid,
+                    'cantidad'          => $cant,
+                    'precio_unitario'   => $unit,
+                    'subtotal'          => $sub,
+                    'numero_poliza'     => ($poliza !== '' ? $poliza : null),
+                    'costo_unitario'    => $costoUnit,
+                    'costo_subtotal'    => $costoSub,
+                    'utilidad_subtotal' => $utilSub,
+                ];
+
+                if (!isset($nuevoAgg[$pid])) $nuevoAgg[$pid] = ['cantidad'=>0.0, 'precio_unitario'=>$unit];
+                $nuevoAgg[$pid]['cantidad'] += $cant;
+                $nuevoAgg[$pid]['precio_unitario'] = $unit;
+                $totalNuevo += $sub;
             }
 
-            $pids = array_unique(array_merge(array_keys($act), array_keys($nuevo)));
+            $pids = array_unique(array_merge(array_keys($act), array_keys($nuevoAgg)));
 
-            $stGetProd = $this->conn->prepare("SELECT stock_actual, stock_minimo FROM productos WHERE id_producto=:idp FOR UPDATE");
             $stDec = $this->conn->prepare("UPDATE productos SET stock_actual = stock_actual - :cant WHERE id_producto=:idp");
             $stInc = $this->conn->prepare("UPDATE productos SET stock_actual = stock_actual + :cant WHERE id_producto=:idp");
 
@@ -960,17 +1062,16 @@ class VentaModel
             $deltasBit = [];
             foreach ($pids as $pid) {
                 $oldQ = (float)($act[$pid]['cantidad'] ?? 0.0);
-                $newQ = (float)($nuevo[$pid]['cantidad'] ?? 0.0);
+                $newQ = (float)($nuevoAgg[$pid]['cantidad'] ?? 0.0);
                 $delta = round($newQ - $oldQ, 4);
 
                 if (abs($delta) < 0.0001) continue;
 
-                $stGetProd->execute([':idp'=>$pid]);
-                $prod = $stGetProd->fetch(\PDO::FETCH_ASSOC);
+                $prod = $this->obtenerProductoVenta((int)$pid, true);
                 if (!$prod) throw new \Exception("Producto $pid no encontrado.");
 
-                $stockActual = (float)$prod['stock_actual'];
-                $stockMin    = (float)$prod['stock_minimo'];
+                $stockActual = (float)($prod['stock_actual'] ?? 0);
+                $stockMin    = (float)($prod['stock_minimo'] ?? 0);
                 $vendible    = max(0.0, $stockActual - $stockMin);
 
                 if ($delta > 0) {
@@ -995,28 +1096,23 @@ class VentaModel
 
             $stInsDet = $this->conn->prepare(
                 "INSERT INTO ventas_detalle
-                 (id_venta,id_producto,cantidad,precio_unitario,subtotal,
+                 (id_venta,id_producto,cantidad,precio_unitario,subtotal,numero_poliza,
                   costo_unitario,costo_subtotal,utilidad_subtotal,activo)
                  VALUES
-                 (:idv,:idp,:cant,:unit,:sub,:c_unit,:c_sub,:u_sub,1)"
+                 (:idv,:idp,:cant,:unit,:sub,:pol,:c_unit,:c_sub,:u_sub,1)"
             );
-            $stCosto = $this->conn->prepare("SELECT costo_neto FROM productos WHERE id_producto=:idp");
 
-            $totalNuevo = 0.0;
-            foreach ($nuevo as $pid=>$row) {
-                $cant = (float)$row['cantidad'];
-                $unit = (float)$row['precio_unitario'];
-                $sub  = $cant * $unit;
-                $totalNuevo += $sub;
-
-                $stCosto->execute([':idp'=>$pid]);
-                $costoUnit = (float)($stCosto->fetchColumn() ?? 0);
-                $costoSub  = round($cant * $costoUnit, 2);
-                $utilSub   = round($sub - $costoSub, 2);
-
+            foreach ($detallesNormalizados as $row) {
                 $stInsDet->execute([
-                    ':idv'=>$idVenta, ':idp'=>$pid, ':cant'=>$cant, ':unit'=>$unit, ':sub'=>$sub,
-                    ':c_unit'=>$costoUnit, ':c_sub'=>$costoSub, ':u_sub'=>$utilSub
+                    ':idv'    => $idVenta,
+                    ':idp'    => $row['id_producto'],
+                    ':cant'   => $row['cantidad'],
+                    ':unit'   => $row['precio_unitario'],
+                    ':sub'    => $row['subtotal'],
+                    ':pol'    => $row['numero_poliza'],
+                    ':c_unit' => $row['costo_unitario'],
+                    ':c_sub'  => $row['costo_subtotal'],
+                    ':u_sub'  => $row['utilidad_subtotal'],
                 ]);
             }
 
@@ -1045,7 +1141,7 @@ class VentaModel
             $this->registrarBitacora(
                 $idUsuario,'ventas','UPDATE',$idVenta,'Edición de venta',
                 json_encode(['antes'=>$act,'estatus'=>$ventaActual['estatus'],'total'=>$ventaActual['total']], JSON_UNESCAPED_UNICODE),
-                json_encode(['despues'=>$nuevo,'estatus'=>$estatusBD,'total'=>$totalNuevo,'deltas'=>$deltasBit,'fecha'=>$fechaBD,'id_cliente'=>$idCliente,'id_forma_pago'=>$idFormaPago,'id_tipo_precio'=>$idTipoPrecio], JSON_UNESCAPED_UNICODE),
+                json_encode(['despues'=>$nuevoAgg,'estatus'=>$estatusBD,'total'=>$totalNuevo,'deltas'=>$deltasBit,'fecha'=>$fechaBD,'id_cliente'=>$idCliente,'id_forma_pago'=>$idFormaPago,'id_tipo_precio'=>$idTipoPrecio], JSON_UNESCAPED_UNICODE),
                 null,$ahora
             );
 
