@@ -68,6 +68,7 @@ class FaltantesModel
               v.fecha,
               v.estatus,
               v.id_cliente,
+              v.nombre_cliente,
               vd.cantidad
             FROM ventas_detalle vd
             JOIN ventas v ON v.id_venta = vd.id_venta
@@ -82,11 +83,24 @@ class FaltantesModel
               folio,
               estatus,
               id_cliente,
+              nombre_cliente,
               fecha,
               ROW_NUMBER() OVER (PARTITION BY id_producto ORDER BY fecha DESC, id_venta DESC) AS rn
             FROM ventas_filtradas
+          ),
+          ultima_venta_credito AS (
+            SELECT
+              id_producto,
+              id_venta,
+              estatus,
+              id_cliente,
+              nombre_cliente,
+              fecha,
+              ROW_NUMBER() OVER (PARTITION BY id_producto ORDER BY fecha DESC, id_venta DESC) AS rn
+            FROM ventas_filtradas
+            WHERE estatus = 'Credito'
           )
-          SELECT 
+          SELECT
             p.id_producto,
             p.codigo,
             us.descripcion AS unidad,
@@ -98,16 +112,17 @@ class FaltantesModel
             p.stock_actual                           AS inventario,
             GREATEST(SUM(vf.cantidad) - p.stock_actual, 0) AS faltante_sobre_ventas,
             GREATEST(p.stock_minimo - p.stock_actual, 0)   AS faltante_vs_minimo,
-            CASE WHEN uv.estatus = 'Credito' 
-                 THEN COALESCE(c.nombre, '') 
+            CASE WHEN uvc.id_producto IS NOT NULL
+                 THEN TRIM(COALESCE(uvc.nombre_cliente, c.nombre, ''))
                  ELSE '' END                         AS compro_credito
           FROM productos p
           JOIN ventas_filtradas vf ON vf.id_producto = p.id_producto
           LEFT JOIN unidades_sat us ON us.id_unidad_sat = p.id_unidad_sat
           LEFT JOIN proveedores pr   ON pr.id_proveedor  = p.id_proveedor
           LEFT JOIN ultima_venta uv  ON uv.id_producto = p.id_producto AND uv.rn = 1
-          LEFT JOIN clientes c       ON c.id_cliente = uv.id_cliente
-          GROUP BY 
+          LEFT JOIN ultima_venta_credito uvc ON uvc.id_producto = p.id_producto AND uvc.rn = 1
+          LEFT JOIN clientes c       ON c.id_cliente = uvc.id_cliente
+          GROUP BY
             p.id_producto,
             p.codigo,
             us.descripcion,
@@ -117,7 +132,9 @@ class FaltantesModel
             pr.nombre,
             uv.estatus,
             c.nombre,
-            uv.folio
+            uv.folio,
+            uvc.nombre_cliente,
+            uvc.id_producto
           HAVING SUM(vf.cantidad) > 0
           ORDER BY faltante_sobre_ventas DESC, cantidad DESC
           LIMIT :limite OFFSET :offset
@@ -205,6 +222,7 @@ class FaltantesModel
               v.fecha,
               v.estatus,
               v.id_cliente,
+              v.nombre_cliente,
               vd.cantidad
             FROM ventas_detalle vd
             JOIN ventas v ON v.id_venta = vd.id_venta
@@ -225,11 +243,24 @@ class FaltantesModel
               id_venta,
               estatus,
               id_cliente,
+              nombre_cliente,
               fecha,
               ROW_NUMBER() OVER (PARTITION BY id_producto ORDER BY fecha DESC, id_venta DESC) AS rn
             FROM ventas_filtradas
+          ),
+          ultima_venta_credito AS (
+            SELECT
+              id_producto,
+              id_venta,
+              estatus,
+              id_cliente,
+              nombre_cliente,
+              fecha,
+              ROW_NUMBER() OVER (PARTITION BY id_producto ORDER BY fecha DESC, id_venta DESC) AS rn
+            FROM ventas_filtradas
+            WHERE estatus = 'Credito'
           )
-          SELECT 
+          SELECT
             p.id_producto,
             p.codigo,
             us.descripcion AS unidad,
@@ -242,8 +273,8 @@ class FaltantesModel
             p.stock_actual                    AS inventario,
             GREATEST(tv.total_vendido - p.stock_actual, 0) AS faltante_sobre_ventas,
             GREATEST(p.stock_minimo - p.stock_actual, 0)   AS faltante_vs_minimo,
-            CASE WHEN uv.estatus = 'Credito' 
-                 THEN COALESCE(c.nombre, '') 
+            CASE WHEN uvc.id_producto IS NOT NULL
+                 THEN TRIM(COALESCE(uvc.nombre_cliente, c.nombre, ''))
                  ELSE '' END                  AS compro_credito
           FROM productos p
           JOIN ventas_filtradas vf ON vf.id_producto = p.id_producto
@@ -251,7 +282,8 @@ class FaltantesModel
           LEFT JOIN unidades_sat us ON us.id_unidad_sat = p.id_unidad_sat
           LEFT JOIN proveedores pr   ON pr.id_proveedor  = p.id_proveedor
           LEFT JOIN ultima_venta uv  ON uv.id_producto = p.id_producto AND uv.rn = 1
-          LEFT JOIN clientes c       ON c.id_cliente = uv.id_cliente
+          LEFT JOIN ultima_venta_credito uvc ON uvc.id_producto = p.id_producto AND uvc.rn = 1
+          LEFT JOIN clientes c       ON c.id_cliente = uvc.id_cliente
           WHERE tv.total_vendido > 0
           ORDER BY faltante_sobre_ventas DESC, vf.cantidad DESC, vf.fecha DESC, vf.id_venta DESC
         ";
