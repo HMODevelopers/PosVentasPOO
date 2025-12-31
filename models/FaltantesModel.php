@@ -39,18 +39,14 @@ class FaltantesModel
 
         $filtroEstatus = " AND v.estatus IN ('Activa','Credito') ";
 
-        // COUNT (por producto)
+        // ✅ COUNT (detalle): cuenta filas del detalle, NO productos
         $sqlCount = "
-          SELECT COUNT(*) FROM (
-            SELECT p.id_producto
+            SELECT COUNT(*)
             FROM ventas_detalle vd
             JOIN ventas v ON v.id_venta = vd.id_venta
-            JOIN productos p ON p.id_producto = vd.id_producto
-            WHERE v.activo=1 AND (vd.activo=1 OR vd.activo IS NULL)
+            WHERE v.activo=1
+              AND (vd.activo=1 OR vd.activo IS NULL)
               {$filtroEstatus} {$filtroFechas} {$filtroDia}
-            GROUP BY p.id_producto
-            HAVING SUM(vd.cantidad) > 0
-          ) t
         ";
         $stC = $this->conn->prepare($sqlCount);
         foreach ($params as $k=>$v) $stC->bindValue($k,$v);
@@ -58,7 +54,7 @@ class FaltantesModel
         $total = (int)$stC->fetchColumn();
         if ($total === 0) return ['data'=>[], 'total'=>0];
 
-        // DATA: última venta por producto (incluye folio) y nombre cliente si fue crédito
+        // ✅ DATA (detalle): 1 fila por ventas_detalle, cliente amarrado a ESA venta
         $sql = "
           WITH ventas_filtradas AS (
             SELECT 
@@ -75,53 +71,43 @@ class FaltantesModel
               AND (vd.activo=1 OR vd.activo IS NULL)
               {$filtroEstatus} {$filtroFechas} {$filtroDia}
           ),
-          ultima_venta AS (
+          totales_ventas AS (
             SELECT
               id_producto,
-              id_venta,
-              folio,
-              estatus,
-              id_cliente,
-              fecha,
-              ROW_NUMBER() OVER (PARTITION BY id_producto ORDER BY fecha DESC, id_venta DESC) AS rn
+              SUM(cantidad) AS total_vendido
             FROM ventas_filtradas
+            GROUP BY id_producto
           )
           SELECT 
             p.id_producto,
             p.codigo,
             us.descripcion AS unidad,
             p.descripcion,
-            SUM(vf.cantidad)                         AS cantidad,
-            MAX(vf.fecha)                            AS fecha_venta,
-            uv.folio                                 AS folio,
-            pr.nombre                                AS proveedor,
-            p.stock_actual                           AS inventario,
-            GREATEST(SUM(vf.cantidad) - p.stock_actual, 0) AS faltante_sobre_ventas,
+            vf.cantidad AS cantidad,
+            vf.fecha    AS fecha_venta,
+            vf.folio    AS folio,
+            pr.nombre   AS proveedor,
+            p.stock_actual AS inventario,
+            GREATEST(tv.total_vendido - p.stock_actual, 0) AS faltante_sobre_ventas,
             GREATEST(p.stock_minimo - p.stock_actual, 0)   AS faltante_vs_minimo,
-            CASE WHEN uv.estatus = 'Credito' 
-                 THEN COALESCE(c.nombre, '') 
-                 ELSE '' END                         AS compro_credito
-          FROM productos p
-          JOIN ventas_filtradas vf ON vf.id_producto = p.id_producto
+            CASE 
+              WHEN vf.estatus = 'Credito' THEN COALESCE(c.nombre, '')
+              ELSE ''
+            END AS compro_credito
+          FROM ventas_filtradas vf
+          JOIN productos p ON p.id_producto = vf.id_producto
+          JOIN totales_ventas tv ON tv.id_producto = vf.id_producto
           LEFT JOIN unidades_sat us ON us.id_unidad_sat = p.id_unidad_sat
-          LEFT JOIN proveedores pr   ON pr.id_proveedor  = p.id_proveedor
-          LEFT JOIN ultima_venta uv  ON uv.id_producto = p.id_producto AND uv.rn = 1
-          LEFT JOIN clientes c       ON c.id_cliente = uv.id_cliente
-          GROUP BY 
-            p.id_producto,
-            p.codigo,
-            us.descripcion,
-            p.descripcion,
-            p.stock_actual,
-            p.stock_minimo,
-            pr.nombre,
-            uv.estatus,
-            c.nombre,
-            uv.folio
-          HAVING SUM(vf.cantidad) > 0
-          ORDER BY faltante_sobre_ventas DESC, cantidad DESC
+          LEFT JOIN proveedores pr ON pr.id_proveedor = p.id_proveedor
+          LEFT JOIN clientes c ON c.id_cliente = vf.id_cliente
+          WHERE tv.total_vendido > 0
+          ORDER BY 
+            CAST(vf.folio AS UNSIGNED) DESC,
+            vf.fecha DESC,
+            vf.id_venta DESC
           LIMIT :limite OFFSET :offset
         ";
+
         $st = $this->conn->prepare($sql);
         foreach ($params as $k=>$v) $st->bindValue($k,$v);
         $st->bindValue(':limite', (int)$limite, \PDO::PARAM_INT);
@@ -218,46 +204,41 @@ class FaltantesModel
               SUM(cantidad) AS total_vendido
             FROM ventas_filtradas
             GROUP BY id_producto
-          ),
-          ultima_venta AS (
-            SELECT
-              id_producto,
-              id_venta,
-              estatus,
-              id_cliente,
-              fecha,
-              ROW_NUMBER() OVER (PARTITION BY id_producto ORDER BY fecha DESC, id_venta DESC) AS rn
-            FROM ventas_filtradas
           )
           SELECT 
             p.id_producto,
             p.codigo,
             us.descripcion AS unidad,
             p.descripcion,
-            vf.cantidad                       AS cantidad,
-            vf.fecha                          AS fecha_venta,
-            vf.id_venta                       AS id_venta,
-            vf.folio                          AS folio,
-            pr.nombre                         AS proveedor,
-            p.stock_actual                    AS inventario,
+            vf.cantidad AS cantidad,
+            DATE(vf.fecha) AS fecha_venta,  -- ✅ SOLO FECHA (sin hora)
+            vf.id_venta AS id_venta,
+            vf.folio    AS folio,
+            pr.nombre   AS proveedor,
+            p.stock_actual AS inventario,
             GREATEST(tv.total_vendido - p.stock_actual, 0) AS faltante_sobre_ventas,
             GREATEST(p.stock_minimo - p.stock_actual, 0)   AS faltante_vs_minimo,
-            CASE WHEN uv.estatus = 'Credito' 
-                 THEN COALESCE(c.nombre, '') 
-                 ELSE '' END                  AS compro_credito
-          FROM productos p
-          JOIN ventas_filtradas vf ON vf.id_producto = p.id_producto
-          JOIN totales_ventas tv   ON tv.id_producto = p.id_producto
+            CASE 
+              WHEN vf.estatus = 'Credito' THEN COALESCE(c.nombre, '')
+              ELSE ''
+            END AS compro_credito
+          FROM ventas_filtradas vf
+          JOIN productos p ON p.id_producto = vf.id_producto
+          JOIN totales_ventas tv ON tv.id_producto = vf.id_producto
           LEFT JOIN unidades_sat us ON us.id_unidad_sat = p.id_unidad_sat
-          LEFT JOIN proveedores pr   ON pr.id_proveedor  = p.id_proveedor
-          LEFT JOIN ultima_venta uv  ON uv.id_producto = p.id_producto AND uv.rn = 1
-          LEFT JOIN clientes c       ON c.id_cliente = uv.id_cliente
+          LEFT JOIN proveedores pr ON pr.id_proveedor = p.id_proveedor
+          LEFT JOIN clientes c ON c.id_cliente = vf.id_cliente
           WHERE tv.total_vendido > 0
-          ORDER BY faltante_sobre_ventas DESC, vf.cantidad DESC, vf.fecha DESC, vf.id_venta DESC
+          ORDER BY 
+            CAST(vf.folio AS UNSIGNED) DESC,
+            vf.fecha DESC,
+            vf.id_venta DESC
         ";
+
         $st = $this->conn->prepare($sql);
-        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        foreach ($params as $k => $v) $st->bindValue($k, $v);
         $st->execute();
+
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
