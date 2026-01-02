@@ -808,6 +808,15 @@ function formatCantidadJS(value){
 }
 
 function resumirPagosTicket(venta, pagos){
+  const formaPagoVenta = (venta?.forma_pago || '').toString().trim();
+  const idFp = Number(venta?.id_forma_pago || 0);
+
+  // Para NO mixto: usar siempre la forma de pago principal de ventas y no consultar pagos
+  if (idFp !== 22) {
+    return { forma: formaPagoVenta || '—', desglose: '' };
+  }
+
+  // Mixto: tomar etiqueta principal de ventas y el desglose de pagos_venta
   const activos = Array.isArray(pagos) ? pagos.filter(p => (p?.activo ?? 1) !== 0) : [];
   const sumas = new Map();
 
@@ -817,19 +826,13 @@ function resumirPagosTicket(venta, pagos){
     sumas.set(desc, (sumas.get(desc) || 0) + monto);
   });
 
-  if (sumas.size > 1) {
+  if (sumas.size > 0) {
     const partes = [];
     sumas.forEach((monto, desc) => partes.push(`${desc}: ${mxn(monto)}`));
-    return { forma: 'Mixto', desglose: partes.join('  ') };
+    return { forma: formaPagoVenta || 'Mixto', desglose: partes.join('  ') };
   }
 
-  if (sumas.size === 1) {
-    const [desc] = sumas.entries().next().value;
-    return { forma: desc || 'Pago', desglose: '' };
-  }
-
-  const fp = (venta?.forma_pago || '').toString().trim();
-  return { forma: fp || '—', desglose: '' };
+  return { forma: formaPagoVenta || 'Mixto', desglose: '' };
 }
 
 function renderTkItem({ cantidad, articulo, precio_unitario, subtotal }){

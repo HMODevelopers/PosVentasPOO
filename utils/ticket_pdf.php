@@ -97,6 +97,15 @@ $pagos    = method_exists($ventaModel, 'obtenerPagosVenta') ? $ventaModel->obten
 // Resumen de pagos para forma de pago + desglose
 function resumirPagosVenta(array $venta, array $pagos): array
 {
+  $idFpVenta = (int)($venta['id_forma_pago'] ?? 0);
+  $descVenta = trim((string)($venta['forma_pago'] ?? ''));
+
+  // Para NO mixto: siempre usar la forma de pago principal desde ventas
+  if ($idFpVenta !== 22) {
+    return ['forma' => ($descVenta !== '' ? $descVenta : '—'), 'desglose' => []];
+  }
+
+  // Mixto: tomar la etiqueta principal de ventas y el desglose desde pagos_venta
   $sumas = [];
   foreach ($pagos as $p) {
     if (isset($p['activo']) && (int)$p['activo'] === 0) continue;
@@ -106,7 +115,9 @@ function resumirPagosVenta(array $venta, array $pagos): array
     $sumas[$desc] += $monto;
   }
 
-  if (count($sumas) > 1) {
+  $forma = ($descVenta !== '' ? $descVenta : 'Mixto');
+
+  if (count($sumas) > 0) {
     $desglose = [];
     foreach ($sumas as $desc => $monto) {
       $desglose[] = [
@@ -114,16 +125,10 @@ function resumirPagosVenta(array $venta, array $pagos): array
         'monto' => $monto,
       ];
     }
-    return ['forma' => 'Mixto', 'desglose' => $desglose];
+    return ['forma' => $forma, 'desglose' => $desglose];
   }
 
-  if (count($sumas) === 1) {
-    $desc = array_keys($sumas)[0];
-    return ['forma' => ($desc !== '' ? $desc : 'Pago'), 'desglose' => []];
-  }
-
-  $descVenta = trim((string)($venta['forma_pago'] ?? ''));
-  return ['forma' => ($descVenta !== '' ? $descVenta : '—'), 'desglose' => []];
+  return ['forma' => $forma, 'desglose' => []];
 }
 
 $infoPagos     = resumirPagosVenta($venta, $pagos);

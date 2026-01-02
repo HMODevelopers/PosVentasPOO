@@ -480,6 +480,12 @@ class VentaModel
             return;
         }
 
+        // Solo registrar pagos_venta cuando la forma principal es Mixto (id 22)
+        $idFpVenta = isset($datosVenta['id_forma_pago']) ? (int)$datosVenta['id_forma_pago'] : 0;
+        if ($idFpVenta !== 22) {
+            return;
+        }
+
         $pagosRecibidos = is_array($pagosMixtos) ? array_values($pagosMixtos) : [];
         if (!empty($pagosRecibidos)) {
             $suma = 0.0;
@@ -511,33 +517,6 @@ class VentaModel
         }
 
         $tipoOp = strtolower(trim((string)($datosVenta['tipo'] ?? '')));
-        if ($tipoOp === '') {
-            // Sin tipo explícito -> si viene id_forma_pago, se guarda un solo pago por el total
-            $idFp = isset($datosVenta['id_forma_pago']) && $datosVenta['id_forma_pago'] !== ''
-                ? (int)$datosVenta['id_forma_pago']
-                : 0;
-            if ($idFp > 0) {
-                $this->insertarPagoVenta($idVenta, $idFp, $total, $folio);
-            }
-            return;
-        }
-
-        // Formas simples: un solo renglón
-        if ($tipoOp === 'efectivo' || $tipoOp === 'tarjeta' || $tipoOp === 'transferencia') {
-            $idFp = isset($datosVenta['id_forma_pago']) && $datosVenta['id_forma_pago'] !== ''
-                ? (int)$datosVenta['id_forma_pago']
-                : 0;
-
-            if ($idFp <= 0) {
-                $idFp = $this->buscarIdFormaPagoPorTipo($tipoOp) ?? 0;
-            }
-
-            if ($idFp > 0) {
-                $this->insertarPagoVenta($idVenta, $idFp, $total, $folio);
-            }
-            return;
-        }
-
         // Mixto: dos renglones, uno por cada forma (efectivo + tarjeta/transferencia)
         if ($tipoOp === 'mixto') {
             $mEf = (float)($datosVenta['recibido_efectivo'] ?? 0);
@@ -572,6 +551,11 @@ class VentaModel
         $this->conn->prepare("DELETE FROM pagos_venta WHERE id_venta = :id")->execute([':id'=>$idVenta]);
 
         if (strcasecmp($estatusBD, 'Activa') !== 0) {
+            return;
+        }
+
+        // Solo registrar pagos_venta cuando la forma principal es Mixto (id 22)
+        if ((int)($idFormaPago ?? 0) !== 22) {
             return;
         }
 
@@ -1528,71 +1512,54 @@ class VentaModel
             $this->conn->prepare($sql." WHERE id_venta = :id")->execute($params);
 
             // ======== Manejo de pagos_venta ========
-            // - Estatus Activa:
-            //      * simple => 1 pago por el total
-            //      * mixto  => varios renglones
-            // - Estatus Credito:
-            //      * no se insertan pagos (se abona después)
+            // Solo se registran pagos_venta cuando la forma principal es Mixto (id 22)
+            // y la venta queda Activa.
 
             // Limpiar posibles pagos previos
             $this->conn->prepare("DELETE FROM pagos_venta WHERE id_venta = :id")
                 ->execute([':id' => $idVenta]);
 
-            if ($nuevoEstatus === 'Activa') {
+            $idFpFinal = $idFormaPago ?? (int)($venta['id_forma_pago'] ?? 0);
+
+            if ($nuevoEstatus === 'Activa' && $idFpFinal === 22) {
                 $sqlIns = "INSERT INTO pagos_venta
                             (id_venta, id_forma_pago, monto, referencia_pago, activo, fecha_creacion)
                         VALUES (:id_v, :id_fp, :monto, :ref, 1, :f)";
                 $stIns = $this->conn->prepare($sqlIns);
                 $now   = $this->ahoraHermStr();
 
-                if ($esMixto) {
-                    // Validar arreglo de pagos mixtos
-                    if (empty($pagosMixtos) || !is_array($pagosMixtos)) {
-                        throw new \Exception('No se recibieron los pagos para el esquema mixto.');
-                    }
+                // Validar arreglo de pagos mixtos
+                if (empty($pagosMixtos) || !is_array($pagosMixtos)) {
+                    throw new \Exception('No se recibieron los pagos para el esquema mixto.');
+                }
 
-                    $suma = 0.0;
-                    foreach ($pagosMixtos as $p) {
-                        $idFp  = isset($p['id_forma_pago']) ? (int)$p['id_forma_pago'] : 0;
-                        $monto = isset($p['monto']) ? (float)$p['monto'] : 0.0;
-                        // Si no viene referencia, usamos el FOLIO de la venta
-                        $ref   = isset($p['referencia_pago']) && $p['referencia_pago'] !== ''
-                                    ? (string)$p['referencia_pago']
-                                    : $folioVenta;
+                $suma = 0.0;
+                foreach ($pagosMixtos as $p) {
+                    $idFp  = isset($p['id_forma_pago']) ? (int)$p['id_forma_pago'] : 0;
+                    $monto = isset($p['monto']) ? (float)$p['monto'] : 0.0;
+                    // Si no viene referencia, usamos el FOLIO de la venta
+                    $ref   = isset($p['referencia_pago']) && $p['referencia_pago'] !== ''
+                                ? (string)$p['referencia_pago']
+                                : $folioVenta;
 
-                        if ($idFp <= 0 || $monto <= 0) {
-                            throw new \Exception('Cada renglón de pago mixto debe tener forma de pago y monto mayor a 0.');
-                        }
-                        $this->asegurarFormaPagoActiva($idFp);
-                        $suma += $monto;
-
-                        $stIns->execute([
-                            ':id_v'  => $idVenta,
-                            ':id_fp' => $idFp,
-                            ':monto' => $monto,
-                            ':ref'   => $ref,
-                            ':f'     => $now,
-                        ]);
+                    if ($idFp <= 0 || $monto <= 0) {
+                        throw new \Exception('Cada renglón de pago mixto debe tener forma de pago y monto mayor a 0.');
                     }
-
-                    $diff = abs($suma - $totalVenta);
-                    if ($totalVenta > 0 && $diff > 0.05) {
-                        throw new \Exception('La suma de los pagos mixtos no coincide con el total de la venta.');
-                    }
-                } else {
-                    // Pago simple: un registro por el total
-                    if ($idFormaPago === null || $idFormaPago <= 0) {
-                        throw new \Exception('id_forma_pago inválido para pago simple.');
-                    }
+                    $this->asegurarFormaPagoActiva($idFp);
+                    $suma += $monto;
 
                     $stIns->execute([
                         ':id_v'  => $idVenta,
-                        ':id_fp' => $idFormaPago,
-                        ':monto' => $totalVenta,
-                        // AQUÍ la referencia es el FOLIO de la venta
-                        ':ref'   => $folioVenta,
+                        ':id_fp' => $idFp,
+                        ':monto' => $monto,
+                        ':ref'   => $ref,
                         ':f'     => $now,
                     ]);
+                }
+
+                $diff = abs($suma - $totalVenta);
+                if ($totalVenta > 0 && $diff > 0.05) {
+                    throw new \Exception('La suma de los pagos mixtos no coincide con el total de la venta.');
                 }
             }
             // ======== Fin pagos_venta ========
