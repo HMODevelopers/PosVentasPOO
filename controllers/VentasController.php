@@ -141,7 +141,10 @@ class VentasController
                 'estatus_credito' => $venta['estatus_credito'] ?? 'N/A',
                 'costo_total'     => round($costo_total, 2),
                 'utilidad_total'  => round($util_total, 2),
-                'pagos'           => $pagos
+                'pagos'           => $pagos,
+                'formas_tarjeta'  => method_exists($ventaModel, 'obtenerFormasPagoTarjetaCreditoDebito')
+                    ? $ventaModel->obtenerFormasPagoTarjetaCreditoDebito()
+                    : []
             ], JSON_UNESCAPED_UNICODE);
 
             break;

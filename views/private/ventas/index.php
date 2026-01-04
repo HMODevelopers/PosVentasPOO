@@ -1383,6 +1383,8 @@ const $errEd     = $('#ed-error');
 const $wrapMixto = $('#ed-wrapMixto');
 const $mixEfec   = $('#ed-mixto-efectivo');
 const $mixTar    = $('#ed-mixto-tarjeta');
+const $mixTarSel = $('#ed-mixto-tarjeta-tipo');
+const $mixTarWrap= $('#ed-wrapMixtoTarjetaTipo');
 const $mixHelp   = $('#ed-helpMixto');
 
 let edVentaId = 0;
@@ -1390,6 +1392,7 @@ let carrito   = [];
 let debTimer = null;
 let pagosVenta = [];
 let edIdsPago = { efectivo:null, tarjeta:null, mixto:null };
+let formasPagoTarjeta = [];
 
 function vendibleDe(det){ return Math.max(0, num(det.stock_actual ?? det.existencia) - num(det.stock_minimo)); }
 const esProductoAcumulador = (it) => {
@@ -1444,6 +1447,18 @@ function ed_setIdsPago(){
     if (txt.includes('efectivo')) edIdsPago.efectivo = Number(val);
     if (txt.includes('tarjeta')) edIdsPago.tarjeta = Number(val);
   });
+}
+
+function ed_setFormasTarjeta(arr, selected = null){
+  formasPagoTarjeta = Array.isArray(arr) ? arr : [];
+  $mixTarSel.empty().append('<option value="">Seleccione tipo…</option>');
+  formasPagoTarjeta.forEach(fp => {
+    if (!fp || fp.id_forma_pago === undefined) return;
+    $mixTarSel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
+  });
+  if (selected !== null) {
+    $mixTarSel.val(String(selected));
+  }
 }
 
 function cargarFormasPago(selected, fallbackText){
@@ -1625,15 +1640,34 @@ function ed_obtenerIdPagoPorTexto(buscar){
 
 function ed_poblarPagosMixtoDesdeBD(){
   if (!ed_esMixtoSeleccionado()) { return; }
-  let ef=0, tar=0;
+  let ef=0, tar=0, idTarjetaBD=null;
   pagosVenta.forEach(p=>{
     const txt = norm(p.descripcion || p.forma_pago || '');
     if (txt.includes('efectivo')) ef += Number(p.monto||0);
-    if (txt.includes('tarjeta'))  tar += Number(p.monto||0);
+    if (txt.includes('tarjeta'))  {
+      tar += Number(p.monto||0);
+      if (p.id_forma_pago) idTarjetaBD = Number(p.id_forma_pago);
+    }
   });
   $mixEfec.val(fix2(ef));
   $mixTar.val(fix2(tar));
+  if (idTarjetaBD && formasPagoTarjeta.some(fp => Number(fp.id_forma_pago) === idTarjetaBD)) {
+    $mixTarSel.val(String(idTarjetaBD));
+  } else {
+    $mixTarSel.val('');
+  }
+  ed_toggleTarjetaTipo();
   ed_validarMixto(false);
+}
+
+function ed_toggleTarjetaTipo(){
+  const esMixto = ed_esMixtoSeleccionado();
+  const tar = num($mixTar.val());
+  const mostrar = esMixto && (tar > 0 || ($mixTarSel.val() || '') !== '');
+  $mixTarWrap.toggleClass('d-none', !mostrar);
+  if (!mostrar) {
+    $mixTarSel.val('');
+  }
 }
 
 function ed_toggleMixtoUI(){
@@ -1642,6 +1676,8 @@ function ed_toggleMixtoUI(){
     ed_poblarPagosMixtoDesdeBD();
   } else {
     $wrapMixto.addClass('d-none');
+    $mixTarSel.val('');
+    ed_toggleTarjetaTipo();
   }
 }
 
@@ -1670,10 +1706,23 @@ function ed_validarMixto(showMsg = true){
 
   const pagos = [];
   const idEf = edIdsPago.efectivo || ed_obtenerIdPagoPorTexto('efectivo');
-  const idTar = edIdsPago.tarjeta  || ed_obtenerIdPagoPorTexto('tarjeta');
+  let idTarjeta = $mixTarSel.val() ? Number($mixTarSel.val()) : null;
+
+  if (tar > 0) {
+    const esTarjetaValida = formasPagoTarjeta.some(fp => Number(fp.id_forma_pago) === idTarjeta);
+    if (!idTarjeta || !esTarjetaValida) {
+      if (showMsg) {
+        toastr.error('Selecciona el tipo de tarjeta (crédito o débito) para el pago con tarjeta.');
+      }
+      $mixHelp.removeClass('text-muted').text('Selecciona el tipo de tarjeta para el pago con tarjeta.');
+      return {ok:false, msg:'Selecciona el tipo de tarjeta (crédito o débito) para el pago con tarjeta.'};
+    }
+  } else {
+    idTarjeta = null;
+  }
 
   if (ef > 0 && idEf) pagos.push({ id_forma_pago:idEf, monto:ef });
-  if (tar > 0 && idTar) pagos.push({ id_forma_pago:idTar, monto:tar });
+  if (tar > 0 && idTarjeta) pagos.push({ id_forma_pago:idTarjeta, monto:tar });
 
   if (!pagos.length){
     return {ok:false, msg:'No se pudieron armar los pagos mixtos.'};
@@ -1802,7 +1851,8 @@ $tbody.on('click','button[data-ed-del]', function(){
 
 $tpPrecio.on('change', pintarCarrito);
 $selForma.on('change', ed_toggleMixtoUI);
-$mixEfec.add($mixTar).on('change', ()=> ed_validarMixto());
+$mixEfec.add($mixTar).on('input change', ()=> { ed_toggleTarjetaTipo(); ed_validarMixto(); });
+$mixTarSel.on('change', ()=> ed_validarMixto());
 
 function validarPolizasEdicion(){
   if (!ID_GRUPO_ACUMULADOR) return true;
@@ -1889,12 +1939,15 @@ window.abrirEditarVenta = function(idVenta){
   edVentaId = Number(idVenta);
   $errEd.addClass('d-none').empty();
   $('#ed-buscar').val(''); $sug.hide().empty();
-  carrito=[]; pagosVenta=[]; $mixEfec.val('0'); $mixTar.val('0'); $wrapMixto.addClass('d-none'); pintarCarrito();
+  carrito=[]; pagosVenta=[]; formasPagoTarjeta=[];
+  $mixEfec.val('0'); $mixTar.val('0'); $mixTarSel.val('');
+  $wrapMixto.addClass('d-none'); ed_setFormasTarjeta([]); pintarCarrito();
 
   $.get(VENTAS_URL,{accion:'detalle', id_venta: edVentaId}, function(r){
     if (!r || !r.venta){ $errEd.removeClass('d-none').text('No se encontró la venta.'); return; }
     const v=r.venta, det=r.detalles||[];
     pagosVenta = r.pagos || [];
+    ed_setFormasTarjeta(r.formas_tarjeta || [], null);
 
     $edFolio.text(v.folio||'—');
     $edEst.html(' '+getBadge(v.estatus||'—'));

@@ -48,7 +48,13 @@
                     <label class="form-label mb-1">Tarjeta</label>
                     <input type="number" min="0" step="0.01" class="form-control" id="ed-mixto-tarjeta" value="0">
                   </div>
-                  <div class="col-12 col-md-6 d-flex align-items-end">
+                  <div class="col-12 col-md-3 d-none" id="ed-wrapMixtoTarjetaTipo">
+                    <label class="form-label mb-1">Tipo de tarjeta</label>
+                    <select class="form-control" id="ed-mixto-tarjeta-tipo">
+                      <option value="">Seleccione tipo…</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-md-3 d-flex align-items-end">
                     <div class="text-muted small" id="ed-helpMixto">La suma debe coincidir con el total de la venta.</div>
                   </div>
                 </div>

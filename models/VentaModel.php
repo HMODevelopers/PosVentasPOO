@@ -146,6 +146,49 @@ class VentaModel
         }
     }
 
+    private function normalizarTexto($txt): string
+    {
+        $txt = strtolower(trim((string)$txt));
+        $sinAcentos = iconv('UTF-8', 'ASCII//TRANSLIT', $txt);
+        return $sinAcentos !== false ? $sinAcentos : $txt;
+    }
+
+    private function formaPagoEsMixto(?int $idFormaPago): bool
+    {
+        if (!$idFormaPago) { return false; }
+        try {
+            $st = $this->conn->prepare("SELECT descripcion FROM formas_pago WHERE id_forma_pago = :id LIMIT 1");
+            $st->execute([':id'=>$idFormaPago]);
+            $desc = $st->fetchColumn();
+            if ($desc === false) return false;
+            $norm = $this->normalizarTexto($desc);
+            return strpos($norm, 'mixto') !== false;
+        } catch (\Throwable $th) {
+            return false;
+        }
+    }
+
+    public function obtenerFormasPagoTarjetaCreditoDebito(): array
+    {
+        try {
+            $st = $this->conn->prepare(
+                "SELECT id_forma_pago, descripcion
+                   FROM formas_pago
+                  WHERE activo = 1
+                    AND LOWER(descripcion) LIKE '%tarjeta%'
+                    AND (
+                        LOWER(descripcion) LIKE '%credito%' OR LOWER(descripcion) LIKE '%crédito%'
+                        OR LOWER(descripcion) LIKE '%debito%' OR LOWER(descripcion) LIKE '%débito%'
+                    )
+                  ORDER BY descripcion ASC"
+            );
+            $st->execute();
+            return $st->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $th) {
+            return [];
+        }
+    }
+
     /** Valida que la forma de pago exista y esté activa. */
     private function asegurarFormaPagoActiva(int $idFormaPago): void
     {
@@ -480,9 +523,9 @@ class VentaModel
             return;
         }
 
-        // Solo registrar pagos_venta cuando la forma principal es Mixto (id 22)
+        // Solo registrar pagos_venta cuando la forma principal es Mixto
         $idFpVenta = isset($datosVenta['id_forma_pago']) ? (int)$datosVenta['id_forma_pago'] : 0;
-        if ($idFpVenta !== 22) {
+        if (!$this->formaPagoEsMixto($idFpVenta)) {
             return;
         }
 
@@ -554,8 +597,8 @@ class VentaModel
             return;
         }
 
-        // Solo registrar pagos_venta cuando la forma principal es Mixto (id 22)
-        if ((int)($idFormaPago ?? 0) !== 22) {
+        // Solo registrar pagos_venta cuando la forma principal es Mixto
+        if (!$this->formaPagoEsMixto((int)($idFormaPago ?? 0))) {
             return;
         }
 
@@ -1025,6 +1068,53 @@ class VentaModel
                 $nuevoAgg[$pid]['cantidad'] += $cant;
                 $nuevoAgg[$pid]['precio_unitario'] = $unit;
                 $totalNuevo += $sub;
+            }
+
+            $esMixtoSolicitado = isset($datosVenta['tipo_pago']) && strtolower((string)$datosVenta['tipo_pago']) === 'mixto';
+            $esMixtoSolicitado = $esMixtoSolicitado || $this->formaPagoEsMixto($idFormaPago);
+            if ($esMixtoSolicitado) {
+                $pagosMixtos = is_array($pagosMixtos) ? array_values($pagosMixtos) : [];
+                $catalogoTarjetas = $this->obtenerFormasPagoTarjetaCreditoDebito();
+                $idsTarjetasValidas = array_map('intval', array_column($catalogoTarjetas, 'id_forma_pago'));
+
+                if (empty($pagosMixtos)) {
+                    throw new \Exception('Se requieren los pagos para el esquema mixto.');
+                }
+
+                $sumaPagos   = 0.0;
+                $montoTarjeta = 0.0;
+                foreach ($pagosMixtos as $pago) {
+                    $idFpPago  = (int)($pago['id_forma_pago'] ?? 0);
+                    $montoPago = (float)($pago['monto'] ?? 0);
+                    if ($idFpPago <= 0 || $montoPago <= 0) {
+                        throw new \Exception('Cada pago del esquema mixto debe tener forma de pago y monto mayor a 0.');
+                    }
+                    $sumaPagos += $montoPago;
+                    if (in_array($idFpPago, $idsTarjetasValidas, true)) {
+                        $montoTarjeta += $montoPago;
+                    }
+                }
+
+                if ($montoTarjeta > 0 && empty($idsTarjetasValidas)) {
+                    throw new \Exception('No hay formas de pago de tarjeta activas para registrar el pago con tarjeta.');
+                }
+
+                if ($montoTarjeta > 0) {
+                    $idTarjetaSel = null;
+                    foreach ($pagosMixtos as $pago) {
+                        $idTmp = (int)($pago['id_forma_pago'] ?? 0);
+                        if (in_array($idTmp, $idsTarjetasValidas, true)) { $idTarjetaSel = $idTmp; break; }
+                    }
+                    if ($idTarjetaSel === null) {
+                        throw new \Exception('Selecciona el tipo de tarjeta (crédito o débito) para el pago con tarjeta.');
+                    }
+                }
+
+                if ($totalNuevo > 0 && abs($sumaPagos - $totalNuevo) > 0.05) {
+                    throw new \Exception('La suma de los pagos mixtos no coincide con el total de la venta.');
+                }
+            } else {
+                $pagosMixtos = [];
             }
 
             $pids = array_unique(array_merge(array_keys($act), array_keys($nuevoAgg)));
