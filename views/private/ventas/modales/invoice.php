@@ -44,7 +44,7 @@
 
           <!-- PÓLIZAS (solo acumuladores) -->
           <div class="inv-seccion" id="inv-polizas-wrap" style="display:none;">
-            <div><span id="inv-polizas"></span></div>
+            <div><b><h5><span id="inv-polizas"></span></b></h5></div>
           </div>
 
           <!-- DETALLE -->

@@ -2472,7 +2472,7 @@ window.abrirInvoice = function(idVenta){
 
     const polizasUnicas = Array.from(new Set(polizasAcum));
     if (polizasUnicas.length) {
-      const prefijo = polizasUnicas.length > 1 ? 'Póliza(s): ' : 'Póliza: ';
+      const prefijo = polizasUnicas.length > 1 ? 'Numero de Póliza(s): ' : 'Numero de Póliza: ';
       $('#inv-polizas').text(`${prefijo}${polizasUnicas.join(', ')}`);
       $('#inv-polizas-wrap').show();
     } else {
