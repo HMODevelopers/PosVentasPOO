@@ -534,6 +534,8 @@ class VentaModel
             $suma = 0.0;
             error_log('[VENTA] Pagos mixtos recibidos UI='.json_encode($pagosRecibidos));
 
+            $idEfCatalogo = $this->buscarIdFormaPagoPorTipo('efectivo');
+
             foreach ($pagosRecibidos as $p) {
                 $idFp  = (int)($p['id_forma_pago'] ?? 0);
                 $monto = (float)($p['monto'] ?? 0);
@@ -543,6 +545,13 @@ class VentaModel
 
                 if ($idFp <= 0 || $monto <= 0) {
                     throw new \Exception('Cada pago del esquema mixto debe tener forma de pago y monto mayor a 0.');
+                }
+
+                if ($this->formaPagoEsMixto($idFp)) {
+                    if (!$idEfCatalogo) {
+                        throw new \Exception('No se encontró forma de pago EFECTIVO para registrar el pago mixto.');
+                    }
+                    $idFp = $idEfCatalogo;
                 }
 
                 $this->asegurarFormaPagoActiva($idFp);
@@ -603,6 +612,7 @@ class VentaModel
         }
 
         $pagosArr = is_array($pagos) ? $pagos : [];
+        $idEfCatalogo = $this->buscarIdFormaPagoPorTipo('efectivo');
         if (!empty($pagosArr)) {
             $suma = 0.0;
             foreach ($pagosArr as $p) {
@@ -611,6 +621,14 @@ class VentaModel
                 if ($idFp <= 0 || $monto <= 0) {
                     throw new \Exception('Cada pago del esquema mixto debe tener forma de pago y monto mayor a 0.');
                 }
+
+                if ($this->formaPagoEsMixto($idFp)) {
+                    if (!$idEfCatalogo) {
+                        throw new \Exception('No se encontró forma de pago EFECTIVO para registrar el pago mixto.');
+                    }
+                    $idFp = $idEfCatalogo;
+                }
+
                 $suma += $monto;
                 $this->insertarPagoVenta($idVenta, $idFp, $monto, $folio);
             }
@@ -621,9 +639,9 @@ class VentaModel
             return;
         }
 
-        if ($idFormaPago !== null && $idFormaPago > 0) {
-            $this->insertarPagoVenta($idVenta, $idFormaPago, $total, $folio);
-        }
+        // Si no vienen pagos no podemos inventar un renglón usando la forma de pago principal (MIXTO).
+        // Evitamos insertar registros inválidos en pagos_venta.
+        throw new \Exception('Se requieren los pagos para el esquema mixto.');
     }
 
     /* ========================= Crear venta ========================= */
@@ -1624,6 +1642,7 @@ class VentaModel
                 }
 
                 $suma = 0.0;
+                $idEfCatalogo = $this->buscarIdFormaPagoPorTipo('efectivo');
                 foreach ($pagosMixtos as $p) {
                     $idFp  = isset($p['id_forma_pago']) ? (int)$p['id_forma_pago'] : 0;
                     $monto = isset($p['monto']) ? (float)$p['monto'] : 0.0;
@@ -1635,6 +1654,13 @@ class VentaModel
                     if ($idFp <= 0 || $monto <= 0) {
                         throw new \Exception('Cada renglón de pago mixto debe tener forma de pago y monto mayor a 0.');
                     }
+                    if ($this->formaPagoEsMixto($idFp)) {
+                        if (!$idEfCatalogo) {
+                            throw new \Exception('No se encontró forma de pago EFECTIVO para registrar el pago mixto.');
+                        }
+                        $idFp = $idEfCatalogo;
+                    }
+
                     $this->asegurarFormaPagoActiva($idFp);
                     $suma += $monto;
 
