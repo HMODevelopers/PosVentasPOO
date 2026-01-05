@@ -2426,6 +2426,8 @@ window.abrirInvoice = function(idVenta){
   $('#inv-rfc').text('N/A');
   $('#inv-dom').text('N/A');
   $('#inv-tel').text('N/A');
+  $('#inv-polizas').text('');
+  $('#inv-polizas-wrap').hide();
   $('#inv-tbody').html('<tr><td colspan="5" class="text-center text-muted">Cargando…</td></tr>');
   $('#inv-subtotal').text('$0.00');
   $('#inv-descuento').text('$0.00');
@@ -2461,6 +2463,21 @@ window.abrirInvoice = function(idVenta){
     $('#inv-rfc').text(rfcCli);
     $('#inv-dom').text(domCli);
     $('#inv-tel').text(telCli);
+
+    // Pólizas de acumuladores (únicas)
+    const polizasAcum = dets
+      .filter(d => esProductoAcumulador(d))
+      .map(d => (d.numero_poliza || d.no_poliza || d.num_poliza || '').toString().trim())
+      .filter(p => !!p);
+
+    const polizasUnicas = Array.from(new Set(polizasAcum));
+    if (polizasUnicas.length) {
+      const prefijo = polizasUnicas.length > 1 ? 'Póliza(s): ' : 'Póliza: ';
+      $('#inv-polizas').text(`${prefijo}${polizasUnicas.join(', ')}`);
+      $('#inv-polizas-wrap').show();
+    } else {
+      $('#inv-polizas-wrap').hide();
+    }
 
     // Detalle
     if (!dets.length){

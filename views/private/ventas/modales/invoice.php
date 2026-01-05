@@ -42,6 +42,11 @@
             <div><b>Teléfono:</b> <span id="inv-tel">N/A</span></div>
           </div>
 
+          <!-- PÓLIZAS (solo acumuladores) -->
+          <div class="inv-seccion" id="inv-polizas-wrap" style="display:none;">
+            <div><span id="inv-polizas"></span></div>
+          </div>
+
           <!-- DETALLE -->
           <div class="inv-seccion">
             <div class="table-responsive">
