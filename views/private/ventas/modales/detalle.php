@@ -77,6 +77,7 @@
                 <tr>
                   <th class="text-center">Codigo</th>
                   <th>Producto</th>
+                  <th class="text-center">Póliza</th>
                   <th class="text-center">Cant.</th>
                   <th class="text-right">Precio</th>
                   <th class="text-right">Subtotal</th>
@@ -85,11 +86,23 @@
               <tbody id="det-tbody"></tbody>
               <tfoot>
                 <tr>
-                  <th colspan="4" class="text-right">Total</th>
+                  <th colspan="5" class="text-right">Total</th>
                   <th class="text-right h5 mb-0" id="det-total">$0.00</th>
                 </tr>
               </tfoot>
             </table>
+          </div>
+
+          <div id="wrap-det-desglose" class="d-none mt-3">
+            <h5 class="mb-2">Desglose de pagos</h5>
+            <div class="border rounded p-3">
+              <div id="det-desglose-items" class="mb-2"></div>
+              <div class="d-flex justify-content-between align-items-center font-weight-bold">
+                <span>Total desglose</span>
+                <span id="det-desglose-total">$0.00</span>
+              </div>
+              <div class="small text-muted" id="det-desglose-validacion"></div>
+            </div>
           </div>
 
           <hr>

@@ -550,6 +550,59 @@ function ensureGarantiasBlock() {
   }
 }
 
+function esVentaMixta(detVenta) {
+  const idFp  = Number(detVenta?.id_forma_pago ?? 0);
+  const desc  = String(detVenta?.forma_pago || '').toLowerCase();
+  return idFp === 3 || desc.startsWith('mixt');
+}
+
+function renderDesglosePagos(detVenta, pagos = [], totalVenta = 0) {
+  const $wrap  = $('#wrap-det-desglose');
+  const $items = $('#det-desglose-items').empty();
+  const $total = $('#det-desglose-total');
+  const $val   = $('#det-desglose-validacion');
+
+  $val.removeClass('text-success text-danger').text('');
+
+  const arr    = Array.isArray(pagos) ? pagos.filter(p => p && p.monto != null) : [];
+  const esMix  = esVentaMixta(detVenta) || arr.length;
+
+  if (!esMix) {
+    $wrap.addClass('d-none');
+    return;
+  }
+
+  if (!arr.length) {
+    $items.append('<div class="text-muted">Sin desglose de pagos.</div>');
+  }
+
+  let totalPagos = 0;
+  arr.forEach(p => {
+    const nombre = p.nombre_forma_pago || p.descripcion || '—';
+    const monto  = num(p.monto);
+    totalPagos  += monto;
+    $items.append(`
+      <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+        <span>${nombre}</span>
+        <span class="font-weight-bold">${mxn(monto)}</span>
+      </div>
+    `);
+  });
+
+  $total.text(mxn(totalPagos));
+  const totVenta = num(totalVenta);
+  if (arr.length) {
+    const coincide = Math.abs(totalPagos - totVenta) < 0.01;
+    $val
+      .text(coincide
+        ? 'El total del desglose coincide con el total de la venta.'
+        : `El total del desglose (${mxn(totalPagos)}) difiere del total de la venta (${mxn(totVenta)}).`)
+      .addClass(coincide ? 'text-success' : 'text-danger');
+  }
+
+  $wrap.removeClass('d-none');
+}
+
 function renderGarantiasEnDetalle(list) {
   ensureGarantiasBlock();
 
@@ -673,16 +726,19 @@ $(document).on('click','a.accion-ver-detalle',function(e){
     // Productos
     let tb='', total=0;
     if (!dets.length){
-      tb = '<tr><td colspan="5" class="text-center text-muted">Sin productos</td></tr>';
+      tb = '<tr><td colspan="6" class="text-center text-muted">Sin productos</td></tr>';
     } else {
       dets.forEach(d=>{
         const c = Number(d.cantidad || 0);
         const u = Number(d.precio_unitario || 0);
         const s = Number(d.subtotal ?? (c * u));
+        const esAcum = esProductoAcumulador(d);
+        const poliza = esAcum ? (d.numero_poliza || d.no_poliza || '') : '';
         total += s;
         tb += `<tr>
           <td>${d.codigo || ('#'+(d.id_producto||''))}</td>
           <td>${d.producto || ('#'+(d.id_producto||''))}</td>
+          <td class="text-center">${poliza || ''}</td>
           <td class="text-center">${c}</td>
           <td class="text-right">${mxn(u)}</td>
           <td class="text-right">${mxn(s)}</td>
@@ -691,6 +747,9 @@ $(document).on('click','a.accion-ver-detalle',function(e){
     }
     $('#det-tbody').html(tb);
     $('#det-total').text(mxn(total || v.total || 0));
+
+    const pagosMixto = Array.isArray(resp.pagos_venta) ? resp.pagos_venta : resp.pagos;
+    renderDesglosePagos(v, pagosMixto, v.total || total);
 
     // Exclusivos de crédito
     if (String(v.estatus).trim() === 'Credito') {

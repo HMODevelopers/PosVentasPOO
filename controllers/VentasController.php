@@ -118,6 +118,18 @@ class VentasController
             $detalles = $ventaModel->obtenerDetalleVenta($idVenta);
             $pagos    = method_exists($ventaModel, 'obtenerPagosVenta') ? $ventaModel->obtenerPagosVenta($idVenta) : [];
 
+            $idFp    = (int)($venta['id_forma_pago'] ?? 0);
+            $fpDesc  = (string)($venta['forma_pago'] ?? '');
+            $esMixto = ($idFp === 3) || (stripos($fpDesc, 'mixt') === 0);
+
+            $pagosVenta = $esMixto ? array_map(function($p){
+                return [
+                    'id_forma_pago'     => $p['id_forma_pago'] ?? null,
+                    'nombre_forma_pago' => $p['nombre_forma_pago'] ?? ($p['descripcion'] ?? null),
+                    'monto'             => $p['monto'] ?? null
+                ];
+            }, $pagos) : [];
+
             // El modelo ya trae en $venta: abonado, saldo, estatus_credito y abonos[]
             $abonos  = $venta['abonos'] ?? [];
             $abonado = (float)($venta['abonado'] ?? 0);
@@ -142,6 +154,7 @@ class VentasController
                 'costo_total'     => round($costo_total, 2),
                 'utilidad_total'  => round($util_total, 2),
                 'pagos'           => $pagos,
+                'pagos_venta'     => $pagosVenta,
                 'formas_tarjeta'  => method_exists($ventaModel, 'obtenerFormasPagoTarjetaCreditoDebito')
                     ? $ventaModel->obtenerFormasPagoTarjetaCreditoDebito()
                     : []

@@ -442,7 +442,7 @@ class VentaModel
     public function obtenerPagosVenta($idVenta)
     {
         $st = $this->conn->prepare(
-            "SELECT pv.*, fp.descripcion
+            "SELECT pv.*, fp.descripcion, fp.descripcion AS nombre_forma_pago
                FROM pagos_venta pv
                LEFT JOIN formas_pago fp ON fp.id_forma_pago = pv.id_forma_pago
               WHERE pv.id_venta = :id
