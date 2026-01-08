@@ -104,7 +104,6 @@ $_SESSION['LAST_ACTIVITY']  = time();
                     </div>
                     <div id="ProductoSug" class="ac-sug" style="display:none;"></div>
                   </div>
-                  <small class="text-muted">Seleccionado: <span id="ProductoSeleccionado">—</span></small>
                 </div>
               </div>
 
@@ -142,7 +141,35 @@ $_SESSION['LAST_ACTIVITY']  = time();
 
       <!-- =================== Tabla Compras =================== -->
       <div class="row mt-3">
-        <div class="col-12">
+        
+      </div>
+      <!-- =================== /Tabla Compras =================== -->
+
+      <!-- =================== Tabla Ventas =================== -->
+      <div class="row">
+        <div class="col-6">
+          <div class="card-box">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h4 class="header-title">Ventas</h4>
+            </div>
+
+            <div class="table-responsive">
+              <table id="tablaVentasProducto" class="table table-bordered table-hover table-striped">
+                <thead>
+                  <tr>
+                    <th>Ticket/Folio</th>
+                    <th>Fecha</th>
+                    <th class="text-end">Cantidad</th>
+                    <th class="text-end">Precio</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-6">
           <div class="card-box">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h4 class="header-title">Compras</h4>
@@ -157,32 +184,6 @@ $_SESSION['LAST_ACTIVITY']  = time();
                     <th class="text-end">Cantidad</th>
                     <th class="text-end">Costo</th>
                     <th>Proveedor</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-      <!-- =================== /Tabla Compras =================== -->
-
-      <!-- =================== Tabla Ventas =================== -->
-      <div class="row">
-        <div class="col-12">
-          <div class="card-box">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h4 class="header-title">Ventas</h4>
-            </div>
-
-            <div class="table-responsive">
-              <table id="tablaVentasProducto" class="table table-bordered table-hover table-striped">
-                <thead>
-                  <tr>
-                    <th>Ticket/Folio</th>
-                    <th>Fecha</th>
-                    <th class="text-end">Cantidad</th>
-                    <th class="text-end">Precio</th>
                   </tr>
                 </thead>
                 <tbody></tbody>
