@@ -389,6 +389,79 @@ class VentaModel
         return (int)$st->fetchColumn();
     }
 
+    /* ========================= Listado detalle ventas ========================= */
+    public function obtenerVentasDetalle($pagina = 1, $limite = 10, $folio = '', $fecha = '', $estatus = '')
+    {
+        $offset = ($pagina - 1) * $limite;
+
+        $folio   = is_string($folio)   ? trim($folio)   : '';
+        $estatus = is_string($estatus) ? trim($estatus) : '';
+        $fecha   = is_string($fecha)   ? trim($fecha)   : ($fecha ?? '');
+
+        $sql = "SELECT v.id_venta,
+                       v.folio,
+                       v.fecha,
+                       v.estatus,
+                       v.estatus_credito,
+                       c.nombre AS cliente,
+                       u.nombre AS usuario,
+                       cj.nombre AS caja,
+                       COALESCE(fp.descripcion,'—') AS forma_pago,
+                       tp.nombre AS tipo_precio,
+                       d.id_venta_detalle,
+                       d.id_producto,
+                       d.cantidad,
+                       d.precio_unitario,
+                       COALESCE(d.subtotal, d.cantidad * d.precio_unitario) AS total_renglon,
+                       COALESCE(p.codigo, CONCAT('#', d.id_producto)) AS codigo_producto,
+                       p.descripcion AS producto
+                FROM ventas v
+                INNER JOIN ventas_detalle d ON d.id_venta = v.id_venta AND (d.activo = 1 OR d.activo IS NULL)
+                LEFT JOIN productos p        ON p.id_producto = d.id_producto
+                LEFT JOIN clientes c         ON v.id_cliente  = c.id_cliente
+                INNER JOIN usuarios u        ON v.id_usuario  = u.id_usuario
+                INNER JOIN cajas cj          ON v.id_caja     = cj.id_caja
+                LEFT JOIN formas_pago fp     ON v.id_forma_pago = fp.id_forma_pago
+                INNER JOIN tipo_precio tp    ON v.id_tipo_precio = tp.id_tipo_precio
+                WHERE v.activo = 1";
+        $params = [];
+
+        if ($folio !== '')   { $sql .= " AND v.folio LIKE :folio";     $params[':folio']   = "%$folio%"; }
+        if (!empty($fecha))  { $sql .= " AND DATE(v.fecha) = :fecha";  $params[':fecha']   = $fecha; }
+        if ($estatus !== '') { $sql .= " AND v.estatus = :estatus";    $params[':estatus'] = $estatus; }
+
+        $sql .= " ORDER BY v.id_venta DESC, d.id_venta_detalle ASC LIMIT :limite OFFSET :offset";
+
+        $st = $this->conn->prepare($sql);
+        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        $st->bindValue(':limite',(int)$limite,\PDO::PARAM_INT);
+        $st->bindValue(':offset',(int)$offset,\PDO::PARAM_INT);
+        $st->execute();
+        return $st->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function contarVentasDetalle($folio = '', $fecha = '', $estatus = '')
+    {
+        $folio   = is_string($folio)   ? trim($folio)   : '';
+        $estatus = is_string($estatus) ? trim($estatus) : '';
+        $fecha   = is_string($fecha)   ? trim($fecha)   : ($fecha ?? '');
+
+        $sql = "SELECT COUNT(*)
+                FROM ventas v
+                INNER JOIN ventas_detalle d ON d.id_venta = v.id_venta AND (d.activo = 1 OR d.activo IS NULL)
+                WHERE v.activo = 1";
+        $params = [];
+
+        if ($folio !== '')   { $sql .= " AND v.folio LIKE :folio";     $params[':folio']   = "%$folio%"; }
+        if (!empty($fecha))  { $sql .= " AND DATE(v.fecha) = :fecha";  $params[':fecha']   = $fecha; }
+        if ($estatus !== '') { $sql .= " AND v.estatus = :estatus";    $params[':estatus'] = $estatus; }
+
+        $st = $this->conn->prepare($sql);
+        foreach ($params as $k=>$v) $st->bindValue($k,$v);
+        $st->execute();
+        return (int)$st->fetchColumn();
+    }
+
     public function obtenerVentaPorId($idVenta)
     {
         $st = $this->conn->prepare(

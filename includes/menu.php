@@ -38,6 +38,7 @@ acl_bootstrap();
             <?php if (can('ventas.historial')): ?>
               <!-- CAMBIO: mantenemos tu ruta actual -->
               <li><a href="<?= BASE_URL ?>/views/private/ventas/index.php">Historial de ventas</a></li>
+              <li><a href="<?= BASE_URL ?>/views/private/ventas/listadetalle.php">Listado detalle ventas</a></li>
             <?php endif; ?>
             <?php if (can('ventas.prestamos')): ?>
               <!-- CAMBIO: ortografía "Préstamos" -->

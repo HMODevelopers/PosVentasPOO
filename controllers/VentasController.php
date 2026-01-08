@@ -49,6 +49,27 @@ class VentasController
         }
 
         /* ============================================================
+         * Listar ventas detalle (paginado + filtros)
+         * POST/GET: pagina, limite, folio?, fecha?, estatus?
+         * ============================================================ */
+        case 'listar-detalle': {
+            $pagina = self::asInt($_POST['pagina'] ?? $_GET['pagina'] ?? 1);
+            $limite = self::asInt($_POST['limite'] ?? $_GET['limite'] ?? 10);
+            $folio  = trim($_POST['folio'] ?? $_GET['folio'] ?? '');
+            $fecha  = trim($_POST['fecha'] ?? $_GET['fecha'] ?? '');
+            $estatus= trim($_POST['estatus'] ?? $_GET['estatus'] ?? '');
+
+            if ($pagina < 1) $pagina = 1;
+            if ($limite < 1) $limite = 10;
+
+            $items = $ventaModel->obtenerVentasDetalle($pagina, $limite, $folio, $fecha, $estatus);
+            $total = $ventaModel->contarVentasDetalle($folio, $fecha, $estatus);
+
+            echo json_encode(['ok' => true, 'data' => $items, 'total' => $total], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
+        /* ============================================================
          * Crear venta (Activa/Guardada/Credito)
          * Body JSON: { venta:{...}, detalles:[...], pagos:[...] }
          *   - pagos: [
