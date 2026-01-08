@@ -16,6 +16,7 @@ function controller_permission_map(): array {
         'FaltantesController.php'          => 'inventarios.faltantes',
         'FormasPagoController.php'         => 'catalogos.menu',
         'InventarioMovimientosController.php' => 'inventarios.movimientos',
+        'KardexProductoController.php'     => 'inventarios.movimientos',
         'LogoutController.php'             => 'menu.inicio',
         'PermisosController.php'           => 'sistema.roles',
         'PrestamosController.php'          => 'ventas.prestamos',

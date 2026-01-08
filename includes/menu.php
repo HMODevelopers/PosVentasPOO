@@ -80,6 +80,7 @@ acl_bootstrap();
                 <?php endif; ?>
                 <?php if (can('inventarios.movimientos')): ?>
                   <li><a href="<?= BASE_URL ?>/views/private/inventarios/index.php">Movimientos de inventario</a></li>
+                  <li><a href="<?= BASE_URL ?>/views/private/inventarios/kardex_producto.php">Movimientos por producto (Kárdex)</a></li>
                 <?php endif; ?>
               </ul>
             </li>
