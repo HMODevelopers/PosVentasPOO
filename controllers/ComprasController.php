@@ -76,7 +76,9 @@ switch ($accion) {
     // CREAR COMPRA (encabezado+detalle)
     // ================================
     case 'crear':
-        session_start();
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
         $payload   = json_decode(file_get_contents('php://input'), true) ?? [];
         $compra    = $payload['compra']   ?? [];
         $detalles  = $payload['detalles'] ?? [];
@@ -119,7 +121,9 @@ switch ($accion) {
     //  - O reemplazar completamente el detalle (si se envía "detalles")
     // ================================
     case 'actualizar':
-        session_start();
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
         $payload   = json_decode(file_get_contents('php://input'), true) ?? [];
         $idCompra  = (int)($payload['id_compra'] ?? 0);
         $compra    = $payload['compra']    ?? [];
@@ -197,7 +201,9 @@ switch ($accion) {
     // ELIMINAR (CANCELAR) + REVERSA STOCK
     // =====================================
     case 'eliminar': // cancela la compra y descuenta el stock
-        session_start();
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
 
         $idCompra   = (int)($_POST['id_compra'] ?? 0);
         $motivo     = trim($_POST['motivo'] ?? 'Cancelación de compra');

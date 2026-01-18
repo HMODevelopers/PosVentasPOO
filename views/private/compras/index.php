@@ -1024,6 +1024,10 @@ session_start();
               $('#modalAgregarCompra').modal('hide');
               if (typeof cargarCompras === 'function') cargarCompras(1);
             } else {
+              if (resp?.code === 'DUPLICATE_PRODUCT_FOLIO') {
+                toastr.warning(resp?.msg || 'El producto ya fue capturado en otra compra con el mismo folio.');
+                return;
+              }
               $('#ac-error').show().text(resp?.msg || 'Operación no completada.');
             }
           })

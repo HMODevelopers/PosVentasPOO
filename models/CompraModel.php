@@ -240,6 +240,33 @@ class CompraModel
     // =========================
     public function crearCompra(array $datosCompra, array $detalles)
     {
+        $folioFactura = trim((string)($datosCompra['folio_factura'] ?? ''));
+        $idProveedor  = (int)($datosCompra['id_proveedor'] ?? 0);
+        if ($folioFactura !== '' && $idProveedor > 0) {
+            foreach ($detalles as $d) {
+                $idProducto = (int)($d['id_producto'] ?? 0);
+                if ($idProducto <= 0) {
+                    continue;
+                }
+                $duplicado = $this->buscarDetalleDuplicadoPorFolio($folioFactura, $idProveedor, $idProducto);
+                if ($duplicado) {
+                    $msg = sprintf(
+                        'El producto %s ya fue capturado en la compra %s con folio %s (fecha %s).',
+                        $duplicado['producto'] ?? 'seleccionado',
+                        $duplicado['id_compra'] ?? 'N/D',
+                        $duplicado['folio_factura'] ?? $folioFactura,
+                        $duplicado['fecha_factura'] ?? 'N/D'
+                    );
+                    return [
+                        'ok'   => false,
+                        'code' => 'DUPLICATE_PRODUCT_FOLIO',
+                        'msg'  => $msg,
+                        'data' => $duplicado
+                    ];
+                }
+            }
+        }
+
         try {
             $this->conn->beginTransaction();
 
@@ -460,6 +487,35 @@ class CompraModel
                 'fecha_factura'=> $datosCompra['fecha_factura'] ?? $compraActual['fecha_factura'],
                 'estatus'      => $datosCompra['estatus'] ?? $compraActual['estatus'],
             ];
+
+            if ($reemplazarDetalles && is_array($detalles) && count($detalles) > 0) {
+                $folioFactura = trim((string)($nuevoEncabezado['folio_factura'] ?? ''));
+                if ($folioFactura !== '' && $idProvNvo > 0) {
+                    foreach ($detalles as $d) {
+                        $idProducto = (int)($d['id_producto'] ?? 0);
+                        if ($idProducto <= 0) {
+                            continue;
+                        }
+                        $duplicado = $this->buscarDetalleDuplicadoPorFolio($folioFactura, $idProvNvo, $idProducto, $idCompra);
+                        if ($duplicado) {
+                            $msg = sprintf(
+                                'El producto %s ya fue capturado en la compra %s con folio %s (fecha %s).',
+                                $duplicado['producto'] ?? 'seleccionado',
+                                $duplicado['id_compra'] ?? 'N/D',
+                                $duplicado['folio_factura'] ?? $folioFactura,
+                                $duplicado['fecha_factura'] ?? 'N/D'
+                            );
+                            $this->conn->rollBack();
+                            return [
+                                'ok'   => false,
+                                'code' => 'DUPLICATE_PRODUCT_FOLIO',
+                                'msg'  => $msg,
+                                'data' => $duplicado
+                            ];
+                        }
+                    }
+                }
+            }
 
             $sqlUp = "UPDATE compras
                     SET id_proveedor = :prov,
@@ -803,6 +859,42 @@ class CompraModel
             ':desc'    => $descripcion,
             ':ip'      => $ip
         ]);
+    }
+
+    // =========================
+    // Reglas por proveedor
+    // =========================
+    private function buscarDetalleDuplicadoPorFolio(string $folioFactura, int $idProveedor, int $idProducto, ?int $idCompraExcluir = null): ?array
+    {
+        $sql = "SELECT c.id_compra,
+                       c.folio_factura,
+                       DATE(c.fecha_factura) AS fecha_factura,
+                       p.descripcion AS producto
+                FROM compras_detalle cd
+                INNER JOIN compras c ON cd.id_compra = c.id_compra
+                INNER JOIN productos p ON cd.id_producto = p.id_producto
+                WHERE c.folio_factura = :folio
+                  AND c.id_proveedor = :idprov
+                  AND cd.id_producto = :idprod
+                  AND c.activo = 1
+                  AND cd.activo = 1";
+        $params = [
+            ':folio'  => $folioFactura,
+            ':idprov' => $idProveedor,
+            ':idprod' => $idProducto
+        ];
+
+        if (!empty($idCompraExcluir)) {
+            $sql .= " AND c.id_compra <> :idcomp";
+            $params[':idcomp'] = (int)$idCompraExcluir;
+        }
+
+        $sql .= " ORDER BY c.id_compra ASC LIMIT 1";
+
+        $st = $this->conn->prepare($sql);
+        $st->execute($params);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
     }
 
     // =========================
