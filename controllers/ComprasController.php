@@ -9,6 +9,57 @@ include_once '../models/CompraModel.php';
 
 $compraModel = new CompraModel();
 
+function normalize_decimal($value): ?float
+{
+    if (is_string($value)) {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        $value = str_replace(',', '.', $value);
+    }
+
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_numeric($value)) {
+        return null;
+    }
+
+    return (float)$value;
+}
+
+function sanitize_detalles_decimal(array &$detalles, ?string &$errorMsg = null): bool
+{
+    foreach ($detalles as $i => &$d) {
+        $cantidad = normalize_decimal($d['cantidad'] ?? null);
+        if ($cantidad === null || $cantidad <= 0) {
+            $errorMsg = 'Cantidad inválida en el renglón ' . ($i + 1) . '.';
+            return false;
+        }
+
+        $precio = normalize_decimal($d['precio_unitario'] ?? null);
+        if ($precio === null || $precio <= 0) {
+            $errorMsg = 'PPV inválido en el renglón ' . ($i + 1) . '.';
+            return false;
+        }
+
+        $d['cantidad'] = $cantidad;
+        $d['precio_unitario'] = $precio;
+
+        if (array_key_exists('subtotal', $d)) {
+            $subtotal = normalize_decimal($d['subtotal']);
+            if ($subtotal !== null) {
+                $d['subtotal'] = $subtotal;
+            }
+        }
+    }
+    unset($d);
+
+    return true;
+}
+
 // Acción por GET/POST
 $accion = $_REQUEST['accion'] ?? '';
 
@@ -111,6 +162,12 @@ switch ($accion) {
             break;
         }
 
+        $errorMsg = null;
+        if (!sanitize_detalles_decimal($detalles, $errorMsg)) {
+            echo json_encode(['ok' => false, 'msg' => $errorMsg ?? 'Detalle inválido.']);
+            break;
+        }
+
         $resp = $compraModel->crearCompra($compra, $detalles);
         echo json_encode($resp);
     break;
@@ -149,6 +206,14 @@ switch ($accion) {
         if (empty($compra['id_usuario'])) {
             echo json_encode(['ok' => false, 'msg' => 'Falta id_usuario (sesión).']);
             break;
+        }
+
+        if ($reemplazar && is_array($detalles) && count($detalles) > 0) {
+            $errorMsg = null;
+            if (!sanitize_detalles_decimal($detalles, $errorMsg)) {
+                echo json_encode(['ok' => false, 'msg' => $errorMsg ?? 'Detalle inválido.']);
+                break;
+            }
         }
 
         $resp = $compraModel->actualizarCompra($idCompra, $compra, $reemplazar ? (array)$detalles : null, $reemplazar);

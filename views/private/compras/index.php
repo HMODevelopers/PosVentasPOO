@@ -522,16 +522,17 @@ session_start();
                 tbody = `<tr><td colspan="5" class="text-center text-muted">Sin artículos</td></tr>`;
                 total = Number(c.total || 0);
               } else {
-                dets.forEach(d=>{
-                    const cant = Number(d.cantidad || 0);
-                    const prec = Number(d.precio_unitario || 0); // PPV de factura
-                    const imp  = (d.subtotal != null) ? Number(d.subtotal) : cant*prec;
+                  dets.forEach(d=>{
+                    const cant = parseDecimalInput(d.cantidad) ?? 0;
+                    const prec = parseDecimalInput(d.precio_unitario) ?? 0; // PPV de factura
+                    const subtotalVal = parseDecimalInput(d.subtotal);
+                    const imp  = (subtotalVal !== null) ? subtotalVal : cant*prec;
                     total += imp;
                     tbody += `
                     <tr>
                         <td>${d.codigo || ('#'+(d.id_producto||''))}</td>
                         <td>${d.producto || ('#'+(d.id_producto||''))}</td>
-                        <td class="text-center">${cant}</td>
+                        <td class="text-center">${formatCantidad(cant)}</td>
                         <td class="text-right">${mxn(prec)}</td>
                         <td class="text-right">${mxn(imp)}</td>
                     </tr>`;
@@ -657,11 +658,11 @@ session_start();
               $('#ac-fecha').val(c.fecha_factura || todayYMDLocal());
               $('#ac-estatus').val(c.estatus || 'Pendiente');
 
-              // Renglones (cantidad mínima 1)
+              // Renglones (cantidad mínima > 0)
               AC_ROWS = dets.map(d => ({
                 id_producto: Number(d.id_producto) || null,
-                cantidad: Math.max(1, Number(d.cantidad || 1)),
-                precio_unitario: Number(d.precio_unitario || 0), // PPV
+                cantidad: normalizaCantidad(d.cantidad) ?? 0,
+                precio_unitario: parseDecimalInput(d.precio_unitario) ?? 0, // PPV
                 label: (d.codigo ? d.codigo + ' - ' : '') + (d.producto || '')
               }));
               if (AC_ROWS.length === 0) {
@@ -783,12 +784,25 @@ session_start();
         $(document).on('hidden.bs.modal', '.modal', hideSug);
 
         /*********************************************************
-         * RENDER / SYNC DE FILAS DETALLE (validación cantidad ≥ 1)
+         * RENDER / SYNC DE FILAS DETALLE (validación cantidad > 0)
          *********************************************************/
+        function parseDecimalInput(value) {
+          if (value === null || value === undefined) return null;
+          let str = String(value).trim();
+          if (str === '') return null;
+          str = str.replace(',', '.');
+          const num = Number(str);
+          return Number.isFinite(num) ? num : null;
+        }
+
         function normalizaCantidad(v){
-          v = Number(v);
-          if (!isFinite(v) || v <= 0) return 1;
-          return Math.floor(v); // enteros
+          const num = parseDecimalInput(v);
+          return (num !== null && num > 0) ? num : null;
+        }
+
+        function formatCantidad(v){
+          const num = parseDecimalInput(v);
+          return (num !== null) ? num.toFixed(2) : '0.00';
         }
 
         function acRender() {
@@ -800,8 +814,10 @@ session_start();
               $tb.append(`<tr><td colspan="5" class="text-center text-muted">Sin renglones. Agrega al menos uno.</td></tr>`);
           } else {
               AC_ROWS.forEach((r, idx) => {
-                const cant = normalizaCantidad(r.cantidad);
-                const prec = Number(r.precio_unitario || 0);
+                const cantVal = normalizaCantidad(r.cantidad);
+                const cant = cantVal ?? 0;
+                const precVal = parseDecimalInput(r.precio_unitario);
+                const prec = (precVal !== null && precVal >= 0) ? precVal : 0;
                 const imp  = cant * prec;
                 total += imp;
 
@@ -812,7 +828,7 @@ session_start();
                         <input type="text" class="form-control form-control-sm ac-buscar" placeholder="Buscar código o nombre…" value="${r.label||''}">
                         <div class="ac-sug" style="display:none; position:absolute; left:0; right:0; top:100%; z-index:1050; background:#fff; border:1px solid #e0e0e0; max-height:220px; overflow:auto;"></div>
                     </td>
-                    <td><input type="number" class="form-control form-control-sm ac-cant" min="1" step="1" value="${cant}" placeholder="1"></td>
+                    <td><input type="text" class="form-control form-control-sm ac-cant" inputmode="decimal" value="${cantVal ?? ''}" placeholder="1"></td>
                     <td><input type="number" class="form-control form-control-sm ac-precio" min="0" step="0.01" value="${prec||''}" placeholder="0.00"></td>
                     <td class="text-right align-middle ac-imp">${mxn(imp)}</td>
                     <td class="text-center align-middle">
@@ -834,18 +850,23 @@ session_start();
           if (!Number.isFinite(idx)) return;
 
           const idpHidden = Number($tr.find('.ac-idp-hidden').val());
-          const cant  = normalizaCantidad($tr.find('.ac-cant').val());
-          let   precio= Number($tr.find('.ac-precio').val());
-          if (!isFinite(precio) || precio < 0) precio = 0;
+          const cantInput = $tr.find('.ac-cant').val();
+          const cant  = normalizaCantidad(cantInput);
+          let   precio= parseDecimalInput($tr.find('.ac-precio').val());
+          if (precio === null || precio < 0) precio = 0;
 
           AC_ROWS[idx].id_producto     = idpHidden > 0 ? idpHidden : null;
-          AC_ROWS[idx].cantidad        = cant;
+          AC_ROWS[idx].cantidad        = cant ?? 0;
           AC_ROWS[idx].precio_unitario = precio; // PPV capturado
           AC_ROWS[idx].label           = $tr.find('.ac-buscar').val();
 
-          const imp = (AC_ROWS[idx].cantidad || 1) * (AC_ROWS[idx].precio_unitario || 0);
+          const imp = (cant ?? 0) * (precio || 0);
           $tr.find('.ac-imp').text(mxn(imp));
-          const total = AC_ROWS.reduce((s,x)=> s + (normalizaCantidad(x.cantidad)*Number(x.precio_unitario||0)), 0);
+          const total = AC_ROWS.reduce((s,x)=> {
+            const c = normalizaCantidad(x.cantidad) ?? 0;
+            const p = parseDecimalInput(x.precio_unitario) ?? 0;
+            return s + (c * p);
+          }, 0);
           $('#ac-total').text(mxn(total));
 
           acCheckDirty(); // actualizar estado del botón
@@ -875,9 +896,16 @@ session_start();
         /*********************************************************
          * SNAPSHOT y DETECCIÓN DE CAMBIOS
          *********************************************************/
-        function normCant(v){ v = Number(v); return (!isFinite(v) || v <= 0) ? 1 : Math.floor(v); }
+        function normCant(v){
+          const num = normalizaCantidad(v);
+          return num ?? 0;
+        }
         function normDet(d){
-          return { id_producto: Number(d.id_producto || 0), cantidad: normCant(d.cantidad), precio_unitario: Number(d.precio_unitario || 0) };
+          return {
+            id_producto: Number(d.id_producto || 0),
+            cantidad: normCant(d.cantidad),
+            precio_unitario: parseDecimalInput(d.precio_unitario) ?? 0
+          };
         }
         function normalizeDetails(arr){
           const a = (arr || []).map(normDet);
@@ -975,18 +1003,18 @@ session_start();
             const filasMap = (AC_ROWS || []).map((r,i)=>({
               _idx:i,
               id_producto: Number(r.id_producto),
-              cantidad: normCant(r.cantidad),
-              precio_unitario: Number(r.precio_unitario)
+              cantidad: normalizaCantidad(r.cantidad),
+              precio_unitario: parseDecimalInput(r.precio_unitario)
             }));
 
             filasMap.forEach(f=>{
-              const inval = !(f.id_producto>0) || !(f.precio_unitario>0);
+              const inval = !(f.id_producto>0) || !(f.cantidad>0) || !(f.precio_unitario>0);
               if (inval) $('#ac-tbody tr[data-idx="'+f._idx+'"]').addClass('table-danger');
             });
 
-            filasValidas = filasMap.filter(x => (x.id_producto>0) && (x.cantidad>=1) && (x.precio_unitario>0));
+            filasValidas = filasMap.filter(x => (x.id_producto>0) && (x.cantidad>0) && (x.precio_unitario>0));
             if (!filasValidas.length){
-              $('#ac-error').show().text('Agrega al menos un renglón válido (producto, cantidad ≥ 1 y PPV > 0).');
+              $('#ac-error').show().text('Agrega al menos un renglón válido (producto, cantidad > 0 y PPV > 0).');
               return;
             }
           }
