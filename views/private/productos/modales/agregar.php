@@ -27,27 +27,28 @@
 
             <!-- Línea 1: Proveedor / Unidad SAT / Clave ProdServ SAT -->
             <div class="form-row mt-2">
-              <div class="form-group col-md-5">
+              <div class="form-group col-md-6">
                 <label for="p_id_proveedor">Proveedor <span class="text-danger">*</span></label>
                 <select id="p_id_proveedor" name="id_proveedor" class="form-control" required>
                   <option value="">— Selecciona —</option>
                 </select>
               </div>
-              <div class="form-group col-md-4">
+              <div class="form-group col-md-6">
                 <label for="p_id_unidad_sat">Unidad SAT <span class="text-danger">*</span></label>
                 <select id="p_id_unidad_sat" name="id_unidad_sat" class="form-control" required>
                   <option value="">— Selecciona —</option>
                 </select>
               </div>
-              <div class="form-group col-md-3">
-                <label for="p_clave_prod_serv_sat">Clave Prod/Serv SAT</label>
-                <input type="text" maxlength="8" class="form-control" id="p_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Ej. 01010101">
-              </div>
+              
             </div>
 
             <!-- Línea 1.1: Grupo (cat_grupos) -->
             <div class="form-row">
-              <div class="form-group col-md-12">
+              <div class="form-group col-md-6">
+                <label for="p_clave_prod_serv_sat">Clave Prod/Serv SAT</label>
+                <input type="text" maxlength="8" class="form-control" id="p_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Ej. 01010101">
+              </div>
+              <div class="form-group col-md-6">
                 <label for="p_id_grupo">Grupo <span class="text-danger">*</span></label>
                 <select id="p_id_grupo" name="id_grupo" class="form-control" required>
                   <option value="">— Selecciona —</option>
