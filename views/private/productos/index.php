@@ -64,6 +64,7 @@ session_start();
     <link href="<?= BASE_URL ?>/assets/css/icons.min.css" rel="stylesheet" type="text/css" />
     <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet" type="text/css" />
     <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
+    <link href="<?= BASE_URL ?>/assets/libs/select2/select2.min.css" rel="stylesheet" type="text/css" />
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
 
@@ -256,6 +257,7 @@ session_start();
     <script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
+    <script src="<?= BASE_URL ?>/assets/libs/select2/select2.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
 
     <script>
@@ -570,6 +572,40 @@ session_start();
       el.dispatchEvent(new Event('change'));
     }
 
+    function initGrupoSelect2(modalSelector, selectSelector) {
+      const $modal = $(modalSelector);
+      if (!$modal.length || typeof $.fn.select2 !== 'function') return;
+
+      const $select = $modal.find(selectSelector);
+      if (!$select.length) return;
+
+      $select.each(function(){
+        const $current = $(this);
+        if ($current.hasClass('select2-hidden-accessible')) {
+          $current.select2('destroy');
+        }
+
+        $current.select2({
+          width: '100%',
+          placeholder: 'Selecciona un grupo',
+          allowClear: true,
+          dropdownParent: $modal
+        });
+      });
+    }
+
+    function destroyGrupoSelect2(modalSelector, selectSelector) {
+      const $modal = $(modalSelector);
+      if (!$modal.length || typeof $.fn.select2 !== 'function') return;
+
+      $modal.find(selectSelector).each(function(){
+        const $current = $(this);
+        if ($current.hasClass('select2-hidden-accessible')) {
+          $current.select2('destroy');
+        }
+      });
+    }
+
 
     /* =====================================================================================
       MODAL AGREGAR PRODUCTO (validación + cálculo en tiempo real + recarga)
@@ -634,15 +670,23 @@ session_start();
           if (idSin) {
             $sel.val(String(idSin)).trigger('change');
           }
+
+          if ($('#modalProducto').hasClass('show')) {
+            initGrupoSelect2('#modalProducto', '#p_id_grupo');
+          }
         });
 
     })
     .on('shown.bs.modal', function(){
+      initGrupoSelect2('#modalProducto', '#p_id_grupo');
+
       // Reiniciar flags y, si ya hay PPV, calcular al mostrar
       _manual.cn = _manual.pt = _manual.pb = false;
       if (parseFloat($('#p_precio_proveedor').val() || 0) > 0) debouncedCalc();
     })
     .on('hidden.bs.modal', function(){
+      destroyGrupoSelect2('#modalProducto', '#p_id_grupo');
+
       // Recargar listado solo si guardamos con éxito
       if (_reloadOnClose) {
         _reloadOnClose = false;
@@ -921,6 +965,14 @@ session_start();
       abrirModalEditarProducto(id);
     });
 
+    $('#modalProductoEdit')
+      .on('shown.bs.modal', function(){
+        initGrupoSelect2('#modalProductoEdit', '#e_id_grupo');
+      })
+      .on('hidden.bs.modal', function(){
+        destroyGrupoSelect2('#modalProductoEdit', '#e_id_grupo');
+      });
+
     function abrirModalEditarProducto(idProducto){
       const $m = $('#modalProductoEdit');
       if ($m.length === 0){
@@ -956,6 +1008,8 @@ session_start();
           cargarUnidadesEn('#e_id_unidad_sat', p.id_unidad_sat),
           cargarGruposEn('#e_id_grupo', p.id_grupo) // NUEVO
         ]);
+
+        initGrupoSelect2('#modalProductoEdit', '#e_id_grupo');
 
         await sincronizarClaveSatGrupo('e', false);
 
@@ -1079,6 +1133,12 @@ session_start();
               $sel.append(`<option value="${g.id_grupo}"${sel}>${g.nombre_grupo}</option>`);
             }
           });
+
+          const $modal = $sel.closest('.modal');
+          if ($modal.length && $modal.hasClass('show')) {
+            initGrupoSelect2('#' + $modal.attr('id'), selector);
+          }
+
           resolve();
         })
         .fail(function(){ resolve(); });
