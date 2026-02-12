@@ -143,16 +143,17 @@ class ProductoModel
         }
 
         try {
+            $d = $this->normalizarYValidarDatosFiscales($d);
             $this->conn->beginTransaction();
 
             $sql = "INSERT INTO productos
-                    (id_proveedor, id_unidad_sat, id_grupo, clave_prod_serv_sat, codigo, descripcion,
+                    (id_proveedor, id_unidad_sat, id_grupo, clave_prod_serv_sat, objeto_imp, tasa_iva, codigo, descripcion,
                      costo_neto, precio_publico, precio_taller, precio_proveedor,
                      stock_actual, stock_maximo, stock_minimo,
                      piso, pasillo, estante, `peldaño`,
                      activo, fecha_creacion)
                     VALUES
-                    (:idprov, :iduni, :idg, :clave, :cod, :des,
+                    (:idprov, :iduni, :idg, :clave, :objimp, :tiva, :cod, :des,
                      :cn, :ppub, :pt, :ppv,
                      :stk, :stkmax, :stkmin,
                      :piso, :pas, :est, :pel,
@@ -162,7 +163,9 @@ class ProductoModel
                 ':idprov' => $d['id_proveedor']            ?? null,
                 ':iduni'  => $d['id_unidad_sat']           ?? null,
                 ':idg'    => $d['id_grupo']                ?? null,
-                ':clave'  => $d['clave_prod_serv_sat']     ?? '01010101',
+                ':clave'  => $d['clave_prod_serv_sat'],
+                ':objimp' => $d['objeto_imp'],
+                ':tiva'   => $d['tasa_iva'],
                 ':cod'    => $d['codigo']                  ?? null,
                 ':des'    => trim($d['descripcion'] ?? ''),
 
@@ -247,12 +250,14 @@ class ProductoModel
             $prev = $stPrev->fetch(PDO::FETCH_ASSOC);
             if (!$prev) throw new Exception('Producto no encontrado.');
 
+            $d = $this->normalizarYValidarDatosFiscales($d, $prev);
+
             $numericFields = [
                 'costo_neto','precio_publico','precio_taller','precio_proveedor',
-                'stock_actual','stock_maximo','stock_minimo','piso','pasillo','estante','peldaño'
+                'stock_actual','stock_maximo','stock_minimo','piso','pasillo','estante','peldaño','tasa_iva'
             ];
             $keyFields  = ['id_proveedor','id_unidad_sat','id_grupo','activo'];
-            $textFields = ['clave_prod_serv_sat','codigo','descripcion'];
+            $textFields = ['clave_prod_serv_sat','codigo','descripcion','objeto_imp'];
 
             $new = [];
             foreach ($keyFields as $f)  { $new[$f] = array_key_exists($f,$d) ? $d[$f] : $prev[$f]; }
@@ -592,6 +597,61 @@ class ProductoModel
         }
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+
+    private function normalizarYValidarDatosFiscales(array $d, ?array $prev = null): array
+    {
+        $idUnidad = (int)($d['id_unidad_sat'] ?? ($prev['id_unidad_sat'] ?? 0));
+        if ($idUnidad <= 0 || !$this->existeUnidadSat($idUnidad)) {
+            throw new Exception('Unidad SAT inválida o inexistente.');
+        }
+
+        $idGrupo = (int)($d['id_grupo'] ?? ($prev['id_grupo'] ?? 0));
+        if ($idGrupo <= 0) {
+            throw new Exception('Grupo es requerido.');
+        }
+
+        $claveGrupo = $this->obtenerClaveProdServSatPorGrupo($idGrupo);
+        if ($claveGrupo === null) {
+            throw new Exception('El grupo seleccionado no existe o no tiene Clave Prod/Serv SAT configurada.');
+        }
+
+        $objetoImp = trim((string)($d['objeto_imp'] ?? ($prev['objeto_imp'] ?? '')));
+        if ($objetoImp === '') $objetoImp = '02';
+
+        $tasaIvaRaw = $d['tasa_iva'] ?? ($prev['tasa_iva'] ?? '');
+        $tasaIva = is_numeric($tasaIvaRaw) ? (float)$tasaIvaRaw : 0.16;
+        if ($tasaIva <= 0) $tasaIva = 0.16;
+
+        $d['id_unidad_sat'] = $idUnidad;
+        $d['id_grupo'] = $idGrupo;
+        $d['clave_prod_serv_sat'] = $claveGrupo;
+        $d['objeto_imp'] = $objetoImp;
+        $d['tasa_iva'] = number_format($tasaIva, 6, '.', '');
+
+        return $d;
+    }
+
+    private function existeUnidadSat(int $idUnidadSat): bool
+    {
+        $st = $this->conn->prepare("SELECT 1 FROM unidades_sat WHERE id_unidad_sat = :id AND activo = 1 LIMIT 1");
+        $st->bindValue(':id', $idUnidadSat, PDO::PARAM_INT);
+        $st->execute();
+        return (bool)$st->fetchColumn();
+    }
+
+    private function obtenerClaveProdServSatPorGrupo(int $idGrupo): ?string
+    {
+        $st = $this->conn->prepare("SELECT clave_prod_serv_sat FROM cat_grupos WHERE id_grupo = :id AND activo = 1 LIMIT 1");
+        $st->bindValue(':id', $idGrupo, PDO::PARAM_INT);
+        $st->execute();
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return null;
+
+        $clave = trim((string)($row['clave_prod_serv_sat'] ?? ''));
+        if ($clave === '' || strlen($clave) !== 8) return null;
+        return $clave;
     }
 
 

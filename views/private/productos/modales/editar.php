@@ -32,23 +32,34 @@
                 </div>
                 <div class="form-group col-md-4">
                   <label for="e_id_unidad_sat">Unidad SAT <span class="text-danger">*</span></label>
-                  <select id="e_id_unidad_sat" name="id_unidad_sat" class="form-control" >
+                  <select id="e_id_unidad_sat" name="id_unidad_sat" class="form-control" required>
                     <option value="">— Selecciona —</option>
                   </select>
                 </div>
                 <div class="form-group col-md-3">
                   <label for="e_clave_prod_serv_sat">Clave Prod/Serv SAT</label>
-                  <input type="text" maxlength="8" class="form-control" id="e_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Ej. 01010101">
+                  <input type="text" maxlength="8" class="form-control" id="e_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Se llena por grupo" readonly required>
                 </div>
               </div>
 
               <!-- Fila: Grupo (NUEVO) -->
               <div class="form-row">
                 <div class="form-group col-md-12">
-                  <label for="e_id_grupo">Grupo</label>
-                  <select id="e_id_grupo" name="id_grupo" class="form-control">
+                  <label for="e_id_grupo">Grupo <span class="text-danger">*</span></label>
+                  <select id="e_id_grupo" name="id_grupo" class="form-control" required>
                     <option value="">— Selecciona —</option>
                   </select>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group col-md-6">
+                  <label for="e_objeto_imp">Objeto Impuesto</label>
+                  <input type="text" maxlength="2" class="form-control" id="e_objeto_imp" name="objeto_imp">
+                </div>
+                <div class="form-group col-md-6">
+                  <label for="e_tasa_iva">Tasa IVA</label>
+                  <input type="number" step="0.000001" min="0" class="form-control" id="e_tasa_iva" name="tasa_iva">
                 </div>
               </div>
 

@@ -8,7 +8,7 @@ header('Content-Type: application/json; charset=UTF-8');
 include_once __DIR__ . '/../models/CatGrupoModel.php';
 $grupoModel = new CatGrupoModel();
 
-$accion = $_REQUEST['accion'] ?? '';
+$accion = $_REQUEST['accion'] ?? $_REQUEST['action'] ?? '';
 
 switch ($accion) {
 
@@ -30,6 +30,36 @@ switch ($accion) {
         $lim  = (int)($_GET['limite'] ?? $_POST['limite'] ?? 100);
         $data = $grupoModel->listarMin($q, $lim);
         echo json_encode(['data' => $data]);
+    break;
+
+    // ===== GET BY ID (AJAX para autollenado SAT) =====
+
+    case 'getById':
+        $id = (int)($_GET['id_grupo'] ?? $_POST['id_grupo'] ?? 0);
+        if ($id <= 0) {
+            echo json_encode(['ok' => false, 'msg' => 'id_grupo inválido']);
+            break;
+        }
+
+        $row = $grupoModel->obtenerPorId($id);
+        if (!$row) {
+            echo json_encode(['ok' => false, 'msg' => 'Grupo no encontrado']);
+            break;
+        }
+
+        $clave = trim((string)($row['clave_prod_serv_sat'] ?? ''));
+        if ($clave === '') {
+            echo json_encode(['ok' => false, 'msg' => 'El grupo seleccionado no tiene Clave Prod/Serv SAT configurada']);
+            break;
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'data' => [
+                'id_grupo' => (int)$row['id_grupo'],
+                'clave_prod_serv_sat' => $clave,
+            ]
+        ]);
     break;
 
     // ===== DETALLE =====

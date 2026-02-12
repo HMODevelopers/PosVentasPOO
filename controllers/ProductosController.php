@@ -9,6 +9,18 @@ $productoModel = new ProductoModel();
 
 $accion = $_REQUEST['accion'] ?? '';
 
+
+function validarPayloadFiscalProducto(array $payload): ?string
+{
+    $idUnidad = (int)($payload['id_unidad_sat'] ?? 0);
+    if ($idUnidad <= 0) return 'Unidad SAT es requerida.';
+
+    $idGrupo = (int)($payload['id_grupo'] ?? 0);
+    if ($idGrupo <= 0) return 'Grupo es requerido.';
+
+    return null;
+}
+
 switch ($accion) {
 
     // ===== LISTAR PAGINADO =====
@@ -77,6 +89,12 @@ switch ($accion) {
             $payload['id_grupo'] = (int)$payload['id_grupo'];
         }
 
+        $err = validarPayloadFiscalProducto($payload);
+        if ($err !== null) {
+            echo json_encode(['ok' => false, 'msg' => $err], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
         $resp = $productoModel->crear($payload);
         echo json_encode($resp, JSON_UNESCAPED_UNICODE);
     break;
@@ -115,6 +133,12 @@ switch ($accion) {
             $payload['id_grupo'] = null;
         } else {
             $payload['id_grupo'] = (int)$payload['id_grupo'];
+        }
+
+        $err = validarPayloadFiscalProducto($payload);
+        if ($err !== null) {
+            echo json_encode(['ok' => false, 'msg' => $err], JSON_UNESCAPED_UNICODE);
+            break;
         }
 
         $resp = $productoModel->actualizar($id, $payload);

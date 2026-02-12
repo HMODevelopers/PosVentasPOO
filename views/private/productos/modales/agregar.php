@@ -46,13 +46,25 @@
             <div class="form-row">
               <div class="form-group col-md-6">
                 <label for="p_clave_prod_serv_sat">Clave Prod/Serv SAT</label>
-                <input type="text" maxlength="8" class="form-control" id="p_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Ej. 01010101">
+                <input type="text" maxlength="8" class="form-control" id="p_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Se llena por grupo" readonly required>
               </div>
               <div class="form-group col-md-6">
                 <label for="p_id_grupo">Grupo <span class="text-danger">*</span></label>
                 <select id="p_id_grupo" name="id_grupo" class="form-control" required>
                   <option value="">— Selecciona —</option>
                 </select>
+              </div>
+            </div>
+
+            <!-- Línea 1.2: Facturación SAT -->
+            <div class="form-row">
+              <div class="form-group col-md-6">
+                <label for="p_objeto_imp">Objeto Impuesto</label>
+                <input type="text" maxlength="2" class="form-control" id="p_objeto_imp" name="objeto_imp" value="02">
+              </div>
+              <div class="form-group col-md-6">
+                <label for="p_tasa_iva">Tasa IVA</label>
+                <input type="number" step="0.000001" min="0" class="form-control" id="p_tasa_iva" name="tasa_iva" value="0.160000">
               </div>
             </div>
 
