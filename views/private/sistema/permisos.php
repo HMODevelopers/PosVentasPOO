@@ -121,6 +121,12 @@ if ((int)$_SESSION['usuario']['id_rol'] !== 1) {
                   <option value="/views/private/compras/index.php">Compras</option>
                   <option value="/views/private/productos/index.php">Inventarios → Productos</option>
                   <option value="/views/private/catalogos/clientes.php">Catálogos → Clientes</option>
+                  <option value="/views/private/catalogos/cat_grupos.php">Catálogos → Grupos</option>
+                  <option value="/views/private/catalogos/cat_sat_uso_cfdi.php">Catálogos → SAT Uso CFDI</option>
+                  <option value="/views/private/catalogos/clientes_sat.php">Catálogos → Clientes SAT</option>
+                  <option value="/views/private/catalogos/cat_sat_regimen_fiscal.php">Catálogos → SAT Régimen Fiscal</option>
+                  <option value="/views/private/catalogos/cat_sat_moneda.php">Catálogos → SAT Moneda</option>
+                  
                   <option value="/views/private/talleres/miscompras.php">Talleres → Mis Compras</option>
                   <option value="/views/private/sistema/usuarios.php">Sistema → Usuarios</option>
                 </select>
