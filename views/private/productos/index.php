@@ -583,6 +583,9 @@ session_start();
       $('#formProducto')[0].reset();
       $('#p_activo').prop('checked', true);
       $('#modalProductoLabel').text('Agregar producto');
+      $('#p_objeto_imp').val('02');
+      $('#p_tasa_iva').val('0.160000');
+      $('#p_clave_prod_serv_sat').val('');
 
       // Limpiar marcas de error previas
       $('#formProducto .is-invalid').removeClass('is-invalid');
@@ -627,7 +630,9 @@ session_start();
               $sel.append(`<option value="${g.id_grupo}">${g.nombre_grupo}</option>`);
             }
           });
-          if (idSin) $sel.val(String(idSin));
+          if (idSin) {
+            $sel.val(String(idSin)).trigger('change');
+          }
         });
 
     })
@@ -662,8 +667,49 @@ session_start();
       }
     }
 
+
+    async function getClaveSatPorGrupo(idGrupo){
+      if (!idGrupo) return { ok:false, msg:'Grupo es requerido.' };
+      try {
+        const resp = await $.ajax({
+          url: '<?= BASE_URL ?>/controllers/CatGruposController.php',
+          method: 'GET', dataType: 'json',
+          data: { accion: 'getById', id_grupo: idGrupo }
+        });
+        return resp || { ok:false, msg:'No fue posible consultar el grupo.' };
+      } catch(e) {
+        return { ok:false, msg:'Error al consultar la Clave SAT del grupo.' };
+      }
+    }
+
+    async function sincronizarClaveSatGrupo(prefix){
+      const $grupo = $('#'+prefix+'_id_grupo');
+      const $clave = $('#'+prefix+'_clave_prod_serv_sat');
+      if (!$grupo.length || !$clave.length) return false;
+
+      const idGrupo = ($grupo.val() || '').toString().trim();
+      if (!idGrupo){
+        $clave.val('');
+        return false;
+      }
+
+      const resp = await getClaveSatPorGrupo(idGrupo);
+      const clave = (resp?.data?.clave_prod_serv_sat || '').toString().trim();
+      if (!resp?.ok || clave.length !== 8) {
+        $clave.val('');
+        toastr.error(resp?.msg || 'El grupo seleccionado no tiene Clave SAT válida.');
+        return false;
+      }
+
+      $clave.val(clave);
+      return true;
+    }
+
+    $('#p_id_grupo').on('change', function(){ sincronizarClaveSatGrupo('p'); });
+    $(document).on('change', '#e_id_grupo', function(){ sincronizarClaveSatGrupo('e'); });
+
     // Enviar a backend con validaciones
-    $('#formProducto').on('submit', function (e) {
+    $('#formProducto').on('submit', async function (e) {
       e.preventDefault();
 
       const errores = [];
@@ -742,6 +788,25 @@ session_start();
         setInvalid('#p_stock_minimo');
       }
 
+
+      await sincronizarClaveSatGrupo('p');
+      const claveSat = valTrim('#p_clave_prod_serv_sat');
+      if (!claveSat || claveSat.length !== 8) {
+        errores.push('Clave Prod/Serv SAT inválida para el grupo seleccionado.');
+        setInvalid('#p_clave_prod_serv_sat');
+      }
+
+      const objetoImp = valTrim('#p_objeto_imp') || '02';
+      const tasaIva = num2($('#p_tasa_iva').val());
+      if (!objetoImp) {
+        errores.push('Objeto Impuesto es requerido.');
+        setInvalid('#p_objeto_imp');
+      }
+      if (isNaN(tasaIva)) {
+        errores.push('Tasa IVA inválida.');
+        setInvalid('#p_tasa_iva');
+      }
+
       if (errores.length) {
         toastr.warning(errores.join('<br>'));
         if (firstInvalid) { try { $(firstInvalid).focus(); } catch(e){} }
@@ -755,6 +820,8 @@ session_start();
         id_unidad_sat: $('#p_id_unidad_sat').val() || '',
         id_grupo: $('#p_id_grupo').val() || '', // NUEVO
         clave_prod_serv_sat: $('#p_clave_prod_serv_sat').val().trim() || '',
+        objeto_imp: ($('#p_objeto_imp').val() || '02').trim(),
+        tasa_iva: isNaN(tasaIva) ? 0.160000 : tasaIva,
         codigo: $('#p_codigo').val().trim(),
         descripcion: $('#p_descripcion').val().trim(),
         costo_neto: cn,
@@ -868,8 +935,14 @@ session_start();
           cargarGruposEn('#e_id_grupo', p.id_grupo) // NUEVO
         ]);
 
+        await sincronizarClaveSatGrupo('e');
+
         // 3) Rellenar campos
-        $('#e_clave_prod_serv_sat').val(p.clave_prod_serv_sat || '');
+        if (!($('#e_clave_prod_serv_sat').val() || '').trim()) {
+          $('#e_clave_prod_serv_sat').val(p.clave_prod_serv_sat || '');
+        }
+        $('#e_objeto_imp').val(p.objeto_imp || '02');
+        $('#e_tasa_iva').val(Number(p.tasa_iva ?? 0.160000).toFixed(6));
         $('#e_codigo').val(p.codigo || '');
         $('#e_descripcion').val(p.descripcion || '');
 
@@ -1028,7 +1101,7 @@ session_start();
       .off('change', '#e_id_proveedor').on('change',     '#e_id_proveedor',     debouncedCalcEdit);
 
     // ======================= SUBMIT ACTUALIZAR =======================
-    $(document).off('submit', '#formProductoEdit').on('submit', '#formProductoEdit', function(e){
+    $(document).off('submit', '#formProductoEdit').on('submit', '#formProductoEdit', async function(e){
       e.preventDefault();
 
       // Normaliza números (igual que en Agregar)
@@ -1044,6 +1117,14 @@ session_start();
       const id = $('#e_id_producto').val();
       if (!id){ toastr.warning('ID de producto requerido'); return; }
 
+      const idUnidad = ($('#e_id_unidad_sat').val() || '').toString().trim();
+      const idGrupo = ($('#e_id_grupo').val() || '').toString().trim();
+      await sincronizarClaveSatGrupo('e');
+      const claveSat = ($('#e_clave_prod_serv_sat').val() || '').toString().trim();
+      if (!idUnidad) { toastr.warning('Unidad SAT es requerida.'); $('#e_id_unidad_sat').focus(); return; }
+      if (!idGrupo) { toastr.warning('Grupo es requerido.'); $('#e_id_grupo').focus(); return; }
+      if (!claveSat || claveSat.length !== 8) { toastr.warning('Clave SAT inválida para el grupo seleccionado.'); $('#e_id_grupo').focus(); return; }
+
       const payload = {
         accion: 'actualizar',
         id_producto: id,
@@ -1051,6 +1132,8 @@ session_start();
         id_unidad_sat: $('#e_id_unidad_sat').val() || '',
         id_grupo: $('#e_id_grupo').val() || '', // NUEVO
         clave_prod_serv_sat: ($('#e_clave_prod_serv_sat').val() || '').trim(),
+        objeto_imp: ($('#e_objeto_imp').val() || '02').trim(),
+        tasa_iva: num2($('#e_tasa_iva').val() || '0.160000'),
         codigo: ($('#e_codigo').val() || '').trim(),
         descripcion: ($('#e_descripcion').val() || '').trim(),
         precio_proveedor: num2($('#e_precio_proveedor').val()),

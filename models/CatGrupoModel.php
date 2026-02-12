@@ -105,6 +105,19 @@ class CatGrupoModel
         return $st->execute([':id' => $id]);
     }
 
+
+    public function obtenerClaveProdServSatPorId(int $id): ?string
+    {
+        $st = $this->conn->prepare("SELECT clave_prod_serv_sat FROM cat_grupos WHERE id_grupo = :id AND activo = 1 LIMIT 1");
+        $st->bindValue(':id', $id, PDO::PARAM_INT);
+        $st->execute();
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return null;
+
+        $clave = trim((string)($row['clave_prod_serv_sat'] ?? ''));
+        return $clave !== '' ? $clave : null;
+    }
+
     // ===== LISTA CORTA PARA SELECTS =====
     // devuelve [{id_grupo, nombre_grupo}]
     public function listarMin(string $q = '', int $limite = 100)
