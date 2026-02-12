@@ -37,19 +37,19 @@ switch ($accion) {
     case 'getById':
         $id = (int)($_GET['id_grupo'] ?? $_POST['id_grupo'] ?? 0);
         if ($id <= 0) {
-            echo json_encode(['ok' => false, 'msg' => 'id_grupo inválido']);
+            echo json_encode(['ok' => false, 'message' => 'id_grupo inválido']);
             break;
         }
 
         $row = $grupoModel->obtenerPorId($id);
         if (!$row) {
-            echo json_encode(['ok' => false, 'msg' => 'Grupo no encontrado']);
+            echo json_encode(['ok' => false, 'message' => 'Grupo no encontrado']);
             break;
         }
 
-        $clave = trim((string)($row['clave_prod_serv_sat'] ?? ''));
+        $clave = trim((string)($row['clave_h'] ?? ''));
         if ($clave === '') {
-            echo json_encode(['ok' => false, 'msg' => 'El grupo seleccionado no tiene Clave Prod/Serv SAT configurada']);
+            echo json_encode(['ok' => false, 'message' => 'Grupo sin clave SAT']);
             break;
         }
 
@@ -57,7 +57,7 @@ switch ($accion) {
             'ok' => true,
             'data' => [
                 'id_grupo' => (int)$row['id_grupo'],
-                'clave_prod_serv_sat' => $clave,
+                'clave_h' => $clave,
             ]
         ]);
     break;

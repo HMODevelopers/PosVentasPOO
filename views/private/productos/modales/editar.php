@@ -22,33 +22,33 @@
                 Datos del producto
               </legend>
 
-              <!-- Línea 1: Proveedor / Unidad SAT / Clave ProdServ SAT -->
+              <!-- Línea 1: Proveedor / Unidad SAT -->
               <div class="form-row mt-2">
-                <div class="form-group col-md-5">
+                <div class="form-group col-md-6">
                   <label for="e_id_proveedor">Proveedor <span class="text-danger">*</span></label>
                   <select id="e_id_proveedor" name="id_proveedor" class="form-control" required>
                     <option value="">— Selecciona —</option>
                   </select>
                 </div>
-                <div class="form-group col-md-4">
+                <div class="form-group col-md-6">
                   <label for="e_id_unidad_sat">Unidad SAT <span class="text-danger">*</span></label>
                   <select id="e_id_unidad_sat" name="id_unidad_sat" class="form-control" required>
                     <option value="">— Selecciona —</option>
                   </select>
                 </div>
-                <div class="form-group col-md-3">
-                  <label for="e_clave_prod_serv_sat">Clave Prod/Serv SAT</label>
-                  <input type="text" maxlength="8" class="form-control" id="e_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Se llena por grupo" readonly required>
-                </div>
               </div>
 
-              <!-- Fila: Grupo (NUEVO) -->
+              <!-- Fila: Grupo / Clave ProdServ SAT -->
               <div class="form-row">
-                <div class="form-group col-md-12">
+                <div class="form-group col-md-6">
                   <label for="e_id_grupo">Grupo <span class="text-danger">*</span></label>
                   <select id="e_id_grupo" name="id_grupo" class="form-control" required>
                     <option value="">— Selecciona —</option>
                   </select>
+                </div>
+                <div class="form-group col-md-6">
+                  <label for="e_clave_prod_serv_sat">Clave Prod/Serv SAT</label>
+                  <input type="text" class="form-control" id="e_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Se llena por grupo" readonly required>
                 </div>
               </div>
 

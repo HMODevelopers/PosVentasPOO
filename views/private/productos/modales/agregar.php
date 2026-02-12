@@ -45,14 +45,14 @@
             <!-- Línea 1.1: Grupo (cat_grupos) -->
             <div class="form-row">
               <div class="form-group col-md-6">
-                <label for="p_clave_prod_serv_sat">Clave Prod/Serv SAT</label>
-                <input type="text" maxlength="8" class="form-control" id="p_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Se llena por grupo" readonly required>
-              </div>
-              <div class="form-group col-md-6">
                 <label for="p_id_grupo">Grupo <span class="text-danger">*</span></label>
                 <select id="p_id_grupo" name="id_grupo" class="form-control" required>
                   <option value="">— Selecciona —</option>
                 </select>
+              </div>
+              <div class="form-group col-md-6">
+                <label for="p_clave_prod_serv_sat">Clave Prod/Serv SAT</label>
+                <input type="text" class="form-control" id="p_clave_prod_serv_sat" name="clave_prod_serv_sat" placeholder="Se llena por grupo" readonly required>
               </div>
             </div>
 

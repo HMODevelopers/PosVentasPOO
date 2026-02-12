@@ -586,6 +586,7 @@ session_start();
       $('#p_objeto_imp').val('02');
       $('#p_tasa_iva').val('0.160000');
       $('#p_clave_prod_serv_sat').val('');
+      setSubmitEnabled('p', false);
 
       // Limpiar marcas de error previas
       $('#formProducto .is-invalid').removeClass('is-invalid');
@@ -669,20 +670,35 @@ session_start();
 
 
     async function getClaveSatPorGrupo(idGrupo){
-      if (!idGrupo) return { ok:false, msg:'Grupo es requerido.' };
+      if (!idGrupo) return { ok:false, message:'Grupo es requerido.' };
       try {
         const resp = await $.ajax({
           url: '<?= BASE_URL ?>/controllers/CatGruposController.php',
           method: 'GET', dataType: 'json',
           data: { accion: 'getById', id_grupo: idGrupo }
         });
-        return resp || { ok:false, msg:'No fue posible consultar el grupo.' };
+        return resp || { ok:false, message:'No fue posible consultar el grupo.' };
       } catch(e) {
-        return { ok:false, msg:'Error al consultar la Clave SAT del grupo.' };
+        return { ok:false, message:'Error al consultar la Clave SAT del grupo.' };
       }
     }
 
-    async function sincronizarClaveSatGrupo(prefix){
+    function alertClaveSatInvalida(message){
+      const txt = message || 'El grupo seleccionado no tiene Clave SAT configurada.';
+      if (window.Swal && typeof window.Swal.fire === 'function') {
+        window.Swal.fire({ icon: 'error', title: 'Grupo sin clave SAT', text: txt });
+      } else {
+        toastr.error(txt);
+      }
+    }
+
+    function setSubmitEnabled(prefix, enabled){
+      const formId = prefix === 'e' ? '#formProductoEdit' : '#formProducto';
+      const $btn = $(formId + ' button[type="submit"]');
+      if ($btn.length) $btn.prop('disabled', !enabled);
+    }
+
+    async function sincronizarClaveSatGrupo(prefix, mostrarError=true){
       const $grupo = $('#'+prefix+'_id_grupo');
       const $clave = $('#'+prefix+'_clave_prod_serv_sat');
       if (!$grupo.length || !$clave.length) return false;
@@ -690,18 +706,23 @@ session_start();
       const idGrupo = ($grupo.val() || '').toString().trim();
       if (!idGrupo){
         $clave.val('');
+        setSubmitEnabled(prefix, false);
         return false;
       }
 
       const resp = await getClaveSatPorGrupo(idGrupo);
-      const clave = (resp?.data?.clave_prod_serv_sat || '').toString().trim();
-      if (!resp?.ok || clave.length !== 8) {
+      const clave = (resp?.data?.clave_h || '').toString().trim();
+      if (!resp?.ok || !clave) {
         $clave.val('');
-        toastr.error(resp?.msg || 'El grupo seleccionado no tiene Clave SAT válida.');
+        setSubmitEnabled(prefix, false);
+        if (mostrarError) {
+          alertClaveSatInvalida(resp?.message || resp?.msg);
+        }
         return false;
       }
 
       $clave.val(clave);
+      setSubmitEnabled(prefix, true);
       return true;
     }
 
@@ -791,7 +812,7 @@ session_start();
 
       await sincronizarClaveSatGrupo('p');
       const claveSat = valTrim('#p_clave_prod_serv_sat');
-      if (!claveSat || claveSat.length !== 8) {
+      if (!claveSat) {
         errores.push('Clave Prod/Serv SAT inválida para el grupo seleccionado.');
         setInvalid('#p_clave_prod_serv_sat');
       }
@@ -912,6 +933,7 @@ session_start();
       if ($f) $f.reset();
       $('#e_id_producto').val(idProducto);
       $('#modalProductoEditLabel').text('Editar producto');
+      setSubmitEnabled('e', false);
       $('#e_activo').prop('checked', true);
       $('#formProductoEdit .is-invalid').removeClass('is-invalid');
 
@@ -935,7 +957,7 @@ session_start();
           cargarGruposEn('#e_id_grupo', p.id_grupo) // NUEVO
         ]);
 
-        await sincronizarClaveSatGrupo('e');
+        await sincronizarClaveSatGrupo('e', false);
 
         // 3) Rellenar campos
         if (!($('#e_clave_prod_serv_sat').val() || '').trim()) {
@@ -1123,7 +1145,7 @@ session_start();
       const claveSat = ($('#e_clave_prod_serv_sat').val() || '').toString().trim();
       if (!idUnidad) { toastr.warning('Unidad SAT es requerida.'); $('#e_id_unidad_sat').focus(); return; }
       if (!idGrupo) { toastr.warning('Grupo es requerido.'); $('#e_id_grupo').focus(); return; }
-      if (!claveSat || claveSat.length !== 8) { toastr.warning('Clave SAT inválida para el grupo seleccionado.'); $('#e_id_grupo').focus(); return; }
+      if (!claveSat) { toastr.warning('Clave SAT inválida para el grupo seleccionado.'); $('#e_id_grupo').focus(); return; }
 
       const payload = {
         accion: 'actualizar',

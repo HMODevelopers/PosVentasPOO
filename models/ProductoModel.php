@@ -614,7 +614,7 @@ class ProductoModel
 
         $claveGrupo = $this->obtenerClaveProdServSatPorGrupo($idGrupo);
         if ($claveGrupo === null) {
-            throw new Exception('El grupo seleccionado no existe o no tiene Clave Prod/Serv SAT configurada.');
+            throw new Exception('El grupo seleccionado no existe o no tiene Clave SAT configurada.');
         }
 
         $objetoImp = trim((string)($d['objeto_imp'] ?? ($prev['objeto_imp'] ?? '')));
@@ -643,14 +643,14 @@ class ProductoModel
 
     private function obtenerClaveProdServSatPorGrupo(int $idGrupo): ?string
     {
-        $st = $this->conn->prepare("SELECT clave_prod_serv_sat FROM cat_grupos WHERE id_grupo = :id AND activo = 1 LIMIT 1");
+        $st = $this->conn->prepare("SELECT clave_h FROM cat_grupos WHERE id_grupo = :id AND activo = 1 LIMIT 1");
         $st->bindValue(':id', $idGrupo, PDO::PARAM_INT);
         $st->execute();
         $row = $st->fetch(PDO::FETCH_ASSOC);
         if (!$row) return null;
 
-        $clave = trim((string)($row['clave_prod_serv_sat'] ?? ''));
-        if ($clave === '' || strlen($clave) !== 8) return null;
+        $clave = trim((string)($row['clave_h'] ?? ''));
+        if ($clave === '') return null;
         return $clave;
     }
 

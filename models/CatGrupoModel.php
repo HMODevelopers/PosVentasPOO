@@ -108,13 +108,13 @@ class CatGrupoModel
 
     public function obtenerClaveProdServSatPorId(int $id): ?string
     {
-        $st = $this->conn->prepare("SELECT clave_prod_serv_sat FROM cat_grupos WHERE id_grupo = :id AND activo = 1 LIMIT 1");
+        $st = $this->conn->prepare("SELECT clave_h FROM cat_grupos WHERE id_grupo = :id AND activo = 1 LIMIT 1");
         $st->bindValue(':id', $id, PDO::PARAM_INT);
         $st->execute();
         $row = $st->fetch(PDO::FETCH_ASSOC);
         if (!$row) return null;
 
-        $clave = trim((string)($row['clave_prod_serv_sat'] ?? ''));
+        $clave = trim((string)($row['clave_h'] ?? ''));
         return $clave !== '' ? $clave : null;
     }
 
