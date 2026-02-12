@@ -62,7 +62,8 @@ class VentaModel
             return $this->productoCache[$idProducto];
         }
 
-        $sql = "SELECT id_producto, descripcion, id_grupo, stock_actual, stock_minimo, costo_neto
+        $sql = "SELECT id_producto, descripcion, id_grupo, stock_actual, stock_minimo, costo_neto,
+                       objeto_imp, tasa_iva
                 FROM productos
                 WHERE id_producto = :idp";
         if ($lock) {
@@ -74,6 +75,34 @@ class VentaModel
         $prod = $st->fetch(\PDO::FETCH_ASSOC) ?: [];
         $this->productoCache[$idProducto] = $prod;
         return $prod;
+    }
+
+    private function normalizarObjetoImpYtasaIva(array $producto): array
+    {
+        $objetoImp = trim((string)($producto['objeto_imp'] ?? ''));
+        if ($objetoImp === '') {
+            $objetoImp = '02';
+        }
+
+        $tasaIvaRaw = $producto['tasa_iva'] ?? null;
+        $tasaIva = ($tasaIvaRaw === null || $tasaIvaRaw === '') ? 0.160000 : (float)$tasaIvaRaw;
+
+        return [
+            'objeto_imp' => $objetoImp,
+            'tasa_iva' => $tasaIva,
+        ];
+    }
+
+    private function calcularImpuestosDetalle(float $subtotal, string $objetoImp, float $tasaIva): array
+    {
+        if ($objetoImp !== '02') {
+            return ['base_iva' => 0.00, 'importe_iva' => 0.00];
+        }
+
+        $baseIva = round($subtotal / (1 + $tasaIva), 2);
+        $importeIva = round($subtotal - $baseIva, 2);
+
+        return ['base_iva' => $baseIva, 'importe_iva' => $importeIva];
     }
 
     /* ========================= Helpers Crédito ========================= */
@@ -829,13 +858,16 @@ class VentaModel
                     $stDet = $this->conn->prepare(
                         "INSERT INTO ventas_detalle
                         (id_venta, id_producto, cantidad, precio_unitario, subtotal, numero_poliza,
-                        costo_unitario, costo_subtotal, utilidad_subtotal, activo)
+                        costo_unitario, costo_subtotal, utilidad_subtotal,
+                        objeto_imp, tasa_iva, base_iva, importe_iva, activo)
                         VALUES
                         (:idv, :idp, :cant, :unit, :sub, :pol,
-                        :c_unit, :c_sub, :u_sub, 1)"
+                        :c_unit, :c_sub, :u_sub,
+                        :objimp, :tasa_iva, :base_iva, :importe_iva, 1)"
                     );
                     $stGet = $this->conn->prepare(
-                        "SELECT stock_actual, stock_minimo, costo_neto, id_grupo, descripcion
+                        "SELECT stock_actual, stock_minimo, costo_neto, id_grupo, descripcion,
+                                objeto_imp, tasa_iva
                         FROM productos
                         WHERE id_producto = :idp
                         FOR UPDATE"
@@ -884,6 +916,8 @@ class VentaModel
                         $costoUnit = (float)($p['costo_neto'] ?? 0);
                         $costoSub  = round($cant * $costoUnit, 2);
                         $utilSub   = round($sub - $costoSub, 2);
+                        $impProd   = $this->normalizarObjetoImpYtasaIva($p);
+                        $impDet    = $this->calcularImpuestosDetalle($sub, $impProd['objeto_imp'], $impProd['tasa_iva']);
 
                         $stDet->execute([
                             ':idv'    => $idVenta,
@@ -894,7 +928,11 @@ class VentaModel
                             ':pol'    => ($poliza !== '' ? $poliza : null),
                             ':c_unit' => $costoUnit,
                             ':c_sub'  => $costoSub,
-                            ':u_sub'  => $utilSub
+                            ':u_sub'  => $utilSub,
+                            ':objimp' => $impProd['objeto_imp'],
+                            ':tasa_iva' => $impProd['tasa_iva'],
+                            ':base_iva' => $impDet['base_iva'],
+                            ':importe_iva' => $impDet['importe_iva'],
                         ]);
 
                         $stUpd->execute([':cant' => $cant, ':idp' => $idp]);
@@ -1144,6 +1182,9 @@ class VentaModel
                 $costoSub  = round($cant * $costoUnit, 2);
                 $utilSub   = round($sub - $costoSub, 2);
 
+                $impuestosProd = $this->normalizarObjetoImpYtasaIva($prod);
+                $impuestosDet  = $this->calcularImpuestosDetalle($sub, $impuestosProd['objeto_imp'], $impuestosProd['tasa_iva']);
+
                 $detallesNormalizados[] = [
                     'id_producto'       => $pid,
                     'cantidad'          => $cant,
@@ -1153,6 +1194,10 @@ class VentaModel
                     'costo_unitario'    => $costoUnit,
                     'costo_subtotal'    => $costoSub,
                     'utilidad_subtotal' => $utilSub,
+                    'objeto_imp'        => $impuestosProd['objeto_imp'],
+                    'tasa_iva'          => $impuestosProd['tasa_iva'],
+                    'base_iva'          => $impuestosDet['base_iva'],
+                    'importe_iva'       => $impuestosDet['importe_iva'],
                 ];
 
                 if (!isset($nuevoAgg[$pid])) $nuevoAgg[$pid] = ['cantidad'=>0.0, 'precio_unitario'=>$unit];
@@ -1262,9 +1307,11 @@ class VentaModel
             $stInsDet = $this->conn->prepare(
                 "INSERT INTO ventas_detalle
                  (id_venta,id_producto,cantidad,precio_unitario,subtotal,numero_poliza,
-                  costo_unitario,costo_subtotal,utilidad_subtotal,activo)
+                  costo_unitario,costo_subtotal,utilidad_subtotal,
+                  objeto_imp,tasa_iva,base_iva,importe_iva,activo)
                  VALUES
-                 (:idv,:idp,:cant,:unit,:sub,:pol,:c_unit,:c_sub,:u_sub,1)"
+                 (:idv,:idp,:cant,:unit,:sub,:pol,:c_unit,:c_sub,:u_sub,
+                  :objimp,:tasa_iva,:base_iva,:importe_iva,1)"
             );
 
             foreach ($detallesNormalizados as $row) {
@@ -1278,6 +1325,10 @@ class VentaModel
                     ':c_unit' => $row['costo_unitario'],
                     ':c_sub'  => $row['costo_subtotal'],
                     ':u_sub'  => $row['utilidad_subtotal'],
+                    ':objimp' => $row['objeto_imp'],
+                    ':tasa_iva' => $row['tasa_iva'],
+                    ':base_iva' => $row['base_iva'],
+                    ':importe_iva' => $row['importe_iva'],
                 ]);
             }
 
