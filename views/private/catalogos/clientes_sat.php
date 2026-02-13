@@ -17,6 +17,7 @@
 .form-group label{font-weight:600;}
 .select2-container{width:100%!important;}
 .location-alert{display:none;}
+.pais-note{font-size:.8rem;color:#6b7280;}
 </style>
 </head>
 <body>
@@ -38,12 +39,13 @@
 <div class="col-12 col-md-6"><div class="form-group"><label>CP fiscal</label><input id="dom_fiscal_cp" class="form-control"></div></div>
 </div></div>
 
-<div class="form-section"><h6>B) Ubicación</h6><div class="row">
+<div class="form-section"><h6>B) Ubicación / Domicilio</h6><div class="row">
+<div class="col-12 col-md-4"><div class="form-group"><label>País</label><input id="pais_display" class="form-control" readonly><input type="hidden" id="pais"><small id="pais_legacy_note" class="pais-note d-none"></small></div></div>
 <div class="col-12 col-md-4"><div class="form-group"><label>Entidad</label><select id="estado" class="form-control"></select><small class="text-warning location-alert" id="estado_alert"></small></div></div>
 <div class="col-12 col-md-4"><div class="form-group"><label>Municipio</label><select id="municipio" class="form-control"></select><small class="text-warning location-alert" id="municipio_alert"></small></div></div>
 <div class="col-12 col-md-4"><div class="form-group"><label>Localidad</label><select id="localidad" class="form-control"></select><small class="text-warning location-alert" id="localidad_alert"></small></div></div>
-<div class="col-12 col-md-6"><div class="form-group"><label>Colonia</label><input id="colonia" class="form-control"></div></div>
-<div class="col-12 col-md-6"><div class="form-group"><label>Calle</label><input id="calle" class="form-control"></div></div>
+<div class="col-12 col-md-8"><div class="form-group"><label>Colonia</label><input id="colonia" class="form-control"></div></div>
+<div class="col-12 col-md-8"><div class="form-group"><label>Calle</label><input id="calle" class="form-control"></div></div>
 <div class="col-12 col-md-3"><div class="form-group"><label>No Ext</label><input id="numero_exterior" class="form-control"></div></div>
 <div class="col-12 col-md-3"><div class="form-group"><label>No Int</label><input id="numero_interior" class="form-control"></div></div>
 <div class="col-12 col-md-6"><div class="form-group"><label>Referencia</label><input id="referencia" class="form-control"></div></div>
@@ -54,7 +56,6 @@
 <div class="col-12 col-md-6"><div class="form-group"><label>Email alterno</label><input id="email_alterno" class="form-control"></div></div>
 <div class="col-12 col-md-6"><div class="form-group"><label>Teléfono</label><input id="telefono" class="form-control"></div></div>
 <div class="col-12 col-md-6"><div class="form-group"><label>Celular</label><input id="celular" class="form-control"></div></div>
-<div class="col-12 col-md-6"><div class="form-group"><label>País</label><input id="pais" class="form-control"></div></div>
 <div class="col-12 col-md-6"><div class="form-group"><label>Residencia fiscal</label><input id="residencia_fiscal" class="form-control"></div></div>
 <div class="col-12 col-md-6"><div class="form-group"><label>Número registro tributario</label><input id="numero_registro_tributario" class="form-control"></div></div>
 </div></div>
@@ -91,8 +92,20 @@ $(function(){
     ['estado','municipio','localidad'].forEach(field => $(`#${field}_alert`).hide().text(''));
   }
 
+  function forzarPaisMEX(rawPais=''){
+    const actual = (rawPais || '').toString().trim().toUpperCase();
+    const mostrar = actual || 'MEX';
+    $('#pais').val('MEX');
+    $('#pais_display').val(mostrar);
+    if(actual && actual !== 'MEX'){
+      $('#pais_legacy_note').removeClass('d-none').text(`Valor previo: ${mostrar}. Al guardar se forzará MEX.`);
+    }else{
+      $('#pais_legacy_note').addClass('d-none').text('');
+    }
+  }
+
   function cargarCatalogos(){
-    return $.getJSON(URL_CTRL,{accion:'catalogos_form'}).then(resp=>{
+    return $.getJSON(URL_CTRL,{accion:'catalogos-form'}).then(resp=>{
       catalogos = resp || catalogos;
       fillSimple('#regimen_fiscal', catalogos.regimenes, 'ClaveRegimenFiscal', 'Descripcion');
       fillSimple('#uso_cdfi', catalogos.usos_cfdi, 'ClaveUsoCFDI', 'Descripcion');
@@ -107,7 +120,7 @@ $(function(){
       $('#municipio').html('<option value="">Seleccione entidad...</option>').trigger('change.select2');
       return $.Deferred().resolve().promise();
     }
-    return $.getJSON(URL_CTRL,{accion:'municipios_por_entidad', cve_ent:cveEnt}).then(resp=>{
+    return $.getJSON(URL_CTRL,{accion:'municipios-por-entidad', cve_ent:cveEnt}).then(resp=>{
       fillSimple('#municipio', resp.data || [], 'cve_mun', 'nombre_mun', selected);
     });
   }
@@ -117,7 +130,7 @@ $(function(){
       $('#localidad').html('<option value="">Seleccione municipio...</option>').trigger('change.select2');
       return $.Deferred().resolve().promise();
     }
-    return $.getJSON(URL_CTRL,{accion:'localidades_por_municipio', cve_ent:cveEnt, cve_mun:cveMun}).then(resp=>{
+    return $.getJSON(URL_CTRL,{accion:'localidades-por-municipio', cve_ent:cveEnt, cve_mun:cveMun}).then(resp=>{
       fillSimple('#localidad', resp.data || [], 'cve_loc', 'nombre_loc', selected);
     });
   }
@@ -126,6 +139,7 @@ $(function(){
     $('#formRegistro')[0].reset();
     $('#row_key').val('');
     clearLegacyAlerts();
+    forzarPaisMEX('MEX');
     fillSimple('#regimen_fiscal', catalogos.regimenes, 'ClaveRegimenFiscal', 'Descripcion');
     fillSimple('#uso_cdfi', catalogos.usos_cfdi, 'ClaveUsoCFDI', 'Descripcion');
     fillSimple('#estado', catalogos.entidades, 'cve_ent', 'nombre_ent');
@@ -136,6 +150,7 @@ $(function(){
   async function precargarUbicacion(r){
     bloqueoEventos = true;
     clearLegacyAlerts();
+    forzarPaisMEX(r.pais || '');
 
     const estadoSel = (r.estado_select || '').toString();
     const municipioSel = (r.municipio_select || '').toString();
@@ -184,7 +199,7 @@ $(function(){
     $.getJSON(URL_CTRL,{accion:'detalle',id:$(this).data('id'),rfc:$(this).data('rfc'),row_key:$(this).data('row')},async resp=>{
       const r=resp?.data||{};
       resetForm();
-      Object.keys(r).forEach(k=>{ if($('#'+k).length && !['estado','municipio','localidad'].includes(k)) $('#'+k).val(r[k]??''); });
+      Object.keys(r).forEach(k=>{ if($('#'+k).length && !['estado','municipio','localidad','pais','pais_display'].includes(k)) $('#'+k).val(r[k]??''); });
       await precargarUbicacion(r);
       $('#tituloModal').text('Editar cliente SAT');
       $('#modalForm').modal('show');
@@ -195,6 +210,7 @@ $(function(){
     ev.preventDefault();
     const payload={};
     $(this).find('input,select').each(function(){ if(this.id) payload[this.id]=$(this).val(); });
+    payload.pais = 'MEX';
     const accion = payload.row_key ? 'actualizar' : 'crear';
     $.ajax({url:URL_CTRL+'?accion='+accion,method:'POST',data:JSON.stringify(payload),contentType:'application/json; charset=UTF-8',dataType:'json'})
       .done(r=>{if(r?.ok){$('#modalForm').modal('hide');toastr.success('Cliente SAT guardado correctamente.');cargarRegistros(accion==='crear'?1:paginaActual);}else toastr.error(r?.msg||'No se pudo guardar.');})

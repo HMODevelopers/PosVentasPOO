@@ -81,18 +81,18 @@ class ClientesSatModel {
     }
 
     public function listarEntidades(): array {
-        $st = $this->conn->query("SELECT cve_ent, nombre_ent FROM entidades ORDER BY cve_ent ASC");
+        $st = $this->conn->query("SELECT cve_ent, nombre_ent FROM entidades ORDER BY cve_ent");
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     public function listarMunicipios(string $cveEnt): array {
-        $st = $this->conn->prepare("SELECT cve_mun, nombre_mun FROM municipios WHERE cve_ent = :cve_ent ORDER BY cve_mun ASC");
+        $st = $this->conn->prepare("SELECT cve_mun, nombre_mun FROM municipios WHERE cve_ent = :cve_ent ORDER BY cve_mun");
         $st->execute([':cve_ent' => $cveEnt]);
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     public function listarLocalidades(string $cveEnt, string $cveMun): array {
-        $st = $this->conn->prepare("SELECT cve_loc, nombre_loc FROM localidades WHERE cve_ent = :cve_ent AND cve_mun = :cve_mun ORDER BY cve_loc ASC");
+        $st = $this->conn->prepare("SELECT cve_loc, nombre_loc FROM localidades WHERE cve_ent = :cve_ent AND cve_mun = :cve_mun ORDER BY cve_loc");
         $st->execute([':cve_ent' => $cveEnt, ':cve_mun' => $cveMun]);
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
@@ -149,7 +149,7 @@ class ClientesSatModel {
             ':celular' => $this->nullable($d['celular'] ?? null),
             ':email' => $this->nullable($d['email'] ?? null),
             ':email_alterno' => $this->nullable($d['email_alterno'] ?? null),
-            ':pais' => $this->nullable($d['pais'] ?? null),
+            ':pais' => 'MEX',
             ':dom_fiscal_cp' => $this->nullable($d['dom_fiscal_cp'] ?? null),
             ':estado' => $this->nullable($this->normalizeGeoCode($d['estado'] ?? null, 2)),
             ':municipio' => $this->nullable($this->normalizeGeoCode($d['municipio'] ?? null, 3)),
