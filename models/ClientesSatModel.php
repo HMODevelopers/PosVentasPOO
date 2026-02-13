@@ -12,16 +12,10 @@ class ClientesSatModel {
     public function listar(int $pagina = 1, int $limite = 10, array $f = []): array {
         $offset = (max(1, $pagina) - 1) * max(1, $limite);
         $sql = "SELECT c.id, c.nombre_comercial, c.rfc, c.razon_social, c.regimen_fiscal, c.numero_registro_tributario, c.uso_cdfi, c.telefono, c.celular, c.email, c.email_alterno, c.pais, c.dom_fiscal_cp, c.estado, c.municipio, c.localidad, c.colonia, c.calle, c.numero_exterior, c.numero_interior, c.referencia, c.residencia_fiscal,
-                       e.nombre_ent AS estado_nombre,
-                       m.nombre_mun AS municipio_nombre,
-                       l.nombre_loc AS localidad_nombre,
                        rf.Descripcion AS regimen_fiscal_descripcion,
                        uc.Descripcion AS uso_cfdi_descripcion,
                        CASE WHEN c.id IS NOT NULL THEN CONCAT('ID:', c.id) ELSE CONCAT('RFC:', c.rfc) END AS row_key
                 FROM clientes_sat c
-                LEFT JOIN entidades e ON e.cvegeo = c.estado
-                LEFT JOIN municipios m ON m.cvegeo = c.municipio
-                LEFT JOIN localidades l ON l.cvegeo = c.localidad
                 LEFT JOIN cat_sat_regimen_fiscal rf ON rf.ClaveRegimenFiscal = c.regimen_fiscal
                 LEFT JOIN cat_sat_uso_cfdi uc ON uc.ClaveUsoCFDI = c.uso_cdfi
                 WHERE 1=1";
