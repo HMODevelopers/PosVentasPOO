@@ -113,7 +113,7 @@ acl_bootstrap();
             <?php endif; ?>
             <?php if (can('catalogos.unidades')): ?>
               <!-- CAMBIO: "SAT" en mayúsculas -->
-              <li><a href="<?= BASE_URL ?>/views/private/catalogos/unidadsat.php">Unidades SAT</a></li>
+              
             <?php endif; ?>
             <?php if (can('catalogos.sucursales')): ?>
               <li><a href="<?= BASE_URL ?>/views/private/catalogos/sucursales.php">Sucursales</a></li>
@@ -123,8 +123,9 @@ acl_bootstrap();
             <?php endif; ?>
 
             <?php if (can('catalogos.menu')): ?>
-              <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_grupos.php">Grupos</a></li>
-              <li><a href="<?= BASE_URL ?>/views/private/catalogos/clientes_sat.php">Clientes SAT</a></li>
+              <li><a href="<?= BASE_URL ?>/views/private/catalogos/unidadsat.php">SAT Unidades</a></li>
+              <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_grupos.php">SAT Grupos</a></li>
+              <li><a href="<?= BASE_URL ?>/views/private/catalogos/clientes_sat.php">SAT Clientes</a></li>
               <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_sat_moneda.php">SAT Moneda</a></li>
               <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_sat_regimen_fiscal.php">SAT Régimen Fiscal</a></li>
               <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_sat_uso_cfdi.php">SAT Uso CFDI</a></li>
