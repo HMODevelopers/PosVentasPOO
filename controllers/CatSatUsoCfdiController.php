@@ -3,9 +3,8 @@ require_once __DIR__ . '/../includes/controller_guard.php';
 controller_guard(__FILE__);
 
 header('Content-Type: application/json; charset=UTF-8');
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
-
 include_once __DIR__ . '/../models/CatSatUsoCfdiModel.php';
+
 $model = new CatSatUsoCfdiModel();
 $raw = json_decode(file_get_contents('php://input'), true) ?: [];
 $accion = str_replace('_', '-', ($_REQUEST['accion'] ?? ($raw['accion'] ?? '')));
@@ -15,32 +14,50 @@ switch ($accion) {
         $pagina = (int)($_POST['pagina'] ?? $_GET['pagina'] ?? 1);
         $limite = (int)($_POST['limite'] ?? $_GET['limite'] ?? 10);
         $filtros = [
-            'clave_uso_cfdi' => trim($_POST['clave_uso_cfdi'] ?? $_GET['clave_uso_cfdi'] ?? $_POST['clave'] ?? $_GET['clave'] ?? ''),
-            'descripcion'    => trim($_POST['descripcion'] ?? $_GET['descripcion'] ?? ''),
-            'q'              => trim($_POST['q'] ?? $_GET['q'] ?? ''),
+            'ClaveUsoCFDI' => trim($_POST['ClaveUsoCFDI'] ?? $_GET['ClaveUsoCFDI'] ?? $_POST['clave'] ?? $_GET['clave'] ?? ''),
+            'Descripcion' => trim($_POST['descripcion'] ?? $_GET['descripcion'] ?? $_POST['Descripcion'] ?? $_GET['Descripcion'] ?? ''),
+            'Activo' => $_POST['activo'] ?? $_GET['activo'] ?? '',
         ];
         echo json_encode(['data' => $model->listar($pagina, $limite, $filtros), 'total' => $model->contar($filtros)]);
-    break;
+        break;
+
     case 'listar-min':
         echo json_encode(['data' => $model->listarMin(trim($_GET['q'] ?? $_POST['q'] ?? ''), (int)($_GET['limite'] ?? $_POST['limite'] ?? 50))]);
-    break;
+        break;
+
     case 'detalle':
-        echo json_encode(['data' => $model->obtenerPorId((int)($_GET['id_uso_cfdi'] ?? $_POST['id_uso_cfdi'] ?? 0))]);
-    break;
+        $clave = (string)($_GET['ClaveUsoCFDI'] ?? $_POST['ClaveUsoCFDI'] ?? '');
+        echo json_encode(['data' => $model->obtenerPorId($clave)]);
+        break;
+
     case 'crear':
-        if (trim($raw['clave_uso_cfdi'] ?? '') === '' || trim($raw['descripcion'] ?? '') === '') { echo json_encode(['ok'=>false,'msg'=>'Clave y descripción son requeridas']); break; }
-        $id = $model->crear($raw);
-        echo json_encode(['ok' => $id > 0, 'id_uso_cfdi' => $id]);
-    break;
+        if (trim($raw['ClaveUsoCFDI'] ?? '') === '' || trim($raw['Descripcion'] ?? '') === '') {
+            echo json_encode(['ok' => false, 'msg' => 'Clave y descripción son requeridas']);
+            break;
+        }
+        echo json_encode(['ok' => $model->crear($raw)]);
+        break;
+
     case 'actualizar':
-        $id = (int)($raw['id_uso_cfdi'] ?? $_POST['id_uso_cfdi'] ?? 0);
-        if ($id <= 0) { echo json_encode(['ok'=>false,'msg'=>'id_uso_cfdi requerido']); break; }
-        echo json_encode(['ok' => (bool)$model->actualizar($id, $raw)]);
-    break;
+        $original = trim($raw['OriginalClaveUsoCFDI'] ?? $raw['ClaveUsoCFDI'] ?? '');
+        if ($original === '') {
+            echo json_encode(['ok' => false, 'msg' => 'Clave original requerida']);
+            break;
+        }
+        echo json_encode(['ok' => $model->actualizar($original, $raw)]);
+        break;
+
+    case 'toggle-activo':
+        $clave = trim($_POST['ClaveUsoCFDI'] ?? $raw['ClaveUsoCFDI'] ?? '');
+        $activo = (int)($_POST['activo'] ?? $raw['activo'] ?? 0);
+        echo json_encode(['ok' => $clave !== '' ? $model->toggleActivo($clave, $activo) : false]);
+        break;
+
     case 'eliminar':
-        $id = (int)($_POST['id_uso_cfdi'] ?? 0);
-        echo json_encode(['ok' => $id > 0 ? (bool)$model->eliminar($id) : false]);
-    break;
+        $clave = trim($_POST['ClaveUsoCFDI'] ?? '');
+        echo json_encode(['ok' => $clave !== '' ? $model->toggleActivo($clave, 0) : false]);
+        break;
+
     default:
         echo json_encode(['error' => 'Acción no válida']);
 }

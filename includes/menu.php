@@ -124,10 +124,10 @@ acl_bootstrap();
 
             <?php if (can('catalogos.menu')): ?>
               <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_grupos.php">Grupos</a></li>
-              <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_sat_uso_cfdi.php">SAT Uso CFDI</a></li>
               <li><a href="<?= BASE_URL ?>/views/private/catalogos/clientes_sat.php">Clientes SAT</a></li>
-              <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_sat_regimen_fiscal.php">SAT Régimen Fiscal</a></li>
               <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_sat_moneda.php">SAT Moneda</a></li>
+              <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_sat_regimen_fiscal.php">SAT Régimen Fiscal</a></li>
+              <li><a href="<?= BASE_URL ?>/views/private/catalogos/cat_sat_uso_cfdi.php">SAT Uso CFDI</a></li>
             <?php endif; ?>
           </ul>
         </li>
