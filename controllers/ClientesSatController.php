@@ -22,7 +22,14 @@ switch ($accion) {
         break;
 
     case 'detalle':
+        $id = trim((string)($_GET['id'] ?? $_POST['id'] ?? ''));
+        $rfc = trim((string)($_GET['rfc'] ?? $_POST['rfc'] ?? ''));
         $rowKey = (string)($_GET['row_key'] ?? $_POST['row_key'] ?? '');
+        if ($id !== '') {
+            $rowKey = 'ID:' . (int)$id;
+        } elseif ($rowKey === '' && $rfc !== '') {
+            $rowKey = 'RFC:' . strtoupper($rfc);
+        }
         echo json_encode(['data' => $rowKey !== '' ? $model->obtenerPorRowKey($rowKey) : null]);
         break;
 
@@ -32,6 +39,12 @@ switch ($accion) {
 
     case 'actualizar':
         $rowKey = trim($raw['row_key'] ?? '');
+        if ($rowKey === '' && trim((string)($raw['id'] ?? '')) !== '') {
+            $rowKey = 'ID:' . (int)$raw['id'];
+        }
+        if ($rowKey === '' && trim((string)($raw['rfc'] ?? '')) !== '') {
+            $rowKey = 'RFC:' . strtoupper(trim((string)$raw['rfc']));
+        }
         echo json_encode(['ok' => $rowKey !== '' ? $model->actualizar($rowKey, $raw) : false]);
         break;
 

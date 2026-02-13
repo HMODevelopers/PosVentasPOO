@@ -16,10 +16,13 @@ switch ($accion) {
     case 'listar':
         $pagina = (int)($_GET['pagina'] ?? $_POST['pagina'] ?? 1);
         $limite = (int)($_GET['limite'] ?? $_POST['limite'] ?? 10);
-        $q      = trim($_GET['q'] ?? $_POST['q'] ?? '');
+        $filtros = [
+            'nombre_grupo' => trim($_GET['nombre_grupo'] ?? $_POST['nombre_grupo'] ?? $_GET['q'] ?? $_POST['q'] ?? ''),
+            'clave_h' => trim($_GET['clave_h'] ?? $_POST['clave_h'] ?? ''),
+        ];
 
-        $data  = $grupoModel->listar($pagina, $limite, $q);
-        $total = $grupoModel->contar($q);
+        $data  = $grupoModel->listar($pagina, $limite, $filtros);
+        $total = $grupoModel->contar($filtros);
 
         echo json_encode(['data' => $data, 'total' => $total]);
     break;
