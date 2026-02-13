@@ -33,6 +33,26 @@ switch ($accion) {
         echo json_encode(['data' => $rowKey !== '' ? $model->obtenerPorRowKey($rowKey) : null]);
         break;
 
+
+    case 'catalogos-form':
+        echo json_encode([
+            'regimenes' => $model->listarRegimenes(),
+            'usos_cfdi' => $model->listarUsosCfdi(),
+            'entidades' => $model->listarEntidades(),
+        ]);
+        break;
+
+    case 'municipios-por-entidad':
+        $cveEnt = trim((string)($_GET['cve_ent'] ?? $_POST['cve_ent'] ?? ''));
+        echo json_encode(['data' => $cveEnt !== '' ? $model->listarMunicipios($cveEnt) : []]);
+        break;
+
+    case 'localidades-por-municipio':
+        $cveEnt = trim((string)($_GET['cve_ent'] ?? $_POST['cve_ent'] ?? ''));
+        $cveMun = trim((string)($_GET['cve_mun'] ?? $_POST['cve_mun'] ?? ''));
+        echo json_encode(['data' => ($cveEnt !== '' && $cveMun !== '') ? $model->listarLocalidades($cveEnt, $cveMun) : []]);
+        break;
+
     case 'crear':
         echo json_encode(['ok' => $model->crear($raw)]);
         break;
