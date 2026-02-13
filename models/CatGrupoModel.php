@@ -13,7 +13,7 @@ class CatGrupoModel
     }
 
     // ===== LISTADO PAGINADO =====
-    public function listar(int $pagina = 1, int $limite = 10, string $q = '')
+    public function listar(int $pagina = 1, int $limite = 10, array $filtros = [])
     {
         $offset = ($pagina - 1) * $limite;
 
@@ -22,9 +22,15 @@ class CatGrupoModel
                 WHERE g.activo = 1";
         $params = [];
 
-        if ($q !== '') {
-            $sql .= " AND g.nombre_grupo LIKE :q";
-            $params[':q'] = "%{$q}%";
+        $nombre = trim($filtros['nombre_grupo'] ?? '');
+        $clave = trim($filtros['clave_h'] ?? '');
+        if ($nombre !== '') {
+            $sql .= " AND g.nombre_grupo LIKE :nombre";
+            $params[':nombre'] = "%{$nombre}%";
+        }
+        if ($clave !== '') {
+            $sql .= " AND g.clave_h LIKE :clave";
+            $params[':clave'] = "%{$clave}%";
         }
 
         $sql .= " ORDER BY g.id_grupo DESC
@@ -38,15 +44,21 @@ class CatGrupoModel
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function contar(string $q = '')
+    public function contar(array $filtros = [])
     {
         $sql = "SELECT COUNT(*) AS total
                 FROM cat_grupos g
                 WHERE g.activo = 1";
         $params = [];
-        if ($q !== '') {
-            $sql .= " AND g.nombre_grupo LIKE :q";
-            $params[':q'] = "%{$q}%";
+        $nombre = trim($filtros['nombre_grupo'] ?? '');
+        $clave = trim($filtros['clave_h'] ?? '');
+        if ($nombre !== '') {
+            $sql .= " AND g.nombre_grupo LIKE :nombre";
+            $params[':nombre'] = "%{$nombre}%";
+        }
+        if ($clave !== '') {
+            $sql .= " AND g.clave_h LIKE :clave";
+            $params[':clave'] = "%{$clave}%";
         }
         $st = $this->conn->prepare($sql);
         foreach ($params as $k=>$v) $st->bindValue($k,$v);
@@ -66,11 +78,15 @@ class CatGrupoModel
     // ===== CREAR =====
     public function crear(array $data)
     {
-        $sql = "INSERT INTO cat_grupos (nombre_grupo, activo, fecha_creacion)
-                VALUES (:nom, 1, NOW())";
+        $sql = "INSERT INTO cat_grupos (nombre_grupo, clave_h, desc_h, observaciones, fecha_sat, activo, fecha_creacion)
+                VALUES (:nom, :clave_h, :desc_h, :observaciones, :fecha_sat, 1, NOW())";
         $st  = $this->conn->prepare($sql);
         $ok  = $st->execute([
-            ':nom' => trim($data['nombre_grupo'] ?? '')
+            ':nom' => trim($data['nombre_grupo'] ?? ''),
+            ':clave_h' => $this->nullable($data['clave_h'] ?? null),
+            ':desc_h' => $this->nullable($data['desc_h'] ?? null),
+            ':observaciones' => $this->nullable($data['observaciones'] ?? null),
+            ':fecha_sat' => $this->nullable($data['fecha_sat'] ?? null)
         ]);
         return $ok ? (int)$this->conn->lastInsertId() : 0;
     }
@@ -81,17 +97,25 @@ class CatGrupoModel
         $act = isset($data['activo']) ? (int)!!$data['activo'] : null;
 
         if ($act === null) {
-            $sql = "UPDATE cat_grupos SET nombre_grupo = :nom WHERE id_grupo = :id";
+            $sql = "UPDATE cat_grupos SET nombre_grupo = :nom, clave_h = :clave_h, desc_h = :desc_h, observaciones = :observaciones, fecha_sat = :fecha_sat WHERE id_grupo = :id";
             $st  = $this->conn->prepare($sql);
             return $st->execute([
                 ':nom' => trim($data['nombre_grupo'] ?? ''),
+                ':clave_h' => $this->nullable($data['clave_h'] ?? null),
+                ':desc_h' => $this->nullable($data['desc_h'] ?? null),
+                ':observaciones' => $this->nullable($data['observaciones'] ?? null),
+                ':fecha_sat' => $this->nullable($data['fecha_sat'] ?? null),
                 ':id'  => $id
             ]);
         } else {
-            $sql = "UPDATE cat_grupos SET nombre_grupo = :nom, activo = :act WHERE id_grupo = :id";
+            $sql = "UPDATE cat_grupos SET nombre_grupo = :nom, clave_h = :clave_h, desc_h = :desc_h, observaciones = :observaciones, fecha_sat = :fecha_sat, activo = :act WHERE id_grupo = :id";
             $st  = $this->conn->prepare($sql);
             return $st->execute([
                 ':nom' => trim($data['nombre_grupo'] ?? ''),
+                ':clave_h' => $this->nullable($data['clave_h'] ?? null),
+                ':desc_h' => $this->nullable($data['desc_h'] ?? null),
+                ':observaciones' => $this->nullable($data['observaciones'] ?? null),
+                ':fecha_sat' => $this->nullable($data['fecha_sat'] ?? null),
                 ':act' => $act,
                 ':id'  => $id
             ]);
@@ -120,6 +144,12 @@ class CatGrupoModel
 
     // ===== LISTA CORTA PARA SELECTS =====
     // devuelve [{id_grupo, nombre_grupo}]
+    private function nullable($v)
+    {
+        $v = is_string($v) ? trim($v) : $v;
+        return $v === "" ? null : $v;
+    }
+
     public function listarMin(string $q = '', int $limite = 100)
     {
         $sql = "SELECT id_grupo, nombre_grupo
