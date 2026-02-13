@@ -81,18 +81,18 @@ class ClientesSatModel {
     }
 
     public function listarEntidades(): array {
-        $st = $this->conn->query("SELECT cvegeo, cve_ent, nombre_ent FROM entidades ORDER BY cvegeo ASC");
+        $st = $this->conn->query("SELECT cve_ent, nombre_ent FROM entidades ORDER BY cve_ent ASC");
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     public function listarMunicipios(string $cveEnt): array {
-        $st = $this->conn->prepare("SELECT cvegeo, cve_ent, cve_mun, nombre_mun FROM municipios WHERE cve_ent = :cve_ent ORDER BY cvegeo ASC");
+        $st = $this->conn->prepare("SELECT cve_mun, nombre_mun FROM municipios WHERE cve_ent = :cve_ent ORDER BY cve_mun ASC");
         $st->execute([':cve_ent' => $cveEnt]);
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     public function listarLocalidades(string $cveEnt, string $cveMun): array {
-        $st = $this->conn->prepare("SELECT cvegeo, cve_ent, cve_mun, cve_loc, nombre_loc FROM localidades WHERE cve_ent = :cve_ent AND cve_mun = :cve_mun ORDER BY cvegeo ASC");
+        $st = $this->conn->prepare("SELECT cve_loc, nombre_loc FROM localidades WHERE cve_ent = :cve_ent AND cve_mun = :cve_mun ORDER BY cve_loc ASC");
         $st->execute([':cve_ent' => $cveEnt, ':cve_mun' => $cveMun]);
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
@@ -152,8 +152,8 @@ class ClientesSatModel {
             ':pais' => $this->nullable($d['pais'] ?? null),
             ':dom_fiscal_cp' => $this->nullable($d['dom_fiscal_cp'] ?? null),
             ':estado' => $this->nullable($this->normalizeGeoCode($d['estado'] ?? null, 2)),
-            ':municipio' => $this->nullable($this->normalizeGeoCode($d['municipio'] ?? null, 5)),
-            ':localidad' => $this->nullable($this->normalizeGeoCode($d['localidad'] ?? null, 9)),
+            ':municipio' => $this->nullable($this->normalizeGeoCode($d['municipio'] ?? null, 3)),
+            ':localidad' => $this->nullable($this->normalizeGeoCode($d['localidad'] ?? null, 4)),
             ':colonia' => $this->nullable($d['colonia'] ?? null),
             ':calle' => $this->nullable($d['calle'] ?? null),
             ':numero_exterior' => $this->nullable($d['numero_exterior'] ?? null),
@@ -164,14 +164,9 @@ class ClientesSatModel {
     }
 
     private function resolverUbicacionLegacy(array $row): array {
-        $estado = $this->resolverClaveGeo($row['estado'] ?? '', 2, 'entidades', 'nombre_ent');
-        $municipio = $this->resolverClaveGeo($row['municipio'] ?? '', 5, 'municipios', 'nombre_mun', [
-            'cve_ent' => $estado['code'] ? substr($estado['code'], 0, 2) : null,
-        ]);
-        $localidad = $this->resolverClaveGeo($row['localidad'] ?? '', 9, 'localidades', 'nombre_loc', [
-            'cve_ent' => $municipio['code'] ? substr($municipio['code'], 0, 2) : ($estado['code'] ? substr($estado['code'], 0, 2) : null),
-            'cve_mun' => $municipio['code'] ? substr($municipio['code'], 2, 3) : null,
-        ]);
+        $estado = $this->resolverEstadoLegacy($row['estado'] ?? '');
+        $municipio = $this->resolverMunicipioLegacy($row['municipio'] ?? '', $estado['code']);
+        $localidad = $this->resolverLocalidadLegacy($row['localidad'] ?? '', $estado['code'], $municipio['code']);
 
         return [
             'estado_select' => $estado['code'],
@@ -183,43 +178,100 @@ class ClientesSatModel {
         ];
     }
 
-    private function resolverClaveGeo($valor, int $len, string $tabla, string $colNombre, array $scope = []): array {
+    private function resolverEstadoLegacy($valor): array {
         $valor = trim((string)$valor);
         if ($valor === '') return ['code' => '', 'fallback' => ''];
 
-        if (preg_match('/^\d{'.$len.'}$/', $valor)) {
-            return ['code' => $valor, 'fallback' => ''];
+        $rawUpper = mb_strtoupper($valor, 'UTF-8');
+        if ($rawUpper === 'SON' || $rawUpper === 'SONORA') {
+            return ['code' => '26', 'fallback' => ''];
         }
 
-        if (preg_match('/(\d{'.$len.'})/', $valor, $m)) {
-            return ['code' => $m[1], 'fallback' => ''];
+        $codigo = $this->extractCode($valor, 2);
+        if ($codigo !== '') {
+            return ['code' => $codigo, 'fallback' => ''];
         }
 
-        $where = ["{$colNombre} LIKE :nombre"];
-        $params = [':nombre' => '%' . $valor . '%'];
-        foreach ($scope as $k => $v) {
-            if ($v === null || $v === '') continue;
-            $where[] = "{$k} = :{$k}";
-            $params[":{$k}"] = $v;
-        }
-
-        $sql = "SELECT cvegeo FROM {$tabla} WHERE " . implode(' AND ', $where) . " ORDER BY cvegeo ASC LIMIT 1";
-        $st = $this->conn->prepare($sql);
-        $st->execute($params);
+        $st = $this->conn->prepare("SELECT cve_ent FROM entidades WHERE UPPER(nombre_ent) = UPPER(:nombre) OR UPPER(nombre_abr) = UPPER(:nombre) ORDER BY cve_ent ASC LIMIT 1");
+        $st->execute([':nombre' => $valor]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
-        if ($row && !empty($row['cvegeo'])) {
-            return ['code' => $row['cvegeo'], 'fallback' => ''];
+        if (!empty($row['cve_ent'])) {
+            return ['code' => str_pad((string)$row['cve_ent'], 2, '0', STR_PAD_LEFT), 'fallback' => ''];
         }
 
         return ['code' => '', 'fallback' => $valor];
     }
 
+    private function resolverMunicipioLegacy($valor, string $cveEnt): array {
+        $valor = trim((string)$valor);
+        if ($valor === '') return ['code' => '', 'fallback' => ''];
+
+        $codigo = $this->extractCode($valor, 3);
+        if ($codigo !== '') {
+            return ['code' => $codigo, 'fallback' => ''];
+        }
+
+        if ($cveEnt !== '') {
+            $st = $this->conn->prepare("SELECT cve_mun FROM municipios WHERE cve_ent = :cve_ent AND UPPER(nombre_mun) = UPPER(:nombre) ORDER BY cve_mun ASC LIMIT 1");
+            $st->execute([':cve_ent' => $cveEnt, ':nombre' => $valor]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                $st = $this->conn->prepare("SELECT cve_mun FROM municipios WHERE cve_ent = :cve_ent AND UPPER(nombre_mun) LIKE UPPER(:nombre) ORDER BY cve_mun ASC LIMIT 1");
+                $st->execute([':cve_ent' => $cveEnt, ':nombre' => '%' . $valor . '%']);
+                $row = $st->fetch(PDO::FETCH_ASSOC);
+            }
+            if (!empty($row['cve_mun'])) {
+                return ['code' => str_pad((string)$row['cve_mun'], 3, '0', STR_PAD_LEFT), 'fallback' => ''];
+            }
+        }
+
+        return ['code' => '', 'fallback' => $valor];
+    }
+
+    private function resolverLocalidadLegacy($valor, string $cveEnt, string $cveMun): array {
+        $valor = trim((string)$valor);
+        if ($valor === '') return ['code' => '', 'fallback' => ''];
+
+        $codigo = $this->extractCode($valor, 4);
+        if ($codigo !== '') {
+            return ['code' => $codigo, 'fallback' => ''];
+        }
+
+        if ($cveEnt !== '' && $cveMun !== '') {
+            $st = $this->conn->prepare("SELECT cve_loc FROM localidades WHERE cve_ent = :cve_ent AND cve_mun = :cve_mun AND UPPER(nombre_loc) = UPPER(:nombre) ORDER BY cve_loc ASC LIMIT 1");
+            $st->execute([':cve_ent' => $cveEnt, ':cve_mun' => $cveMun, ':nombre' => $valor]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                $st = $this->conn->prepare("SELECT cve_loc FROM localidades WHERE cve_ent = :cve_ent AND cve_mun = :cve_mun AND UPPER(nombre_loc) LIKE UPPER(:nombre) ORDER BY cve_loc ASC LIMIT 1");
+                $st->execute([':cve_ent' => $cveEnt, ':cve_mun' => $cveMun, ':nombre' => '%' . $valor . '%']);
+                $row = $st->fetch(PDO::FETCH_ASSOC);
+            }
+            if (!empty($row['cve_loc'])) {
+                return ['code' => str_pad((string)$row['cve_loc'], 4, '0', STR_PAD_LEFT), 'fallback' => ''];
+            }
+        }
+
+        return ['code' => '', 'fallback' => $valor];
+    }
+
+    private function extractCode(string $valor, int $len): string {
+        if (preg_match('/^(\d{1,' . $len . '})\s*(?:-|$)/', $valor, $m)) {
+            return str_pad($m[1], $len, '0', STR_PAD_LEFT);
+        }
+        if (preg_match('/^\d{'.$len.'}$/', $valor)) {
+            return $valor;
+        }
+        if (preg_match('/(\d{1,'.$len.'})(?!\d)/', $valor, $m)) {
+            return str_pad($m[1], $len, '0', STR_PAD_LEFT);
+        }
+        return '';
+    }
+
     private function normalizeGeoCode($valor, int $len): ?string {
         $valor = trim((string)$valor);
         if ($valor === '') return null;
-        if (preg_match('/^\d{'.$len.'}$/', $valor)) return $valor;
-        if (preg_match('/(\d{'.$len.'})/', $valor, $m)) return $m[1];
-        return $valor;
+        $codigo = $this->extractCode($valor, $len);
+        return $codigo !== '' ? $codigo : null;
     }
 
     private function nullable($v) {
