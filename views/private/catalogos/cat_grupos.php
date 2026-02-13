@@ -15,12 +15,18 @@ require_once __DIR__ . '/../../../includes/config.php';
   <link href="<?= BASE_URL ?>/assets/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
   <link href="<?= BASE_URL ?>/assets/css/icons.min.css" rel="stylesheet" type="text/css" />
   <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet" type="text/css" />
+  <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
-  <style>.clean-filter .input-group-text{cursor:pointer;}</style>
+  <style>.clean-filter{display:none;}.clean-filter .input-group-text{cursor:pointer;}</style>
 </head>
 <body>
 <?php include_once __DIR__ . '/../../../includes/header.php'; ?>
-<div class="wrapper"><div class="container-fluid">
+<div class="wrapper"><div class="wrapper-loader fade" id="LoadingImage" style="display: none;">
+  <div class="loader">
+    <div class="loader__figure"></div>
+    <p class="loader__label">Cargando...</p>
+  </div>
+</div><div class="container-fluid">
 <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>
 <div class="card-header" style="border-color:darkgray; border-style:dotted;">
   <h5>Filtros</h5>
@@ -39,7 +45,7 @@ require_once __DIR__ . '/../../../includes/config.php';
 <div class="modal fade" id="modalForm" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="tituloModal">Nuevo grupo</h5><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div><form id="formRegistro"><input type="hidden" id="id_grupo"><div class="modal-body"><div class="row"><div class="col-md-6"><label>Nombre grupo</label><input id="nombre_grupo" class="form-control" required></div><div class="col-md-3"><label>Clave H</label><input id="clave_h" class="form-control"></div><div class="col-md-3"><label>Fecha SAT</label><input id="fecha_sat" type="date" class="form-control"></div><div class="col-md-6 mt-2"><label>Desc H</label><input id="desc_h" class="form-control"></div><div class="col-md-6 mt-2"><label>Observaciones</label><input id="observaciones" class="form-control"></div></div></div><div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary">Guardar</button></div></form></div></div></div>
 <div class="modal fade" id="modalEliminar" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5>Eliminar grupo</h5><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div><div class="modal-body"><p>¿Seguro que deseas eliminar <strong id="delNombre"></strong>?</p></div><div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" id="btnConfirmEliminar">Eliminar</button></div></div></div></div>
 <?php include_once __DIR__ . '/../../../includes/footer.php'; ?>
-<script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script><script src="<?= BASE_URL ?>/assets/js/app.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+<script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script><script src="<?= BASE_URL ?>/assets/js/app.min.js"></script><script src="<?= BASE_URL ?>/assets/js/loader.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
 <script>
 $(function(){
   let paginaActual=1; const limitePorPagina=10; const URL_CTRL='<?= BASE_URL ?>/controllers/CatGruposController.php';
@@ -57,5 +63,36 @@ $(function(){
   function configurarPaginacion(currentPage,totalItems,itemsPerPage=10){const totalPages=Math.max(1,Math.ceil(totalItems/itemsPerPage));const $ul=$('#pagination');const maxVisiblePages=5;$ul.empty();if(totalPages<=1){$ul.closest('nav').hide();return;}else{$ul.closest('nav').show();}let startPage=Math.max(1,currentPage-Math.floor(maxVisiblePages/2));let endPage=Math.min(totalPages,startPage+maxVisiblePages-1);if(endPage-startPage+1<maxVisiblePages)startPage=Math.max(1,endPage-maxVisiblePages+1);if(currentPage>1){$ul.append(`<li class="page-item"><a class="page-link" href="javascript:void(0);" data-page="1">Primera</a></li>`);$ul.append(`<li class="page-item"><a class="page-link" href="javascript:void(0);" data-page="${currentPage-1}">&laquo; Anterior</a></li>`);}for(let i=startPage;i<=endPage;i++){$ul.append(`<li class="page-item ${i===currentPage?'active':''}"><a class="page-link" href="javascript:void(0);" data-page="${i}">${i}</a></li>`);}if(currentPage<totalPages){$ul.append(`<li class="page-item"><a class="page-link" href="javascript:void(0);" data-page="${currentPage+1}">Siguiente &raquo;</a></li>`);$ul.append(`<li class="page-item"><a class="page-link" href="javascript:void(0);" data-page="${totalPages}">Última</a></li>`);}$ul.off('click','a.page-link').on('click','a.page-link',function(e){e.preventDefault();const page=Number($(this).data('page'));if(Number.isFinite(page)){paginaActual=page;cargarRegistros(paginaActual);}});}
 });
 function clearField(id){const el=document.getElementById(id);if(!el)return; if(el.type==='checkbox'){el.checked=false;}else{el.value='';} el.dispatchEvent(new Event('change'));}
+</script>
+
+<script>
+function syncClear(inputEl){
+  if(!inputEl) return;
+  const $input=$(inputEl);
+  const hasValue=($input.val()||'').toString().trim().length>0;
+  $input.closest('.input-group, .form-group').find('.clean-filter').css({display:hasValue?'flex':'none'});
+}
+
+function clearField(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  if(el.type==='checkbox'){
+    el.checked=false;
+  }else{
+    el.value='';
+  }
+  syncClear(el);
+  el.dispatchEvent(new Event('input'));
+  el.dispatchEvent(new Event('change'));
+}
+
+$(function(){
+  $('.filtrar').each(function(){ syncClear(this); });
+  $(document).on('input change blur', '.filtrar', function(){ syncClear(this); });
+  $(document).on('click', '.clean-filter', function(){
+    const input=this.closest('.input-group, .form-group')?.querySelector('.filtrar');
+    if(input){ setTimeout(function(){ syncClear(input); }, 0); }
+  });
+});
 </script>
 </body></html>
