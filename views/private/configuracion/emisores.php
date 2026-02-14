@@ -18,11 +18,15 @@ require_once __DIR__ . '/../../../includes/auth.php';
   <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
   <style>
+    .clean-filter{ display:none; }
     .clean-filter .input-group-text{ cursor:pointer; }
     .badge-pill{ border-radius:50rem; }
     .table-responsive { overflow-y: visible !important; }
     .table-responsive .dropdown-menu { z-index: 2000; }
     .mono{ font-family:monospace; }
+    .modal-xxl-custom{ max-width:98vw; width:98vw; }
+    @media (min-width:1200px){ .modal-xxl-custom{ max-width:1400px; width:1400px; } }
+    @media (min-width:1600px){ .modal-xxl-custom{ max-width:1600px; width:1600px; } }
   </style>
 </head>
 <body>
@@ -127,12 +131,10 @@ require_once __DIR__ . '/../../../includes/auth.php';
                 <tr>
                   <th class="text-center" style="width:90px;">ID</th>
                   <th style="width:180px;">Sucursal</th>
-                  <th style="width:180px;">Emisor</th>
                   <th class="text-center" style="width:140px;">RFC</th>
                   <th>Razón social</th>
                   <th class="text-center" style="width:90px;">Ambiente</th>
                   <th class="text-center" style="width:100px;">Estatus</th>
-                  <th class="text-center" style="width:90px;">Default</th>
                   <th class="text-center" style="width:130px;">Acciones</th>
                 </tr>
               </thead>
@@ -157,10 +159,10 @@ require_once __DIR__ . '/../../../includes/auth.php';
 </div>
 
 <div id="modalEmisor" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="modalEmisorLabel" aria-hidden="true" data-backdrop="static">
-  <div class="modal-dialog modal-xl" role="document">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-xxl-custom" role="document">
     <div class="modal-content">
       <form id="formEmisor" autocomplete="off">
-        <input type="hidden" id="id_config_fiscal_emisor" name="id_config_fiscal_emisor" value="">
+        <input type="hidden" id="id_config" name="id_config" value="">
 
         <div class="modal-header">
           <h5 class="modal-title" id="modalEmisorLabel"><i class="mdi mdi-plus"></i> Nuevo emisor</h5>
@@ -180,11 +182,7 @@ require_once __DIR__ . '/../../../includes/auth.php';
                 <label for="id_sucursal">Sucursal <span class="text-danger">*</span></label>
                 <select class="form-control" name="id_sucursal" id="id_sucursal" required></select>
               </div>
-              <div class="form-group col-md-4">
-                <label for="nombre_emisor">Nombre emisor</label>
-                <input class="form-control" id="nombre_emisor" name="nombre_emisor" maxlength="100">
-              </div>
-              <div class="form-group col-md-4">
+              <div class="form-group col-md-8">
                 <label for="rfc_emisor">RFC <span class="text-danger">*</span></label>
                 <input class="form-control mono" id="rfc_emisor" name="rfc_emisor" maxlength="13" required>
               </div>
@@ -279,12 +277,6 @@ require_once __DIR__ . '/../../../includes/auth.php';
             <div class="form-row mt-2">
               <div class="form-group col-md-3 d-flex align-items-center">
                 <div class="custom-control custom-switch mt-2">
-                  <input type="checkbox" class="custom-control-input" id="es_default" name="es_default">
-                  <label class="custom-control-label" for="es_default">Emisor default</label>
-                </div>
-              </div>
-              <div class="form-group col-md-3 d-flex align-items-center">
-                <div class="custom-control custom-switch mt-2">
                   <input type="checkbox" class="custom-control-input" id="activo" name="activo" checked>
                   <label class="custom-control-label" for="activo">Activo</label>
                 </div>
@@ -326,13 +318,14 @@ $(function(){
   loadList(1);
 
   function loadSucursales(){
+    showLoading();
     $.getJSON(URL_AJAX + '/get.php', {sucursales: 1}, function(resp){
       if (!resp.ok) return;
       let opts = '<option value="">-- Todas --</option>';
       (resp.data || []).forEach(s => { opts += `<option value="${s.id_sucursal}">${s.nombre}</option>`; });
       $('#fSucursal').html(opts);
       $('#id_sucursal').html(opts.replace('-- Todas --','-- Selecciona --'));
-    });
+    }).always(hideLoading);
   }
 
   function loadList(page=1){
@@ -355,31 +348,38 @@ $(function(){
 
       let html = '';
       rows.forEach(r => {
-        const id = r.id_config || r.id_config_fiscal_emisor;
+        const id = r.id_config;
         const activo = parseInt(r.activo || 0, 10) === 1;
-        const esDefault = parseInt(r.es_default || 0, 10) === 1;
         html += `<tr>
           <td class="text-center">${id}</td>
           <td>${r.sucursal_nombre || ''}</td>
-          <td>${r.nombre_emisor || '—'}</td>
           <td class="text-center mono">${r.rfc_emisor || ''}</td>
           <td>${r.razon_social_emisor || ''}</td>
           <td class="text-center"><span class="badge badge-${(r.fd_ambiente||'DEMO') === 'PROD' ? 'success' : 'secondary'} badge-pill">${r.fd_ambiente || 'DEMO'}</span></td>
           <td class="text-center"><span class="badge badge-${activo ? 'success' : 'danger'} badge-pill">${activo ? 'Activo' : 'Inactivo'}</span></td>
-          <td class="text-center">${esDefault ? '<span class="badge badge-primary badge-pill">Sí</span>' : '—'}</td>
           <td class="text-center">
-            <button class="btn btn-info btn-sm waves-effect waves-light btnEdit" data-id="${id}" title="Editar"><i class="mdi mdi-pencil"></i></button>
-            <button class="btn btn-${activo ? 'warning' : 'success'} btn-sm waves-effect waves-light btnToggle" data-id="${id}" data-act="${activo ? 0 : 1}" title="${activo ? 'Desactivar' : 'Activar'}"><i class="mdi mdi-power"></i></button>
-            <button class="btn btn-primary btn-sm waves-effect waves-light btnDefault" data-id="${id}" ${esDefault ? 'disabled' : ''} title="Marcar default"><i class="mdi mdi-star"></i></button>
+            <div class="btn-group dropdown">
+              <a href="javascript:void(0);" class="table-action-btn dropdown-toggle arrow-none btn btn-light btn-sm" data-toggle="dropdown" aria-expanded="false">
+                <i class="mdi mdi-dots-horizontal"></i>
+              </a>
+              <div class="dropdown-menu dropdown-menu-right">
+                <a class="dropdown-item btnEdit" href="#" data-id="${id}">
+                  <i class="mdi mdi-square-edit-outline mr-2 text-muted font-18 vertical-middle"></i>Editar
+                </a>
+                <a class="dropdown-item btnToggle" href="#" data-id="${id}" data-act="${activo ? 0 : 1}">
+                  <i class="mdi mdi-power mr-2 text-muted font-18 vertical-middle"></i>${activo ? 'Desactivar' : 'Activar'}
+                </a>
+              </div>
+            </div>
           </td>
         </tr>`;
       });
 
       if (!rows.length) {
-        html = '<tr><td colspan="9" class="text-center text-muted py-4">Sin resultados</td></tr>';
+        html = '<tr><td colspan="7" class="text-center text-muted py-4">Sin resultados</td></tr>';
       }
       $('#tablaEmisores tbody').html(html);
-      renderPagination(total, data.page || paginaActual, data.perPage || limitePorPagina);
+      renderPagination(data.page || paginaActual, total, data.perPage || limitePorPagina);
 
       const d = total ? ((paginaActual - 1) * limitePorPagina) + 1 : 0;
       const h = total ? Math.min(paginaActual * limitePorPagina, total) : 0;
@@ -391,19 +391,29 @@ $(function(){
     .always(hideLoading);
   }
 
-  function renderPagination(total, page, perPage){
-    const pages = Math.ceil((total || 0) / (perPage || limitePorPagina));
-    let html = '';
-    if (pages > 1) {
-      const prevDisabled = page <= 1 ? 'disabled' : '';
-      const nextDisabled = page >= pages ? 'disabled' : '';
-      html += `<li class="page-item ${prevDisabled}"><a class="page-link page-btn" href="#" data-page="${page - 1}">Anterior</a></li>`;
-      for(let i=1; i<=pages; i++){
-        html += `<li class="page-item ${i===Number(page)?'active':''}"><a class="page-link page-btn" href="#" data-page="${i}">${i}</a></li>`;
-      }
-      html += `<li class="page-item ${nextDisabled}"><a class="page-link page-btn" href="#" data-page="${page + 1}">Siguiente</a></li>`;
+  function renderPagination(currentPage, totalItems, itemsPerPage){
+    const totalPages = Math.max(1, Math.ceil((totalItems || 0) / (itemsPerPage || limitePorPagina)));
+    const maxVisiblePages = 5;
+    const $ul = $('#pagination');
+    $ul.empty();
+    if (totalPages <= 1){ $ul.closest('nav').hide(); return; }
+    $ul.closest('nav').show();
+
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    if (endPage - startPage + 1 < maxVisiblePages) startPage = Math.max(1, endPage - maxVisiblePages + 1);
+
+    if (currentPage > 1){
+      $ul.append(`<li class="page-item"><a class="page-link page-btn" href="#" data-page="1">Primera</a></li>`);
+      $ul.append(`<li class="page-item"><a class="page-link page-btn" href="#" data-page="${currentPage - 1}">&laquo; Anterior</a></li>`);
     }
-    $('#pagination').html(html);
+    for (let i = startPage; i <= endPage; i++){
+      $ul.append(`<li class="page-item ${i===currentPage?'active':''}"><a class="page-link page-btn" href="#" data-page="${i}">${i}</a></li>`);
+    }
+    if (currentPage < totalPages){
+      $ul.append(`<li class="page-item"><a class="page-link page-btn" href="#" data-page="${currentPage + 1}">Siguiente &raquo;</a></li>`);
+      $ul.append(`<li class="page-item"><a class="page-link page-btn" href="#" data-page="${totalPages}">Última</a></li>`);
+    }
   }
 
   $('.filtrar').on('keyup change', function(e){
@@ -421,16 +431,17 @@ $(function(){
 
   $('#btnNuevo').on('click', function(){
     $('#formEmisor')[0].reset();
-    $('#id_config_fiscal_emisor').val('');
+    $('#id_config').val('');
     $('#modalEmisorLabel').html('<i class="mdi mdi-plus"></i> Nuevo emisor');
     $('#activo').prop('checked', true);
     $('#modalEmisor').modal('show');
   });
 
-  $(document).on('click', '.btnEdit', function(){
+  $(document).on('click', '.btnEdit', function(e){
+    e.preventDefault();
     const id = $(this).data('id');
     showLoading();
-    $.getJSON(URL_AJAX + '/get.php', { id_config_fiscal_emisor: id }, function(resp){
+    $.getJSON(URL_AJAX + '/get.php', { id_config: id }, function(resp){
       if (!resp.ok) { toastr.error(resp.message || 'No se pudo cargar el registro.'); return; }
       const r = resp.data || {};
       Object.keys(r).forEach(k => {
@@ -442,7 +453,7 @@ $(function(){
           $el.val(r[k] ?? '');
         }
       });
-      $('#id_config_fiscal_emisor').val(r.id_config || r.id_config_fiscal_emisor || id);
+      $('#id_config').val(r.id_config || id);
       $('#modalEmisorLabel').html('<i class="mdi mdi-pencil"></i> Editar emisor');
       $('#modalEmisor').modal('show');
     }).always(hideLoading);
@@ -452,11 +463,10 @@ $(function(){
     e.preventDefault();
     const payload = {};
     $(this).serializeArray().forEach(({name, value}) => payload[name] = value);
-    payload.es_default = $('#es_default').is(':checked') ? 1 : 0;
     payload.activo = $('#activo').is(':checked') ? 1 : 0;
     payload.rfc_emisor = String(payload.rfc_emisor || '').toUpperCase().trim();
 
-    const endpoint = payload.id_config_fiscal_emisor ? '/update.php' : '/create.php';
+    const endpoint = payload.id_config ? '/update.php' : '/create.php';
     showLoading();
     $.ajax({
       url: URL_AJAX + endpoint,
@@ -475,7 +485,8 @@ $(function(){
     .always(hideLoading);
   });
 
-  $(document).on('click', '.btnToggle', function(){
+  $(document).on('click', '.btnToggle', function(e){
+    e.preventDefault();
     const id = $(this).data('id');
     const activo = $(this).data('act');
     showLoading();
@@ -484,7 +495,7 @@ $(function(){
       method: 'POST',
       contentType: 'application/json',
       dataType: 'json',
-      data: JSON.stringify({ id_config_fiscal_emisor: id, activo })
+      data: JSON.stringify({ id_config: id, activo })
     })
     .done(function(resp){
       if (!resp.ok) { toastr.error(resp.message || 'No se pudo actualizar estatus.'); return; }
@@ -492,25 +503,6 @@ $(function(){
       loadList(paginaActual);
     })
     .fail(function(){ toastr.error('No se pudo actualizar el estatus.'); })
-    .always(hideLoading);
-  });
-
-  $(document).on('click', '.btnDefault', function(){
-    const id = $(this).data('id');
-    showLoading();
-    $.ajax({
-      url: URL_AJAX + '/set_default.php',
-      method: 'POST',
-      contentType: 'application/json',
-      dataType: 'json',
-      data: JSON.stringify({ id_config_fiscal_emisor: id })
-    })
-    .done(function(resp){
-      if (!resp.ok) { toastr.error(resp.message || 'No se pudo marcar default.'); return; }
-      toastr.success('Emisor default actualizado.');
-      loadList(paginaActual);
-    })
-    .fail(function(){ toastr.error('No se pudo actualizar el emisor default.'); })
     .always(hideLoading);
   });
 

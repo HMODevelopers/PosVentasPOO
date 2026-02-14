@@ -9,7 +9,7 @@ if ((int)($_GET['sucursales'] ?? $_POST['sucursales'] ?? 0) === 1) {
     }
 }
 
-$id = (int)($_GET['id_config_fiscal_emisor'] ?? $_POST['id_config_fiscal_emisor'] ?? 0);
+$id = (int)($_GET['id_config'] ?? $_POST['id_config'] ?? 0);
 if ($id <= 0) {
     json_err('Identificador inválido.', 'CFG-GET-001');
 }
@@ -19,7 +19,6 @@ try {
     if (!$row) {
         json_err('Emisor no encontrado.', 'CFG-GET-404');
     }
-    $row['id_config_fiscal_emisor'] = (int)($row['id_config'] ?? $id);
     json_ok($row);
 } catch (Throwable $e) {
     json_err('No se pudo obtener el emisor.', 'CFG-GET-500');
