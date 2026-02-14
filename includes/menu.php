@@ -151,7 +151,7 @@ acl_bootstrap();
 
         <?php if (can('sistema.menu')): ?>
         <li class="has-submenu">
-          <a href="#"><i class="la la-cog"></i>Sistema <div class="arrow-down"></div></a>
+          <a href="#"><i class="la la-cog"></i>Sistemas <div class="arrow-down"></div></a>
           <ul class="submenu">
             <?php if (can('sistema.bitacora')): ?>
               <!-- CAMBIO: acento en "Bitácora" -->
@@ -162,6 +162,10 @@ acl_bootstrap();
             <?php endif; ?>
             <?php if (can('sistema.roles')): ?>
               <li><a href="<?= BASE_URL ?>/views/private/sistema/roles.php">Roles</a></li>
+            <?php endif; ?>
+
+            <?php if (can('sistema.menu')): ?>
+              <li><a href="<?= BASE_URL ?>/views/private/configuracion/emisores.php">Emisores CFDI</a></li>
             <?php endif; ?>
 
             <?php
