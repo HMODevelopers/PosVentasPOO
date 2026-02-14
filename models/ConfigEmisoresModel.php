@@ -18,7 +18,7 @@ class ConfigEmisoresModel {
     public function listar(int $pagina, int $limite, array $filtros): array {
         $offset = (max(1, $pagina) - 1) * max(1, $limite);
         $sql = "SELECT
-                    cfe.id_config_fiscal_emisor,
+                    cfe.id_config,
                     cfe.id_sucursal,
                     cfe.rfc_emisor,
                     cfe.razon_social_emisor,
@@ -63,7 +63,7 @@ class ConfigEmisoresModel {
         }
 
         $sql .= " ORDER BY cfe.id_sucursal ASC";
-        $sql .= ", cfe.id_config_fiscal_emisor DESC";
+        $sql .= ", cfe.id_config DESC";
         $sql .= " LIMIT :lim OFFSET :off";
         $st = $this->conn->prepare($sql);
         foreach ($p as $k => $v) {
@@ -109,7 +109,7 @@ class ConfigEmisoresModel {
     }
 
     public function obtenerPorId(int $id): ?array {
-        $st = $this->conn->prepare("SELECT * FROM config_fiscal_emisor WHERE id_config_fiscal_emisor = :id LIMIT 1");
+        $st = $this->conn->prepare("SELECT * FROM config_fiscal_emisor WHERE id_config = :id LIMIT 1");
         $st->bindValue(':id', $id, PDO::PARAM_INT);
         $st->execute();
         return $st->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -118,7 +118,7 @@ class ConfigEmisoresModel {
     public function existeRfcSucursal(int $idSucursal, string $rfc, int $exceptId = 0): bool {
         $sql = "SELECT COUNT(*) t FROM config_fiscal_emisor WHERE id_sucursal=:s AND rfc_emisor=:r";
         if ($exceptId > 0) {
-            $sql .= " AND id_config_fiscal_emisor<>:id";
+            $sql .= " AND id_config<>:id";
         }
         $st = $this->conn->prepare($sql);
         $st->bindValue(':s', $idSucursal, PDO::PARAM_INT);
@@ -166,7 +166,7 @@ class ConfigEmisoresModel {
             }
             $sets = [];
             foreach ($this->fillable as $f) $sets[] = "{$f}=:{$f}";
-            $sql = "UPDATE config_fiscal_emisor SET " . implode(',', $sets) . " WHERE id_config_fiscal_emisor=:id";
+            $sql = "UPDATE config_fiscal_emisor SET " . implode(',', $sets) . " WHERE id_config=:id";
             $st = $this->conn->prepare($sql);
             foreach ($this->fillable as $field) {
                 $st->bindValue(':' . $field, $d[$field]);
@@ -184,7 +184,7 @@ class ConfigEmisoresModel {
     public function toggle(int $id, int $activo): bool {
         $this->conn->beginTransaction();
         try {
-            $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET activo=:a, es_default=IF(:a=0,0,es_default) WHERE id_config_fiscal_emisor=:id");
+            $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET activo=:a, es_default=IF(:a=0,0,es_default) WHERE id_config=:id");
             $ok = $st->execute([':a' => $activo ? 1 : 0, ':id' => $id]);
             $this->conn->commit();
             return $ok;
@@ -203,7 +203,7 @@ class ConfigEmisoresModel {
         $this->conn->beginTransaction();
         try {
             $this->clearDefaultBySucursal((int)$row['id_sucursal']);
-            $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default=1 WHERE id_config_fiscal_emisor=:id");
+            $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default=1 WHERE id_config=:id");
             $ok = $st->execute([':id' => $id]);
             $this->conn->commit();
             return $ok;
