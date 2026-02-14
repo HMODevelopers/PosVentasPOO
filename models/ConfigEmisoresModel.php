@@ -18,7 +18,8 @@ class ConfigEmisoresModel {
     public function listar(int $pagina, int $limite, array $filtros): array {
         $offset = (max(1, $pagina) - 1) * max(1, $limite);
         $sql = "SELECT
-                    cfe.id_config,
+                    cfe.id_config AS id_config,
+                    cfe.id_config AS id_config_fiscal_emisor,
                     cfe.id_sucursal,
                     cfe.rfc_emisor,
                     cfe.razon_social_emisor,
@@ -35,8 +36,8 @@ class ConfigEmisoresModel {
                     cfe.created_at,
                     cfe.updated_at,
                     CAST(cfe.id_sucursal AS CHAR) AS sucursal_nombre,
-                    '' AS nombre_emisor,
-                    0 AS es_default
+                    cfe.nombre_emisor,
+                    cfe.es_default
                 FROM config_fiscal_emisor cfe";
         $sql .= " WHERE 1=1";
         $p = [];
