@@ -58,7 +58,7 @@ require_once __DIR__ . '/../../../includes/auth.php';
 </div>
 
 <div class="modal fade" id="modalEmisor" tabindex="-1" role="dialog" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-xxl-custom" role="document">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-xxl-custom" role="document">
     <form class="modal-content" id="formEmisor" autocomplete="off">
       <div class="modal-header">
         <h5 id="ttlModal">Nuevo emisor</h5>
@@ -173,7 +173,28 @@ $(function(){
       })
       .always(hideLoading);
   }
-  function renderPag(total){ const pages=Math.max(1,Math.ceil(total/limit)); let html=''; for(let i=1;i<=pages;i++) html += `<li class="page-item ${i===page?'active':''}"><a class="page-link pg" data-p="${i}" href="#">${i}</a></li>`; $('#paginacion').html(pages>1?html:''); }
+  function renderPag(total){
+    const pages = Math.max(1, Math.ceil(total / limit));
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, page - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(pages, startPage + maxVisiblePages - 1);
+    if ((endPage - startPage + 1) < maxVisiblePages) startPage = Math.max(1, endPage - maxVisiblePages + 1);
+
+    let html = '';
+    if (pages <= 1) { $('#paginacion').html(''); return; }
+    if (page > 1) {
+      html += `<li class="page-item"><a class="page-link pg" data-p="1" href="#">Primera</a></li>`;
+      html += `<li class="page-item"><a class="page-link pg" data-p="${page - 1}" href="#">&laquo; Anterior</a></li>`;
+    }
+    for (let i = startPage; i <= endPage; i++) {
+      html += `<li class="page-item ${i===page?'active':''}"><a class="page-link pg" data-p="${i}" href="#">${i}</a></li>`;
+    }
+    if (page < pages) {
+      html += `<li class="page-item"><a class="page-link pg" data-p="${page + 1}" href="#">Siguiente &raquo;</a></li>`;
+      html += `<li class="page-item"><a class="page-link pg" data-p="${pages}" href="#">Última</a></li>`;
+    }
+    $('#paginacion').html(html);
+  }
 
   $('.filtrar').on('change', ()=>{ page=1; listar(); }).on('keyup', function(){
     const has=$(this).val().trim().length>0; $(this).closest('.input-group').find('.clean-filter').toggle(has);

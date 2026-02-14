@@ -1,8 +1,20 @@
 <?php
 header('Content-Type: application/json; charset=UTF-8');
 require_once __DIR__ . '/../../../includes/config.php';
-require_once __DIR__ . '/../../../includes/controller_guard.php';
-controller_guard(__FILE__, 'sistema.menu');
+require_once __DIR__ . '/../../../includes/acl.php';
+
+if (!isset($_SESSION['usuario'])) {
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'message' => 'Sesión expirada', 'errorId' => 'AUTH-401'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (!can('sistema.menu')) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'message' => 'No tienes permisos suficientes.', 'errorId' => 'AUTH-403'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 require_once __DIR__ . '/../../../models/ConfigEmisoresModel.php';
 
 $model = new ConfigEmisoresModel();
