@@ -3,10 +3,6 @@ include_once __DIR__ . '/../includes/db.php';
 
 class ConfigEmisoresModel {
     private PDO $conn;
-    private ?bool $hasNombreEmisor = null;
-    private ?bool $hasEsDefault = null;
-    private ?bool $hasSucursalesTable = null;
-    private ?bool $hasSucursalNombre = null;
 
     private array $fillable = [
         'id_sucursal','nombre_emisor','rfc_emisor','razon_social_emisor','regimen_fiscal_emisor','cp_expedicion','serie','folio_actual',
@@ -21,20 +17,27 @@ class ConfigEmisoresModel {
 
     public function listar(int $pagina, int $limite, array $filtros): array {
         $offset = (max(1, $pagina) - 1) * max(1, $limite);
-        $hasNombreEmisor = $this->hasColumn('config_fiscal_emisor', 'nombre_emisor');
-        $hasEsDefault = $this->hasColumn('config_fiscal_emisor', 'es_default');
-        $hasSucursales = $this->hasTable('sucursales') && $this->hasColumn('sucursales', 'id_sucursal');
-        $hasSucursalNombre = $hasSucursales && $this->hasColumn('sucursales', 'nombre');
-
-        $nombreSelect = $hasNombreEmisor ? 'cfe.nombre_emisor' : "'' AS nombre_emisor";
-        $defaultSelect = $hasEsDefault ? 'cfe.es_default' : '0 AS es_default';
-        $sucursalSelect = $hasSucursalNombre ? 's.nombre AS sucursal_nombre' : 'CAST(cfe.id_sucursal AS CHAR) AS sucursal_nombre';
-
-        $sql = "SELECT cfe.*, {$nombreSelect}, {$defaultSelect}, {$sucursalSelect}
+        $sql = "SELECT
+                    cfe.id_config_fiscal_emisor,
+                    cfe.id_sucursal,
+                    cfe.rfc_emisor,
+                    cfe.razon_social_emisor,
+                    cfe.regimen_fiscal_emisor,
+                    cfe.cp_expedicion,
+                    cfe.tipo_comprobante,
+                    cfe.exportacion_default,
+                    cfe.moneda_default,
+                    cfe.objeto_imp_default,
+                    cfe.serie,
+                    cfe.folio_actual,
+                    cfe.fd_ambiente,
+                    cfe.activo,
+                    cfe.created_at,
+                    cfe.updated_at,
+                    CAST(cfe.id_sucursal AS CHAR) AS sucursal_nombre,
+                    '' AS nombre_emisor,
+                    0 AS es_default
                 FROM config_fiscal_emisor cfe";
-        if ($hasSucursales) {
-            $sql .= " LEFT JOIN sucursales s ON s.id_sucursal = cfe.id_sucursal";
-        }
         $sql .= " WHERE 1=1";
         $p = [];
 
@@ -60,10 +63,8 @@ class ConfigEmisoresModel {
         }
 
         $sql .= " ORDER BY cfe.id_sucursal ASC";
-        if ($hasEsDefault) {
-            $sql .= ", cfe.es_default DESC";
-        }
-        $sql .= ", cfe.id_config_fiscal_emisor DESC LIMIT :lim OFFSET :off";
+        $sql .= ", cfe.id_config_fiscal_emisor DESC";
+        $sql .= " LIMIT :lim OFFSET :off";
         $st = $this->conn->prepare($sql);
         foreach ($p as $k => $v) {
             $st->bindValue($k, $v);
@@ -72,48 +73,6 @@ class ConfigEmisoresModel {
         $st->bindValue(':off', max(0, $offset), PDO::PARAM_INT);
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    }
-
-    private function hasTable(string $table): bool {
-        if ($table === 'sucursales' && $this->hasSucursalesTable !== null) {
-            return $this->hasSucursalesTable;
-        }
-
-        $st = $this->conn->prepare('SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :table LIMIT 1');
-        $st->execute([':table' => $table]);
-        $exists = (bool)$st->fetchColumn();
-
-        if ($table === 'sucursales') {
-            $this->hasSucursalesTable = $exists;
-        }
-
-        return $exists;
-    }
-
-    private function hasColumn(string $table, string $column): bool {
-        if ($table === 'config_fiscal_emisor' && $column === 'nombre_emisor' && $this->hasNombreEmisor !== null) {
-            return $this->hasNombreEmisor;
-        }
-        if ($table === 'config_fiscal_emisor' && $column === 'es_default' && $this->hasEsDefault !== null) {
-            return $this->hasEsDefault;
-        }
-        if ($table === 'sucursales' && $column === 'nombre' && $this->hasSucursalNombre !== null) {
-            return $this->hasSucursalNombre;
-        }
-
-        $st = $this->conn->prepare('SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = :table AND column_name = :column LIMIT 1');
-        $st->execute([':table' => $table, ':column' => $column]);
-        $exists = (bool)$st->fetchColumn();
-
-        if ($table === 'config_fiscal_emisor' && $column === 'nombre_emisor') {
-            $this->hasNombreEmisor = $exists;
-        } elseif ($table === 'config_fiscal_emisor' && $column === 'es_default') {
-            $this->hasEsDefault = $exists;
-        } elseif ($table === 'sucursales' && $column === 'nombre') {
-            $this->hasSucursalNombre = $exists;
-        }
-
-        return $exists;
     }
 
     public function contar(array $filtros): int {
