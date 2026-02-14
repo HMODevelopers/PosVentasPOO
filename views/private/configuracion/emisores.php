@@ -17,16 +17,31 @@ require_once __DIR__ . '/../../../includes/auth.php';
   <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet" type="text/css" />
   <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+
   <style>
     .clean-filter{ display:none; }
     .clean-filter .input-group-text{ cursor:pointer; }
     .badge-pill{ border-radius:50rem; }
-    .table-responsive { overflow-y: visible !important; }
-    .table-responsive .dropdown-menu { z-index: 2000; }
     .mono{ font-family:monospace; }
+
+    /* Evitar que estilos de tabla rompan scroll del modal */
+    .table-responsive { overflow-x: auto; overflow-y: hidden; }
+    .table-responsive .dropdown-menu { z-index: 2000; }
+
+    /* Modal ancho tipo Clientes/Productos */
     .modal-xxl-custom{ max-width:98vw; width:98vw; }
     @media (min-width:1200px){ .modal-xxl-custom{ max-width:1400px; width:1400px; } }
     @media (min-width:1600px){ .modal-xxl-custom{ max-width:1600px; width:1600px; } }
+
+    /* ===== FIX REAL: scroll SIEMPRE dentro de modal-body (sin pelear con Bootstrap) ===== */
+    #modalEmisor .modal-content{ overflow:hidden; }
+    #modalEmisor .modal-body{
+      overflow-y:auto !important;
+      max-height: calc(100vh - 220px);
+    }
+    @media (max-height: 800px){
+      #modalEmisor .modal-body{ max-height: calc(100vh - 180px); }
+    }
   </style>
 </head>
 <body>
@@ -155,11 +170,12 @@ require_once __DIR__ . '/../../../includes/auth.php';
         </div>
       </div>
     </div>
+
   </div>
 </div>
 
 <div id="modalEmisor" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="modalEmisorLabel" aria-hidden="true" data-backdrop="static">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-xxl-custom" role="document">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable modal-xxl-custom" role="document">
     <div class="modal-content">
       <form id="formEmisor" autocomplete="off">
         <input type="hidden" id="id_config" name="id_config" value="">
@@ -313,6 +329,11 @@ function clearField(id){ $('#'+id).val('').trigger('change'); }
 
 $(function(){
   toastr.options = { closeButton:true, progressBar:true, positionClass:'toast-bottom-right', timeOut:'3000' };
+
+  // reset scroll al abrir
+  $('#modalEmisor').on('shown.bs.modal', function(){
+    $(this).find('.modal-body').scrollTop(0);
+  });
 
   loadSucursales();
   loadList(1);
