@@ -15,7 +15,7 @@ try {
     }
 
     $id = $model->crear($d);
-    json_ok(['id_config_fiscal_emisor' => $id]);
+    json_ok(['id_config' => $id]);
 } catch (Throwable $e) {
     json_err('No se pudo crear el emisor.', 'CFG-CRT-500');
 }

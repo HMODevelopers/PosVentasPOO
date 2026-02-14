@@ -3,7 +3,7 @@ require_once __DIR__ . '/_bootstrap.php';
 
 try {
     $d = payload();
-    $id = (int)($d['id_config_fiscal_emisor'] ?? 0);
+    $id = (int)($d['id_config'] ?? 0);
     $activo = (int)($d['activo'] ?? 0);
     if ($id <= 0) {
         json_err('Identificador inválido.', 'CFG-TGL-001');

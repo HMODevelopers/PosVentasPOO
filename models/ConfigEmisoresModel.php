@@ -5,9 +5,10 @@ class ConfigEmisoresModel {
     private PDO $conn;
 
     private array $fillable = [
-        'id_sucursal','nombre_emisor','rfc_emisor','razon_social_emisor','regimen_fiscal_emisor','cp_expedicion','serie','folio_actual',
-        'tipo_comprobante','exportacion_default','moneda_default','objeto_imp_default','fd_ambiente','fd_usuario','fd_password',
-        'fd_url_demo','fd_url_prod','csd_cer_path','csd_key_path','csd_key_password','pfx_path','pfx_password','logo_base64','es_default','activo'
+        'id_sucursal','rfc_emisor','razon_social_emisor','regimen_fiscal_emisor','cp_expedicion',
+        'tipo_comprobante','exportacion_default','moneda_default','objeto_imp_default',
+        'serie','folio_actual','fd_ambiente','fd_usuario','fd_password','fd_url_demo','fd_url_prod',
+        'csd_cer_path','csd_key_path','csd_key_password','pfx_path','pfx_password','logo_base64','activo'
     ];
 
     public function __construct() {
@@ -18,8 +19,7 @@ class ConfigEmisoresModel {
     public function listar(int $pagina, int $limite, array $filtros): array {
         $offset = (max(1, $pagina) - 1) * max(1, $limite);
         $sql = "SELECT
-                    cfe.id_config AS id_config,
-                    cfe.id_config AS id_config_fiscal_emisor,
+                    cfe.id_config,
                     cfe.id_sucursal,
                     cfe.rfc_emisor,
                     cfe.razon_social_emisor,
@@ -35,11 +35,10 @@ class ConfigEmisoresModel {
                     cfe.activo,
                     cfe.created_at,
                     cfe.updated_at,
-                    CAST(cfe.id_sucursal AS CHAR) AS sucursal_nombre,
-                    cfe.nombre_emisor,
-                    cfe.es_default
-                FROM config_fiscal_emisor cfe";
-        $sql .= " WHERE 1=1";
+                    COALESCE(s.nombre, CAST(cfe.id_sucursal AS CHAR)) AS sucursal_nombre
+                FROM config_fiscal_emisor cfe
+                LEFT JOIN sucursales s ON s.id_sucursal = cfe.id_sucursal
+                WHERE 1=1";
         $p = [];
 
         if (($idSucursal = (int)($filtros['id_sucursal'] ?? 0)) > 0) {
@@ -63,9 +62,8 @@ class ConfigEmisoresModel {
             $p[':activo'] = (int)$activo;
         }
 
-        $sql .= " ORDER BY cfe.id_sucursal ASC";
-        $sql .= ", cfe.id_config DESC";
-        $sql .= " LIMIT :lim OFFSET :off";
+        $sql .= " ORDER BY cfe.id_sucursal ASC, cfe.id_config DESC LIMIT :lim OFFSET :off";
+
         $st = $this->conn->prepare($sql);
         foreach ($p as $k => $v) {
             $st->bindValue($k, $v);
@@ -133,91 +131,39 @@ class ConfigEmisoresModel {
 
     public function crear(array $data): int {
         $d = $this->sanitizeData($data);
-        $this->conn->beginTransaction();
-        try {
-            if ((int)$d['es_default'] === 1) {
-                $this->clearDefaultBySucursal((int)$d['id_sucursal']);
-            }
-
-            $cols = implode(',', $this->fillable);
-            $marks = ':' . implode(',:', $this->fillable);
-            $st = $this->conn->prepare("INSERT INTO config_fiscal_emisor ({$cols}) VALUES ({$marks})");
-            foreach ($this->fillable as $field) {
-                $st->bindValue(':' . $field, $d[$field]);
-            }
-            $st->execute();
-            $id = (int)$this->conn->lastInsertId();
-            $this->conn->commit();
-            return $id;
-        } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) $this->conn->rollBack();
-            throw $e;
+        $cols = implode(',', $this->fillable);
+        $marks = ':' . implode(',:', $this->fillable);
+        $st = $this->conn->prepare("INSERT INTO config_fiscal_emisor ({$cols}) VALUES ({$marks})");
+        foreach ($this->fillable as $field) {
+            $st->bindValue(':' . $field, $d[$field]);
         }
+        $st->execute();
+        return (int)$this->conn->lastInsertId();
     }
 
     public function actualizar(int $id, array $data): bool {
-        $prev = $this->obtenerPorId($id);
-        if (!$prev) return false;
-
-        $d = $this->sanitizeData($data + ['id_sucursal' => $prev['id_sucursal']]);
-        $this->conn->beginTransaction();
-        try {
-            if ((int)$d['es_default'] === 1) {
-                $this->clearDefaultBySucursal((int)$d['id_sucursal']);
-            }
-            $sets = [];
-            foreach ($this->fillable as $f) $sets[] = "{$f}=:{$f}";
-            $sql = "UPDATE config_fiscal_emisor SET " . implode(',', $sets) . " WHERE id_config=:id";
-            $st = $this->conn->prepare($sql);
-            foreach ($this->fillable as $field) {
-                $st->bindValue(':' . $field, $d[$field]);
-            }
-            $st->bindValue(':id', $id, PDO::PARAM_INT);
-            $ok = $st->execute();
-            $this->conn->commit();
-            return $ok;
-        } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) $this->conn->rollBack();
-            throw $e;
-        }
-    }
-
-    public function toggle(int $id, int $activo): bool {
-        $this->conn->beginTransaction();
-        try {
-            $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET activo=:a, es_default=IF(:a=0,0,es_default) WHERE id_config=:id");
-            $ok = $st->execute([':a' => $activo ? 1 : 0, ':id' => $id]);
-            $this->conn->commit();
-            return $ok;
-        } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) $this->conn->rollBack();
-            throw $e;
-        }
-    }
-
-    public function setDefault(int $id): bool {
-        $row = $this->obtenerPorId($id);
-        if (!$row || (int)$row['activo'] !== 1) {
+        if (!$this->obtenerPorId($id)) {
             return false;
         }
 
-        $this->conn->beginTransaction();
-        try {
-            $this->clearDefaultBySucursal((int)$row['id_sucursal']);
-            $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default=1 WHERE id_config=:id");
-            $ok = $st->execute([':id' => $id]);
-            $this->conn->commit();
-            return $ok;
-        } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) $this->conn->rollBack();
-            throw $e;
+        $d = $this->sanitizeData($data);
+        $sets = [];
+        foreach ($this->fillable as $f) {
+            $sets[] = "{$f}=:{$f}";
         }
+
+        $sql = "UPDATE config_fiscal_emisor SET " . implode(',', $sets) . " WHERE id_config=:id";
+        $st = $this->conn->prepare($sql);
+        foreach ($this->fillable as $field) {
+            $st->bindValue(':' . $field, $d[$field]);
+        }
+        $st->bindValue(':id', $id, PDO::PARAM_INT);
+        return $st->execute();
     }
 
-    public function getDefaultBySucursal(int $idSucursal): ?array {
-        $st = $this->conn->prepare("SELECT * FROM config_fiscal_emisor WHERE id_sucursal=:s AND es_default=1 AND activo=1 LIMIT 1");
-        $st->execute([':s' => $idSucursal]);
-        return $st->fetch(PDO::FETCH_ASSOC) ?: null;
+    public function toggle(int $id, int $activo): bool {
+        $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET activo=:a WHERE id_config=:id");
+        return $st->execute([':a' => $activo ? 1 : 0, ':id' => $id]);
     }
 
     public function getByVenta(int $idVenta): array {
@@ -231,9 +177,12 @@ class ConfigEmisoresModel {
         if (!$row) {
             throw new RuntimeException('Venta no encontrada');
         }
-        $cfg = $this->getDefaultBySucursal((int)$row['id_sucursal']);
+
+        $stCfg = $this->conn->prepare("SELECT * FROM config_fiscal_emisor WHERE id_sucursal=:s AND activo=1 LIMIT 1");
+        $stCfg->execute([':s' => (int)$row['id_sucursal']]);
+        $cfg = $stCfg->fetch(PDO::FETCH_ASSOC) ?: null;
         if (!$cfg) {
-            throw new RuntimeException('No existe emisor default activo para la sucursal de la venta');
+            throw new RuntimeException('No existe emisor activo para la sucursal de la venta');
         }
         return $cfg;
     }
@@ -243,16 +192,11 @@ class ConfigEmisoresModel {
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
-    private function clearDefaultBySucursal(int $idSucursal): void {
-        $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default=0 WHERE id_sucursal=:s");
-        $st->execute([':s' => $idSucursal]);
-    }
-
     private function sanitizeData(array $data): array {
         $clean = [];
         foreach ($this->fillable as $f) {
             $v = $data[$f] ?? null;
-            if (in_array($f, ['id_sucursal','folio_actual','es_default','activo'], true)) {
+            if (in_array($f, ['id_sucursal','folio_actual','activo'], true)) {
                 $clean[$f] = (int)$v;
             } elseif ($f === 'rfc_emisor') {
                 $clean[$f] = strtoupper(substr(trim((string)$v), 0, 13));
@@ -260,9 +204,11 @@ class ConfigEmisoresModel {
                 $clean[$f] = trim((string)$v);
             }
         }
-        $clean['fd_ambiente'] = in_array(strtoupper($clean['fd_ambiente']), ['DEMO', 'PROD'], true) ? strtoupper($clean['fd_ambiente']) : 'DEMO';
+
+        $clean['fd_ambiente'] = in_array(strtoupper($clean['fd_ambiente']), ['DEMO', 'PROD'], true)
+            ? strtoupper($clean['fd_ambiente'])
+            : 'DEMO';
         $clean['activo'] = $clean['activo'] ? 1 : 0;
-        $clean['es_default'] = $clean['es_default'] ? 1 : 0;
         return $clean;
     }
 }

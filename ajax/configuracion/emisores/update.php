@@ -3,7 +3,7 @@ require_once __DIR__ . '/_bootstrap.php';
 
 try {
     $d = payload();
-    $id = (int)($d['id_config_fiscal_emisor'] ?? 0);
+    $id = (int)($d['id_config'] ?? 0);
     $idSucursal = (int)($d['id_sucursal'] ?? 0);
     $rfc = strtoupper(trim($d['rfc_emisor'] ?? ''));
     $razon = trim($d['razon_social_emisor'] ?? '');
