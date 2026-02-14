@@ -1,4 +1,0 @@
--- Archivo de referencia histórica.
--- IMPORTANTE: NO crear tablas desde este script.
--- La estructura real se toma del dump oficial: /mnt/data/refacc26_ventas_db_shemma_12022026.sql
--- Este archivo se conserva solo como nota para evitar el uso del esquema erróneo anterior.
