@@ -17,20 +17,33 @@ require_once __DIR__.'/../../../includes/config.php';
 <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet"/>
 <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet"/>
 
-<!-- Select2 (si ya lo cargas en otro lado, no pasa nada; pero aquí queda garantizado) -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
-
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
 
 <style>
 .clean-filter{display:none;}
 .clean-filter .input-group-text{cursor:pointer;}
+
 .form-section{border:1px solid #e5e7eb;border-radius:8px;padding:12px 12px 2px;margin-bottom:12px;background:#fafafa;}
 .form-section h6{font-size:.9rem;font-weight:700;margin-bottom:10px;color:#374151;}
 .form-group label{font-weight:600;}
+
 .select2-container{width:100%!important;}
+.select2-container--open{z-index:1060;}
+
 .location-alert{display:none;}
 .pais-note{font-size:.8rem;color:#6b7280;}
+
+.modal-xxl-custom{
+  max-width: 98vw;
+  width: 98vw;
+}
+@media (min-width: 1200px){
+  .modal-xxl-custom{ max-width: 1400px; width: 1400px; }
+}
+@media (min-width: 1600px){
+  .modal-xxl-custom{ max-width: 1600px; width: 1600px; }
+}
 </style>
 </head>
 
@@ -48,7 +61,7 @@ require_once __DIR__.'/../../../includes/config.php';
   <div class="container-fluid">
     <?php include_once __DIR__.'/../../../includes/breadcrumb.php'; ?>
 
-    <div class="card-header" style="border-color:darkgray; border-style:dotted;">
+    <div class="card-header" style="border-color:darkgray;border-style:dotted;">
       <h5>Filtros</h5>
       <div class="row">
         <div class="col-lg-12">
@@ -82,7 +95,7 @@ require_once __DIR__.'/../../../includes/config.php';
               </div>
             </div>
 
-          </div><!-- row -->
+          </div>
         </div>
       </div>
     </div>
@@ -120,9 +133,7 @@ require_once __DIR__.'/../../../includes/config.php';
               <div id="infoRegistros" class="dataTables_info"></div>
             </div>
             <div class="col-md-6 d-flex justify-content-end">
-              <nav>
-                <ul id="pagination" class="pagination justify-content-end mb-0"></ul>
-              </nav>
+              <nav><ul id="pagination" class="pagination justify-content-end mb-0"></ul></nav>
             </div>
           </div>
 
@@ -133,15 +144,15 @@ require_once __DIR__.'/../../../includes/config.php';
   </div>
 </div>
 
-<div class="modal fade" id="modalForm">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
+<div class="modal fade" id="modalForm" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-xxl-custom" role="document">
     <div class="modal-content">
       <div class="modal-header">
         <h5 id="tituloModal">Nuevo cliente SAT</h5>
         <button class="close" data-dismiss="modal"><span>&times;</span></button>
       </div>
 
-      <form id="formRegistro">
+      <form id="formRegistro" autocomplete="off">
         <input type="hidden" id="row_key">
         <input type="hidden" id="id">
 
@@ -241,11 +252,9 @@ require_once __DIR__.'/../../../includes/config.php';
 
 <?php include_once __DIR__.'/../../../includes/footer.php'; ?>
 
-<!-- ✅ IMPORTANTE: jQuery ANTES del script que usa "$" -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
 
 <script>
@@ -261,19 +270,14 @@ $(function(){
   let catalogos = { entidades:[], regimenes:[], usos_cfdi:[] };
   let bloqueoEventos = false;
 
-  // =======================
   // Loader global (AJAX)
-  // =======================
   function showLoader(){ $('#LoadingImage').show().addClass('show'); }
   function hideLoader(){ $('#LoadingImage').hide().removeClass('show'); }
-
   $(document).ajaxStart(function(){ showLoader(); });
   $(document).ajaxStop(function(){ hideLoader(); });
   $(document).ajaxError(function(){ hideLoader(); });
 
-  // =======================
   // X de limpiar filtros (solo cuando hay texto)
-  // =======================
   function toggleCleanForInput(input){
     const $in = $(input);
     const hasVal = ($in.val() || '').toString().trim().length > 0;
@@ -287,38 +291,58 @@ $(function(){
   let filtroTimer = null;
   function aplicarFiltrosDebounced(){
     clearTimeout(filtroTimer);
-    filtroTimer = setTimeout(function(){
-      cargarRegistros(1);
-    }, 250);
+    filtroTimer = setTimeout(function(){ cargarRegistros(1); }, 250);
   }
 
   window.clearField = function(id){
     const el = document.getElementById(id);
     if(!el) return;
     el.value = '';
-    $(el).trigger('input');   // actualiza icono X
-    $(el).trigger('change');  // por si alguien escucha change
+    $(el).trigger('input');
+    $(el).trigger('change');
     cargarRegistros(1);
   };
 
-  function iniSelect2(){
-    if($.fn.select2){
-      $('#modalForm select').select2({
-        width:'100%',
-        dropdownParent:$('#modalForm'),
-        placeholder:'Seleccione'
+  // Select2 estable dentro del modal
+  function iniSelect2Modal(){
+    if(!$.fn.select2) return;
+    $('#modalForm select').each(function(){
+      const $s = $(this);
+      if($s.hasClass('select2-hidden-accessible')){
+        $s.select2('destroy');
+      }
+      $s.select2({
+        width: '100%',
+        dropdownParent: $('#modalForm'),
+        placeholder: 'Seleccione...',
+        allowClear: true
       });
-    }
+    });
   }
+  $('#modalForm').on('shown.bs.modal', function(){ iniSelect2Modal(); });
+  $('#modalForm').on('hidden.bs.modal', function(){
+    $('#modalForm select').each(function(){
+      const $s = $(this);
+      if($s.hasClass('select2-hidden-accessible')){
+        $s.select2('destroy');
+      }
+    });
+  });
 
   function opt(v,t,sel=''){
     return `<option value="${e(v)}" ${String(sel)===String(v)?'selected':''}>${e(t)}</option>`;
   }
 
-  function fillSimple(sel,items,valKey,textKey,current=''){
-    let html = '<option value="">Seleccione...</option>';
+  // Placeholder REAL para evitar autoselección
+  function fillSimple(sel, items, valKey, textKey, current=''){
+    let html = '<option value=""></option>';
     (items||[]).forEach(it => html += opt(it[valKey], it[textKey], current));
-    $(sel).html(html).val(current).trigger('change.select2');
+
+    const $s = $(sel);
+    $s.html(html);
+
+    const val = (current === undefined || current === null || String(current).trim()==='') ? null : String(current);
+    $s.val(val).trigger('change');
   }
 
   function showLegacyOption(field, legacyValue){
@@ -328,7 +352,7 @@ $(function(){
     if(!$sel.find(`option[value="${value.replaceAll('"','\\"')}"]`).length){
       $sel.append(opt(value, `(No encontrado) ${value}`, value));
     }
-    $sel.val(value).trigger('change.select2');
+    $sel.val(value).trigger('change');
     $(`#${field}_alert`).text(`No encontrado: ${value}`).show();
   }
 
@@ -341,7 +365,6 @@ $(function(){
     const mostrar = actual || 'MEX';
     $('#pais').val('MEX');
     $('#pais_display').val(mostrar);
-
     if(actual && actual !== 'MEX'){
       $('#pais_legacy_note').removeClass('d-none')
         .text(`Valor previo: ${mostrar}. Al guardar se forzará MEX.`);
@@ -356,14 +379,14 @@ $(function(){
       fillSimple('#regimen_fiscal', catalogos.regimenes, 'ClaveRegimenFiscal', 'Descripcion');
       fillSimple('#uso_cdfi', catalogos.usos_cfdi, 'ClaveUsoCFDI', 'Descripcion');
       fillSimple('#estado', catalogos.entidades, 'cve_ent', 'nombre_ent');
-      $('#municipio').html('<option value="">Seleccione entidad...</option>').trigger('change.select2');
-      $('#localidad').html('<option value="">Seleccione municipio...</option>').trigger('change.select2');
+      $('#municipio').html('<option value=""></option>').val(null).trigger('change');
+      $('#localidad').html('<option value=""></option>').val(null).trigger('change');
     });
   }
 
   function cargarMunicipios(cveEnt, selected=''){
     if(!cveEnt){
-      $('#municipio').html('<option value="">Seleccione entidad...</option>').trigger('change.select2');
+      $('#municipio').html('<option value=""></option>').val(null).trigger('change');
       return $.Deferred().resolve().promise();
     }
     return $.getJSON(URL_CTRL,{accion:'municipios-por-entidad', cve_ent:cveEnt}).then(resp=>{
@@ -373,7 +396,7 @@ $(function(){
 
   function cargarLocalidades(cveEnt, cveMun, selected=''){
     if(!cveEnt || !cveMun){
-      $('#localidad').html('<option value="">Seleccione municipio...</option>').trigger('change.select2');
+      $('#localidad').html('<option value=""></option>').val(null).trigger('change');
       return $.Deferred().resolve().promise();
     }
     return $.getJSON(URL_CTRL,{accion:'localidades-por-municipio', cve_ent:cveEnt, cve_mun:cveMun}).then(resp=>{
@@ -384,14 +407,16 @@ $(function(){
   function resetForm(){
     $('#formRegistro')[0].reset();
     $('#row_key').val('');
+    $('#id').val(''); // ✅ importante
     clearLegacyAlerts();
     forzarPaisMEX('MEX');
 
     fillSimple('#regimen_fiscal', catalogos.regimenes, 'ClaveRegimenFiscal', 'Descripcion');
     fillSimple('#uso_cdfi', catalogos.usos_cfdi, 'ClaveUsoCFDI', 'Descripcion');
     fillSimple('#estado', catalogos.entidades, 'cve_ent', 'nombre_ent');
-    $('#municipio').html('<option value="">Seleccione entidad...</option>').trigger('change.select2');
-    $('#localidad').html('<option value="">Seleccione municipio...</option>').trigger('change.select2');
+
+    $('#municipio').html('<option value=""></option>').val(null).trigger('change');
+    $('#localidad').html('<option value=""></option>').val(null).trigger('change');
   }
 
   async function precargarUbicacion(r){
@@ -403,7 +428,7 @@ $(function(){
     const municipioSel = (r.municipio_select || '').toString();
     const localidadSel = (r.localidad_select || '').toString();
 
-    $('#estado').val(estadoSel).trigger('change.select2');
+    $('#estado').val(estadoSel || null).trigger('change');
     await cargarMunicipios(estadoSel, municipioSel);
     await cargarLocalidades(estadoSel, municipioSel, localidadSel);
 
@@ -416,7 +441,6 @@ $(function(){
 
   function cargarRegistros(p){
     paginaActual = p;
-
     $.post(URL_CTRL,{
       accion:'listar',
       pagina:p,
@@ -440,7 +464,7 @@ $(function(){
             <td><b>${e(v.rfc || '')}</b></td>
             <td>${e(v.razon_social || '—')}</td>
             <td>${e(v.regimen_fiscal_descripcion || v.regimen_fiscal || '—')}</td>
-            <td>${e(v.uso_cfdi_descripcion || v.uso_cdfi || '—')}</td>
+            <td>${e(v.uso_cfdi_descripcion || v.uso_cfdi || '—')}</td>
             <td>${e(ubi)}</td>
             <td>${e(v.dom_fiscal_cp || '—')}</td>
             <td class="text-center">
@@ -470,19 +494,12 @@ $(function(){
     const maxVisiblePages = 5;
 
     $ul.empty();
-
-    if(totalPages <= 1){
-      $ul.closest('nav').hide();
-      return;
-    }else{
-      $ul.closest('nav').show();
-    }
+    if(totalPages <= 1){ $ul.closest('nav').hide(); return; }
+    $ul.closest('nav').show();
 
     let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages/2));
     let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-
-    if(endPage - startPage + 1 < maxVisiblePages)
-      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    if(endPage - startPage + 1 < maxVisiblePages) startPage = Math.max(1, endPage - maxVisiblePages + 1);
 
     if(currentPage > 1){
       $ul.append(`<li class="page-item"><a class="page-link" href="javascript:void(0);" data-page="1">Primera</a></li>`);
@@ -501,34 +518,20 @@ $(function(){
     $ul.off('click','a.page-link').on('click','a.page-link',function(ev){
       ev.preventDefault();
       const page = Number($(this).data('page'));
-      if(Number.isFinite(page)){
-        paginaActual = page;
-        cargarRegistros(paginaActual);
-      }
+      if(Number.isFinite(page)) cargarRegistros(page);
     });
   }
 
-  // =======================
-  // Init
-  // =======================
-  iniSelect2();
+  // INIT
+  cargarCatalogos().then(function(){ cargarRegistros(1); });
 
-  cargarCatalogos().then(function(){
-    cargarRegistros(1);
-  });
+  $(document).on('input','#rfc,#FiltroClave',function(){ this.value=this.value.toUpperCase(); });
 
-  // Mayúsculas RFC
-  $(document).on('input','#rfc,#FiltroClave',function(){
-    this.value = this.value.toUpperCase();
-  });
-
-  // Filtros: mostrar X solo si hay texto + recargar con debounce
   $(document).on('input change', '#FiltroClave,#FiltroDescripcion', function(){
     toggleCleanForInput(this);
     aplicarFiltrosDebounced();
   });
 
-  // al cargar página, asegúrate que no se vean las X vacías
   refreshAllCleanIcons();
 
   $('#estado').on('change', async function(){
@@ -562,6 +565,7 @@ $(function(){
       const r = resp?.data || {};
       resetForm();
 
+      // ✅ ahora sí: si viene id del backend, se setea (y se usará para actualizar)
       Object.keys(r).forEach(function(k){
         if($('#'+k).length && !['estado','municipio','localidad','pais','pais_display'].includes(k)){
           $('#'+k).val(r[k] ?? '');
@@ -578,13 +582,20 @@ $(function(){
   $('#formRegistro').submit(function(ev){
     ev.preventDefault();
 
+    // ✅ Armar payload sin mandar id/row_key por defecto
     const payload = {};
     $(this).find('input,select').each(function(){
-      if(this.id) payload[this.id] = $(this).val();
+      if(!this.id) return;
+      if(['id','row_key'].includes(this.id)) return; // ✅ NO enviar aquí
+      payload[this.id] = $(this).val();
     });
 
     payload.pais = 'MEX';
-    const accion = payload.row_key ? 'actualizar' : 'crear';
+
+    // ✅ Detectar crear/actualizar por id (ya es autoincrement)
+    const idVal = ($('#id').val() || '').toString().trim();
+    const accion = idVal ? 'actualizar' : 'crear';
+    if(idVal) payload.id = idVal; // ✅ solo en actualizar
 
     $.ajax({
       url: URL_CTRL + '?accion=' + accion,
