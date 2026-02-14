@@ -119,9 +119,11 @@ require_once __DIR__.'/../../../includes/config.php';
                   <th>Razón social</th>
                   <th>Régimen fiscal</th>
                   <th>Uso CFDI</th>
-                  <th>Ubicación</th>
+                  <th>Estado</th>
+                  <th>Municipio</th>
+                  <th>Localidad</th>
                   <th>CP</th>
-                  <th style="width:110px">Acciones</th>
+                  <th style="width:150px">Acciones</th>
                 </tr>
               </thead>
               <tbody id="tbodyRegistros"></tbody>
@@ -250,6 +252,46 @@ require_once __DIR__.'/../../../includes/config.php';
   </div>
 </div>
 
+
+<div class="modal fade" id="modalDetalle" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Detalle cliente SAT</h5>
+        <button class="close" data-dismiss="modal"><span>&times;</span></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="col-md-6 mb-2"><small class="text-muted d-block">RFC</small><div id="d_rfc">—</div></div>
+          <div class="col-md-6 mb-2"><small class="text-muted d-block">Razón social</small><div id="d_razon_social">—</div></div>
+          <div class="col-md-6 mb-2"><small class="text-muted d-block">Régimen fiscal</small><div id="d_regimen_fiscal">—</div></div>
+          <div class="col-md-6 mb-2"><small class="text-muted d-block">Uso CFDI</small><div id="d_uso_cdfi">—</div></div>
+        </div>
+        <hr>
+        <h6>Ubicación</h6>
+        <div class="row">
+          <div class="col-md-4 mb-2"><small class="text-muted d-block">Estado</small><div id="d_estado">—</div></div>
+          <div class="col-md-4 mb-2"><small class="text-muted d-block">Municipio</small><div id="d_municipio">—</div></div>
+          <div class="col-md-4 mb-2"><small class="text-muted d-block">Localidad</small><div id="d_localidad">—</div></div>
+        </div>
+        <hr>
+        <h6>Domicilio</h6>
+        <div class="row">
+          <div class="col-md-4 mb-2"><small class="text-muted d-block">Colonia</small><div id="d_colonia">—</div></div>
+          <div class="col-md-4 mb-2"><small class="text-muted d-block">Calle</small><div id="d_calle">—</div></div>
+          <div class="col-md-2 mb-2"><small class="text-muted d-block">No. ext</small><div id="d_numero_exterior">—</div></div>
+          <div class="col-md-2 mb-2"><small class="text-muted d-block">No. int</small><div id="d_numero_interior">—</div></div>
+          <div class="col-md-3 mb-2"><small class="text-muted d-block">CP</small><div id="d_dom_fiscal_cp">—</div></div>
+          <div class="col-md-9 mb-2"><small class="text-muted d-block">Referencia</small><div id="d_referencia">—</div></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light" data-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <?php include_once __DIR__.'/../../../includes/footer.php'; ?>
 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -262,10 +304,17 @@ $(function(){
   let paginaActual = 1;
   const limitePorPagina = 10;
   const URL_CTRL = '<?= BASE_URL ?>/controllers/ClientesSatController.php';
+  const URL_DETALLE = '<?= BASE_URL ?>/ajax/clientes_sat_detalle.php';
 
   const e = s => String(s ?? '')
     .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
     .replaceAll('"','&quot;').replaceAll("'",'&#039;');
+  const txt = v => (v === null || v === undefined || String(v).trim() === '') ? '—' : String(v);
+  const trunc = (v, max = 45) => {
+    const t = txt(v);
+    if(t === '—' || t.length <= max) return e(t);
+    return `<span title="${e(t)}">${e(t.slice(0, max))}…</span>`;
+  };
 
   let catalogos = { entidades:[], regimenes:[], usos_cfdi:[] };
   let bloqueoEventos = false;
@@ -454,25 +503,32 @@ $(function(){
 
       if(!rows.length){
         $('#emptyState').removeClass('d-none');
-        t = '<tr><td colspan="8" class="text-center text-muted">— No hay registros —</td></tr>';
+        t = '<tr><td colspan="10" class="text-center text-muted">— No hay registros —</td></tr>';
       }else{
         $('#emptyState').addClass('d-none');
         rows.forEach(v=>{
-          const ubi = [v.estado,v.municipio,v.localidad].filter(Boolean).join(' / ') || '—';
           t += `<tr>
             <td>${v.id ?? '—'}</td>
             <td><b>${e(v.rfc || '')}</b></td>
-            <td>${e(v.razon_social || '—')}</td>
-            <td>${e(v.regimen_fiscal_descripcion || v.regimen_fiscal || '—')}</td>
-            <td>${e(v.uso_cfdi_descripcion || v.uso_cfdi || '—')}</td>
-            <td>${e(ubi)}</td>
-            <td>${e(v.dom_fiscal_cp || '—')}</td>
+            <td>${trunc(v.razon_social, 42)}</td>
+            <td>${trunc(v.regimen_fiscal_descripcion || v.regimen_fiscal, 42)}</td>
+            <td>${e(txt(v.uso_cfdi_descripcion || v.uso_cfdi))}</td>
+            <td>${e(txt(v.estado_display))}</td>
+            <td>${e(txt(v.municipio_display))}</td>
+            <td>${e(txt(v.localidad_display))}</td>
+            <td>${e(txt(v.dom_fiscal_cp))}</td>
             <td class="text-center">
               <a class="btn btn-light btn-sm accion-editar" href="#"
                  data-id="${v.id ?? ''}"
                  data-rfc="${e(v.rfc || '')}"
-                 data-row="${e(v.row_key || '')}">
+                 data-row="${e(v.row_key || '')}"
+                 title="Editar">
                  <i class="mdi mdi-square-edit-outline"></i>
+              </a>
+              <a class="btn btn-light btn-sm accion-detalle" href="#"
+                 data-id="${v.id ?? ''}"
+                 title="Detalle">
+                 <i class="mdi mdi-eye-outline"></i>
               </a>
             </td>
           </tr>`;
@@ -552,6 +608,42 @@ $(function(){
     resetForm();
     $('#tituloModal').text('Nuevo cliente SAT');
     $('#modalForm').modal('show');
+  });
+
+  $(document).on('click','a.accion-detalle',function(ev){
+    ev.preventDefault();
+    const id = $(this).data('id');
+    if(!id){
+      toastr.error('No se encontró el identificador del registro.');
+      return;
+    }
+
+    $.getJSON(URL_DETALLE, { id })
+      .done(function(resp){
+        if(!resp?.ok || !resp?.data){
+          toastr.error(resp?.msg || 'No se pudo cargar el detalle.');
+          return;
+        }
+
+        const d = resp.data;
+        $('#d_rfc').text(txt(d.rfc));
+        $('#d_razon_social').text(txt(d.razon_social));
+        $('#d_regimen_fiscal').text(txt(d.regimen_fiscal_descripcion || d.regimen_fiscal));
+        $('#d_uso_cdfi').text(txt(d.uso_cfdi_descripcion || d.uso_cdfi));
+        $('#d_estado').text(txt(d.estado_display));
+        $('#d_municipio').text(txt(d.municipio_display));
+        $('#d_localidad').text(txt(d.localidad_display));
+        $('#d_colonia').text(txt(d.colonia));
+        $('#d_calle').text(txt(d.calle));
+        $('#d_numero_exterior').text(txt(d.numero_exterior));
+        $('#d_numero_interior').text(txt(d.numero_interior));
+        $('#d_dom_fiscal_cp').text(txt(d.dom_fiscal_cp));
+        $('#d_referencia').text(txt(d.referencia));
+        $('#modalDetalle').modal('show');
+      })
+      .fail(function(){
+        toastr.error('Error al cargar el detalle.');
+      });
   });
 
   $(document).on('click','a.accion-editar',function(ev){

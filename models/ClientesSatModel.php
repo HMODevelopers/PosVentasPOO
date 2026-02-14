@@ -14,10 +14,31 @@ class ClientesSatModel {
         $sql = "SELECT c.id, c.nombre_comercial, c.rfc, c.razon_social, c.regimen_fiscal, c.numero_registro_tributario, c.uso_cdfi, c.telefono, c.celular, c.email, c.email_alterno, c.pais, c.dom_fiscal_cp, c.estado, c.municipio, c.localidad, c.colonia, c.calle, c.numero_exterior, c.numero_interior, c.referencia, c.residencia_fiscal,
                        rf.Descripcion AS regimen_fiscal_descripcion,
                        uc.Descripcion AS uso_cfdi_descripcion,
+                       CASE WHEN c.estado REGEXP '^[0-9]{2}$' THEN e.nombre_ent ELSE NULL END AS estado_nombre,
+                       CASE WHEN c.estado REGEXP '^[0-9]{2}$' AND c.municipio REGEXP '^[0-9]{3}$' THEN m.nombre_mun ELSE NULL END AS municipio_nombre,
+                       CASE WHEN c.estado REGEXP '^[0-9]{2}$' AND c.municipio REGEXP '^[0-9]{3}$' AND c.localidad REGEXP '^[0-9]{4}$' THEN l.nombre_loc ELSE NULL END AS localidad_nombre,
+                       COALESCE(CASE WHEN c.estado REGEXP '^[0-9]{2}$' THEN e.nombre_ent END, c.estado) AS estado_display,
+                       COALESCE(CASE WHEN c.estado REGEXP '^[0-9]{2}$' AND c.municipio REGEXP '^[0-9]{3}$' THEN m.nombre_mun END, c.municipio) AS municipio_display,
+                       COALESCE(CASE WHEN c.estado REGEXP '^[0-9]{2}$' AND c.municipio REGEXP '^[0-9]{3}$' AND c.localidad REGEXP '^[0-9]{4}$' THEN l.nombre_loc END, c.localidad) AS localidad_display,
                        CASE WHEN c.id IS NOT NULL THEN CONCAT('ID:', c.id) ELSE CONCAT('RFC:', c.rfc) END AS row_key
                 FROM clientes_sat c
                 LEFT JOIN cat_sat_regimen_fiscal rf ON rf.ClaveRegimenFiscal = c.regimen_fiscal
                 LEFT JOIN cat_sat_uso_cfdi uc ON uc.ClaveUsoCFDI = c.uso_cdfi
+                LEFT JOIN entidades e
+                  ON c.estado REGEXP '^[0-9]{2}$'
+                 AND e.cve_ent = c.estado
+                LEFT JOIN municipios m
+                  ON c.estado REGEXP '^[0-9]{2}$'
+                 AND c.municipio REGEXP '^[0-9]{3}$'
+                 AND m.cve_ent = c.estado
+                 AND m.cve_mun = c.municipio
+                LEFT JOIN localidades l
+                  ON c.estado REGEXP '^[0-9]{2}$'
+                 AND c.municipio REGEXP '^[0-9]{3}$'
+                 AND c.localidad REGEXP '^[0-9]{4}$'
+                 AND l.cve_ent = c.estado
+                 AND l.cve_mun = c.municipio
+                 AND l.cve_loc = c.localidad
                 WHERE 1=1";
         $p = [];
         if (($rfc = trim($f['rfc'] ?? '')) !== '') {
@@ -78,6 +99,39 @@ class ClientesSatModel {
 
         $ub = $this->resolverUbicacionLegacy($row);
         return array_merge($row, $ub);
+    }
+
+    public function obtenerDetallePorId(int $id): ?array {
+        $sql = "SELECT c.*,
+                       rf.Descripcion AS regimen_fiscal_descripcion,
+                       uc.Descripcion AS uso_cfdi_descripcion,
+                       COALESCE(CASE WHEN c.estado REGEXP '^[0-9]{2}$' THEN e.nombre_ent END, c.estado) AS estado_display,
+                       COALESCE(CASE WHEN c.estado REGEXP '^[0-9]{2}$' AND c.municipio REGEXP '^[0-9]{3}$' THEN m.nombre_mun END, c.municipio) AS municipio_display,
+                       COALESCE(CASE WHEN c.estado REGEXP '^[0-9]{2}$' AND c.municipio REGEXP '^[0-9]{3}$' AND c.localidad REGEXP '^[0-9]{4}$' THEN l.nombre_loc END, c.localidad) AS localidad_display
+                FROM clientes_sat c
+                LEFT JOIN cat_sat_regimen_fiscal rf ON rf.ClaveRegimenFiscal = c.regimen_fiscal
+                LEFT JOIN cat_sat_uso_cfdi uc ON uc.ClaveUsoCFDI = c.uso_cdfi
+                LEFT JOIN entidades e
+                  ON c.estado REGEXP '^[0-9]{2}$'
+                 AND e.cve_ent = c.estado
+                LEFT JOIN municipios m
+                  ON c.estado REGEXP '^[0-9]{2}$'
+                 AND c.municipio REGEXP '^[0-9]{3}$'
+                 AND m.cve_ent = c.estado
+                 AND m.cve_mun = c.municipio
+                LEFT JOIN localidades l
+                  ON c.estado REGEXP '^[0-9]{2}$'
+                 AND c.municipio REGEXP '^[0-9]{3}$'
+                 AND c.localidad REGEXP '^[0-9]{4}$'
+                 AND l.cve_ent = c.estado
+                 AND l.cve_mun = c.municipio
+                 AND l.cve_loc = c.localidad
+                WHERE c.id = :id
+                LIMIT 1";
+        $st = $this->conn->prepare($sql);
+        $st->bindValue(':id', $id, PDO::PARAM_INT);
+        $st->execute();
+        return $st->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
     public function listarEntidades(): array {
@@ -151,9 +205,9 @@ class ClientesSatModel {
             ':email_alterno' => $this->nullable($d['email_alterno'] ?? null),
             ':pais' => 'MEX',
             ':dom_fiscal_cp' => $this->nullable($d['dom_fiscal_cp'] ?? null),
-            ':estado' => $this->nullable($this->normalizeGeoCode($d['estado'] ?? null, 2)),
-            ':municipio' => $this->nullable($this->normalizeGeoCode($d['municipio'] ?? null, 3)),
-            ':localidad' => $this->nullable($this->normalizeGeoCode($d['localidad'] ?? null, 4)),
+            ':estado' => $this->nullable($d['estado'] ?? null),
+            ':municipio' => $this->nullable($d['municipio'] ?? null),
+            ':localidad' => $this->nullable($d['localidad'] ?? null),
             ':colonia' => $this->nullable($d['colonia'] ?? null),
             ':calle' => $this->nullable($d['calle'] ?? null),
             ':numero_exterior' => $this->nullable($d['numero_exterior'] ?? null),
@@ -265,13 +319,6 @@ class ClientesSatModel {
             return str_pad($m[1], $len, '0', STR_PAD_LEFT);
         }
         return '';
-    }
-
-    private function normalizeGeoCode($valor, int $len): ?string {
-        $valor = trim((string)$valor);
-        if ($valor === '') return null;
-        $codigo = $this->extractCode($valor, $len);
-        return $codigo !== '' ? $codigo : null;
     }
 
     private function nullable($v) {
