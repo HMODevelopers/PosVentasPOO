@@ -1,30 +1,20 @@
 <style>
   #modalFacturarVenta .modal-xxl-custom {
-    max-width: 98vw;
-    width: 98vw;
-  }
-  @media (min-width: 1200px) {
-    #modalFacturarVenta .modal-xxl-custom {
-      max-width: 1400px;
-      width: 1400px;
-    }
+    margin: 1rem auto;
+    max-width: min(1400px, calc(100vw - 2rem));
+    width: calc(100vw - 2rem);
   }
   @media (min-width: 1600px) {
     #modalFacturarVenta .modal-xxl-custom {
-      max-width: 1600px;
-      width: 1600px;
+      max-width: min(1600px, calc(100vw - 3rem));
+      width: calc(100vw - 3rem);
     }
-  }
-  #modalFacturarVenta .modal-dialog {
-    margin: 1.25rem auto;
-    height: calc(100vh - 2.5rem);
   }
   #modalFacturarVenta .modal-content {
     border: 0;
     display: flex;
     flex-direction: column;
-    height: 100%;
-    max-height: 100%;
+    max-height: calc(100vh - 2rem);
     min-height: 0;
   }
   #modalFacturarVenta .modal-header,
@@ -38,8 +28,10 @@
     background: #f8fafc;
     flex: 1 1 auto;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
+    padding-bottom: 1.25rem;
   }
   #modalFacturarVenta .cfdi-section {
     background: #fff;
@@ -135,6 +127,38 @@
   #modalFacturarVenta .select2-container--default .select2-selection--single .select2-selection__arrow {
     height: calc(1.5em + 0.75rem + 2px);
   }
+  #modalFacturarVenta .select2-results__option {
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  #modalFacturarVenta .cfdi-select2-option {
+    color: #1f2d3d;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    line-height: 1.35;
+  }
+  #modalFacturarVenta .cfdi-select2-option__title,
+  #modalFacturarVenta .cfdi-select2-option__meta,
+  #modalFacturarVenta .cfdi-select2-option__secondary {
+    color: inherit;
+  }
+  #modalFacturarVenta .cfdi-select2-option__title {
+    font-weight: 700;
+  }
+  #modalFacturarVenta .cfdi-select2-option__meta,
+  #modalFacturarVenta .cfdi-select2-option__secondary {
+    font-size: 0.8125rem;
+  }
+  #modalFacturarVenta .select2-container--default .select2-results__option--highlighted[aria-selected],
+  #modalFacturarVenta .select2-container--default .select2-results__option[aria-selected='true'] {
+    color: #fff;
+  }
+  #modalFacturarVenta .select2-container--default .select2-results__option--highlighted[aria-selected] .cfdi-select2-option,
+  #modalFacturarVenta .select2-container--default .select2-results__option--highlighted[aria-selected] .cfdi-select2-option *,
+  #modalFacturarVenta .select2-container--default .select2-results__option[aria-selected='true'] .cfdi-select2-option,
+  #modalFacturarVenta .select2-container--default .select2-results__option[aria-selected='true'] .cfdi-select2-option * {
+    color: #fff !important;
+  }
   #modalFacturarVenta .cfdi-helper {
     color: #7a8797;
     font-size: 0.78rem;
@@ -146,7 +170,7 @@
 
 <!-- Modal Facturar Venta -->
 <div class="modal fade" id="modalFacturarVenta" tabindex="-1" role="dialog" aria-labelledby="modalFacturarVentaLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-xxl-custom" role="document">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable modal-xxl-custom" role="document">
     <div class="modal-content">
       <form id="formFacturarVenta" autocomplete="off">
         <div class="modal-header">
@@ -226,9 +250,6 @@
             <div class="cfdi-section">
               <div class="cfdi-section__head">
                 <h6 class="cfdi-section__title mb-0">3. Receptor</h6>
-                <button type="button" class="btn btn-outline-primary btn-sm" id="btnGuardarDatosFiscales">
-                  <i class="mdi mdi-content-save-outline mr-1"></i>Guardar datos fiscales
-                </button>
               </div>
               <div class="cfdi-section__body">
                 <div class="alert alert-info py-2 px-3 d-none" id="fac-publico-note"></div>

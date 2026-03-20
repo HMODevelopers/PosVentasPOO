@@ -2459,10 +2459,12 @@ function initFacturacionClienteSelect(){
       const comercial = item.nombre_comercial || '';
       const rfc = item.rfc || 'Sin RFC';
       const correo = item.correo || '';
+      const razonSocial = item.razon_social && item.razon_social !== razon ? item.razon_social : '';
       return $(`
-        <div>
-          <div class="font-weight-bold">${escapeHtml(razon)}</div>
-          <small class="text-muted">${escapeHtml(rfc)}${comercial ? ' · ' + escapeHtml(comercial) : ''}${correo ? ' · ' + escapeHtml(correo) : ''}</small>
+        <div class="cfdi-select2-option">
+          <span class="cfdi-select2-option__title">${escapeHtml(razon)}</span>
+          <span class="cfdi-select2-option__meta">${escapeHtml(rfc)}${correo ? ' · ' + escapeHtml(correo) : ''}</span>
+          ${comercial || razonSocial ? `<span class="cfdi-select2-option__secondary">${escapeHtml(comercial || razonSocial)}</span>` : ''}
         </div>
       `);
     },
@@ -2540,7 +2542,6 @@ function resetModalFacturacion(){
   $('#fac-archivos').addClass('d-none');
   $('#fac-link-xml, #fac-link-pdf').attr('href', '#');
   $('#btnConfirmarFacturar').prop('disabled', true).data('idVenta', 0);
-  $('#btnGuardarDatosFiscales').prop('disabled', false).html('<i class="mdi mdi-content-save-outline mr-1"></i>Guardar datos fiscales');
 }
 
 function fillFacturacionSelect($select, items, valueKey, textKey, currentValue){
@@ -2718,10 +2719,6 @@ function guardarDatosFiscalesFacturacion(idVenta, opciones = {}){
   const payload = getPayloadFacturacion();
   payload.id_venta = idVenta;
 
-  const $btn = $('#btnGuardarDatosFiscales');
-  const original = $btn.html();
-  $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Guardando...');
-
   return $.ajax({
     url: VENTAS_URL + '?accion=facturacion-guardar-receptor',
     method: 'POST',
@@ -2739,8 +2736,6 @@ function guardarDatosFiscalesFacturacion(idVenta, opciones = {}){
     }
   }).fail(function(xhr){
     $('#fac-error').removeClass('d-none').text(xhr?.responseJSON?.msg || 'Error al guardar los datos fiscales.');
-  }).always(function(){
-    $btn.prop('disabled', false).html(original);
   });
 }
 
@@ -2758,13 +2753,6 @@ $(document).on('click', '.accion-facturar', function(e){
   const folio = $(this).data('folio') || '';
   if (!idVenta) return;
   abrirModalFacturacion(idVenta, folio);
-});
-
-$(document).off('click', '#btnGuardarDatosFiscales').on('click', '#btnGuardarDatosFiscales', function(){
-  const idVenta = Number($('#fac-id-venta').val() || 0);
-  if (!idVenta) return;
-  $('#fac-error, #fac-success').addClass('d-none').empty();
-  guardarDatosFiscalesFacturacion(idVenta);
 });
 
 $(document).off('select2:select', '#fac-select-cliente').on('select2:select', '#fac-select-cliente', function(e){
@@ -2808,6 +2796,10 @@ $(document).off('change', '#fac-select-cliente').on('change', '#fac-select-clien
 
 $(document).off('shown.bs.modal', '#modalFacturarVenta').on('shown.bs.modal', '#modalFacturarVenta', function(){
   initFacturacionClienteSelect();
+  const modalBody = this.querySelector('.modal-body');
+  if (modalBody) {
+    modalBody.scrollTop = 0;
+  }
 });
 
 $(document).off('select2:open', '#fac-select-cliente').on('select2:open', '#fac-select-cliente', function(){
