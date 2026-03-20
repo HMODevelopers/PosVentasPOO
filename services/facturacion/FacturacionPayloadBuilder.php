@@ -8,11 +8,12 @@ class FacturacionPayloadBuilder
         $emisor = $ctx['emisor'];
         $receptor = $ctx['receptor'];
         $conceptos = $ctx['conceptos'];
+        $formaPago = $ctx['forma_pago'] ?? [];
 
         $subTotal = $this->n($ctx['totales']['subtotal'] ?? 0);
         $descuento = $this->nullableAmount($ctx['totales']['descuento'] ?? 0);
         $total = $this->n($ctx['totales']['total'] ?? 0);
-        $fecha = $ctx['fecha_emision'] ?? date('Y-m-d\TH:i:s');
+        $fecha = $ctx['fecha_emision'] ?? ($formaPago['fecha'] ?? date('Y-m-d\TH:i:s'));
 
         return [
             'Credenciales' => [
@@ -37,17 +38,17 @@ class FacturacionPayloadBuilder
             'Conceptos' => $conceptos,
             'Comprobante40R' => [
                 'ClaveCFDI' => 'FAC',
-                'CondicionesDePago' => $venta['condiciones_pago'] ?? null,
-                'Exportacion' => '01',
+                'CondicionesDePago' => $formaPago['condiciones_pago'] ?? ($venta['condiciones_pago'] ?? null),
+                'Exportacion' => $formaPago['exportacion'] ?? '01',
                 'Fecha' => $fecha,
                 'Folio' => (string)$venta['folio'],
-                'FormaDePago' => (string)$venta['forma_pago_sat'],
+                'FormaDePago' => (string)($formaPago['forma_pago'] ?? $venta['forma_pago_sat']),
                 'LugarExpedicion' => (string)$emisor['lugar_expedicion'],
-                'MetodoDePago' => 'PUE',
-                'Moneda' => 'MXN',
+                'MetodoDePago' => (string)($formaPago['metodo_pago'] ?? 'PUE'),
+                'Moneda' => (string)($formaPago['moneda'] ?? 'MXN'),
                 'Referencia' => $ctx['referencia'],
                 'SubTotal' => $subTotal,
-                'TipoCambio' => null,
+                'TipoCambio' => $formaPago['tipo_cambio'] ?? null,
                 'Total' => $total,
                 'Confirmacion' => null,
                 'Descuento' => $descuento,

@@ -2419,12 +2419,15 @@ function resetModalFacturacion(){
   $('#fac-contenido').addClass('d-none');
   $('#fac-error, #fac-warning, #fac-success').addClass('d-none').empty();
   $('#fac-validaciones').html('<li>Sin validaciones disponibles.</li>');
-  $('#fac-detalles-body').html('<tr><td colspan="5" class="text-center text-muted">Sin conceptos</td></tr>');
-  $('#fac-folio, #fac-fecha, #fac-cliente, #fac-forma-pago, #fac-rfc, #fac-razon-social, #fac-uso-cfdi, #fac-regimen, #fac-cp').text('—');
-  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp').val('').prop('readonly', false);
+  $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
+  $('#fac-folio, #fac-fecha, #fac-cliente, #fac-forma-pago, #fac-rfc, #fac-razon-social, #fac-uso-cfdi, #fac-regimen, #fac-cp, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion, #fac-moneda, #fac-metodo-pago, #fac-tipo-cambio, #fac-condiciones-pago, #fac-tipo-comprobante, #fac-exportacion').text('—');
+  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial').val('').prop('readonly', false);
   $('#fac-select-regimen, #fac-select-uso-cfdi').html('<option value="">Seleccione…</option>').prop('disabled', false);
   $('#fac-publico-note').addClass('d-none').empty();
+  $('#fac-info-global').removeClass('alert-warning').addClass('alert-light').text('No aplica información global para esta venta.');
   $('#fac-total').text(mxn(0));
+  $('#fac-total-subtotal, #fac-total-descuento, #fac-total-impuestos').text(mxn(0));
+  $('#fac-importe-letra').text('No disponible en el flujo actual.');
   $('#fac-estatus-fiscal').html(getBadgeFiscal(''));
   $('#fac-archivos').addClass('d-none');
   $('#fac-link-xml, #fac-link-pdf').attr('href', '#');
@@ -2449,7 +2452,10 @@ function fillFacturacionSelect($select, items, valueKey, textKey, currentValue){
 function renderFacturacionPreview(resp, idVenta){
   const ctx = resp?.contexto || {};
   const venta = ctx.venta || {};
+  const emisor = ctx.emisor || {};
   const receptor = ctx.receptor || {};
+  const infoGlobal = ctx.informacion_global || {};
+  const formaPago = ctx.forma_pago || {};
   const catalogos = ctx.catalogos || {};
   const detalles = Array.isArray(ctx.detalles) ? ctx.detalles : [];
   const totales = ctx.totales || {};
@@ -2459,11 +2465,33 @@ function renderFacturacionPreview(resp, idVenta){
   const facturable = !!resp?.facturable;
   const estatusFiscal = String(cfdi.estatus || venta.estatus_fiscal || '').toUpperCase();
 
+  $('#fac-emisor-rfc').text(emisor.rfc || '—');
+  $('#fac-emisor-nombre').text(emisor.nombre || '—');
+  $('#fac-emisor-sucursal').text(emisor.sucursal || venta.sucursal_nombre || '—');
+  $('#fac-emisor-regimen').text(emisor.regimen_fiscal || '—');
+  $('#fac-emisor-lugar').text(emisor.lugar_expedicion || '—');
+  $('#fac-emisor-serie').text(emisor.serie || '—');
+  $('#fac-emisor-tipo').text(emisor.tipo_comprobante || '—');
+  $('#fac-emisor-exportacion').text(emisor.exportacion || '—');
   $('#fac-folio').text(venta.folio || ('#' + idVenta));
   $('#fac-fecha').text(fechaMx(venta.fecha));
   $('#fac-cliente').text(venta.cliente_nombre || venta.cliente || 'Público en general');
-  $('#fac-forma-pago').text(venta.forma_pago || '—');
+  $('#fac-forma-pago').text(
+    formaPago.forma_pago
+      ? `${formaPago.forma_pago}${formaPago.forma_pago_descripcion ? ' · ' + formaPago.forma_pago_descripcion : ''}`
+      : (formaPago.forma_pago_descripcion || '—')
+  );
+  $('#fac-moneda').text(formaPago.moneda || '—');
+  $('#fac-metodo-pago').text(formaPago.metodo_pago || '—');
+  $('#fac-tipo-cambio').text(formaPago.tipo_cambio || '—');
+  $('#fac-condiciones-pago').text(formaPago.condiciones_pago || '—');
+  $('#fac-tipo-comprobante').text(formaPago.tipo_comprobante || emisor.tipo_comprobante || '—');
+  $('#fac-exportacion').text(formaPago.exportacion || emisor.exportacion || '—');
+  $('#fac-total-subtotal').text(mxn(totales.subtotal ?? venta.subtotal_factura ?? venta.total ?? 0));
+  $('#fac-total-descuento').text(mxn(totales.descuento ?? venta.descuento_factura ?? 0));
+  $('#fac-total-impuestos').text(mxn(totales.impuestos ?? 0));
   $('#fac-total').text(mxn(totales.total ?? venta.total ?? 0));
+  $('#fac-importe-letra').text(totales.importe_letra || 'No disponible en el flujo actual.');
   $('#fac-estatus-fiscal').html(getBadgeFiscal(estatusFiscal));
 
   $('#fac-rfc').text(receptor.rfc || '—');
@@ -2474,8 +2502,11 @@ function renderFacturacionPreview(resp, idVenta){
 
   $('#fac-input-rfc').val(receptor.rfc || '');
   $('#fac-input-razon-social').val(receptor.nombre || '');
+  $('#fac-input-nombre-comercial').val(receptor.nombre_comercial || '');
   $('#fac-input-correo').val(receptor.correo || '');
   $('#fac-input-cp').val(receptor.domicilio_fiscal_receptor || '');
+  $('#fac-input-residencia-fiscal').val(receptor.residencia_fiscal || '');
+  $('#fac-input-num-reg-id-trib').val(receptor.num_reg_id_trib || '');
   fillFacturacionSelect($('#fac-select-regimen'), catalogos.regimenes_fiscales || [], 'ClaveRegimenFiscal', 'Descripcion', receptor.regimen_fiscal_receptor || '');
   fillFacturacionSelect($('#fac-select-uso-cfdi'), catalogos.usos_cfdi || [], 'ClaveUsoCFDI', 'Descripcion', receptor.uso_cfdi || '');
 
@@ -2486,25 +2517,42 @@ function renderFacturacionPreview(resp, idVenta){
       ? 'Venta tratada como <strong>Público en general</strong>. Se aplican los valores fiscales por defecto del CFDI 4.0.'
       : '');
 
-  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-cp, #fac-select-regimen, #fac-select-uso-cfdi')
+  $('#fac-info-global')
+    .toggleClass('alert-warning', !!infoGlobal.aplica)
+    .toggleClass('alert-light', !infoGlobal.aplica)
+    .text(infoGlobal.motivo || 'No aplica información global para esta venta.');
+
+  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-cp, #fac-input-correo, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-select-regimen, #fac-select-uso-cfdi')
     .prop('readonly', false)
     .prop('disabled', false);
+  $('#fac-input-nombre-comercial').prop('readonly', true);
 
   let detalleHtml = '';
   if (!detalles.length) {
-    detalleHtml = '<tr><td colspan="5" class="text-center text-muted">Sin conceptos</td></tr>';
+    detalleHtml = '<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>';
   } else {
     detalles.forEach(d => {
       const cantidad = Number(d.cantidad || 0);
       const pu = Number(d.precio_unitario || 0);
       const importe = Number(d.subtotal ?? (cantidad * pu));
+      const objetoImp = d.objeto_imp || d.producto_objeto_imp || '—';
+      const tasaIva = Number(d.tasa_iva ?? d.producto_tasa_iva ?? 0);
+      const ivaImporte = Number(d.importe_iva ?? (objetoImp === '02' && tasaIva > 0 ? (importe * tasaIva) : 0));
+      const impuestos = ivaImporte > 0
+        ? `IVA ${((tasaIva || 0) * 100).toFixed(2)}%: ${mxn(ivaImporte)}`
+        : '—';
       detalleHtml += `
         <tr>
           <td class="text-center">${fix2(cantidad)}</td>
+          <td>${d.clave_prod_serv_sat || '—'}</td>
           <td>${d.producto_codigo || d.codigo || '—'}</td>
+          <td>${d.clave_unidad_sat || '—'}</td>
+          <td>${d.unidad_sat_descripcion || '—'}</td>
           <td>${d.descripcion || d.producto_descripcion || d.producto || '—'}</td>
           <td class="text-right">${mxn(pu)}</td>
           <td class="text-right">${mxn(importe)}</td>
+          <td class="text-center">${objetoImp}</td>
+          <td class="text-right">${impuestos}</td>
         </tr>`;
     });
   }
@@ -2556,10 +2604,13 @@ function getPayloadFacturacion(){
     id_venta: Number($('#fac-id-venta').val() || 0),
     rfc: ($('#fac-input-rfc').val() || '').trim().toUpperCase(),
     razon_social: ($('#fac-input-razon-social').val() || '').trim(),
+    nombre_comercial: ($('#fac-input-nombre-comercial').val() || '').trim(),
     email: ($('#fac-input-correo').val() || '').trim(),
     dom_fiscal_cp: ($('#fac-input-cp').val() || '').trim(),
     regimen_fiscal: ($('#fac-select-regimen').val() || '').trim(),
-    uso_cfdi: ($('#fac-select-uso-cfdi').val() || '').trim()
+    uso_cfdi: ($('#fac-select-uso-cfdi').val() || '').trim(),
+    residencia_fiscal: ($('#fac-input-residencia-fiscal').val() || '').trim().toUpperCase(),
+    numero_registro_tributario: ($('#fac-input-num-reg-id-trib').val() || '').trim()
   };
 }
 

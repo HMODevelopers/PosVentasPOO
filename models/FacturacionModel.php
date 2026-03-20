@@ -21,6 +21,8 @@ class FacturacionModel
         $emisor = $this->getEmisorByVenta($idVenta);
         $receptor = $this->getReceptorByVenta($venta ?: [], $emisor);
         $conceptos = $this->buildConceptos($detalles);
+        $formaPago = $this->buildFormaPago($venta ?: [], $emisor, $cfdiActual ?: []);
+        $totales = $this->buildTotales($venta ?: [], $conceptos);
 
         return [
             'venta' => $venta,
@@ -28,16 +30,14 @@ class FacturacionModel
             'cfdi_actual' => $cfdiActual,
             'emisor' => $emisor,
             'receptor' => $receptor,
+            'informacion_global' => $this->buildInformacionGlobal($venta ?: [], $receptor),
             'catalogos' => [
                 'regimenes_fiscales' => $this->listarRegimenesFiscales(),
                 'usos_cfdi' => $this->listarUsosCfdi(),
             ],
+            'forma_pago' => $formaPago,
             'conceptos' => $conceptos,
-            'totales' => [
-                'subtotal' => $venta['subtotal_factura'] ?? ($venta['subtotal'] ?? $venta['total'] ?? 0),
-                'descuento' => $venta['descuento_factura'] ?? ($venta['descuento'] ?? 0),
-                'total' => $venta['total'] ?? 0,
-            ],
+            'totales' => $totales,
         ];
     }
 
@@ -152,6 +152,7 @@ class FacturacionModel
                 v.*,
                 COALESCE(fp.clave_sat, '') AS forma_pago_sat,
                 COALESCE(fp.descripcion, '') AS forma_pago,
+                COALESCE(s.nombre, CONCAT('Sucursal #', cj.id_sucursal)) AS sucursal_nombre,
                 c.id_cliente AS cliente_id,
                 c.nombre AS cliente_nombre,
                 c.rfc AS cliente_rfc,
@@ -183,6 +184,7 @@ class FacturacionModel
             LEFT JOIN clientes c ON c.id_cliente = v.id_cliente
             LEFT JOIN formas_pago fp ON fp.id_forma_pago = v.id_forma_pago
             INNER JOIN cajas cj ON cj.id_caja = v.id_caja
+            LEFT JOIN sucursales s ON s.id_sucursal = cj.id_sucursal
             LEFT JOIN clientes_sat cs
                 ON cs.id = c.id_cliente
                 OR (
@@ -223,9 +225,10 @@ class FacturacionModel
 
     private function getEmisorByVenta(int $idVenta): array
     {
-        $sql = "SELECT cfe.*
+        $sql = "SELECT cfe.*, s.nombre AS sucursal_nombre
                 FROM ventas v
                 INNER JOIN cajas c ON c.id_caja = v.id_caja
+                LEFT JOIN sucursales s ON s.id_sucursal = c.id_sucursal
                 INNER JOIN config_fiscal_emisor cfe ON cfe.id_sucursal = c.id_sucursal AND cfe.activo = 1
                 WHERE v.id_venta = :id
                 ORDER BY cfe.id_config DESC
@@ -235,9 +238,17 @@ class FacturacionModel
         $row = $st->fetch(PDO::FETCH_ASSOC) ?: [];
 
         return [
+            'rfc' => $this->schema->rowValue($row, ['rfc_emisor', 'rfc']),
             'nombre' => $this->schema->rowValue($row, ['razon_social_emisor', 'nombre', 'razon_social']),
+            'sucursal' => $this->schema->rowValue($row, ['sucursal_nombre', 'nombre_sucursal']),
             'regimen_fiscal' => $this->schema->rowValue($row, ['regimen_fiscal_emisor', 'regimen_fiscal']),
             'lugar_expedicion' => $this->schema->rowValue($row, ['cp_expedicion', 'codigo_postal', 'lugar_expedicion']),
+            'serie' => $this->schema->rowValue($row, ['serie']),
+            'folio_actual' => $this->schema->rowValue($row, ['folio_actual']),
+            'tipo_comprobante' => $this->schema->rowValue($row, ['tipo_comprobante'], 'I'),
+            'exportacion' => $this->schema->rowValue($row, ['exportacion_default'], '01'),
+            'moneda' => $this->schema->rowValue($row, ['moneda_default'], 'MXN'),
+            'objeto_imp_default' => $this->schema->rowValue($row, ['objeto_imp_default'], '02'),
             'fac_atr_adquirente' => $this->schema->rowValue($row, ['fac_atr_adquirente']),
             'raw' => $row,
         ];
@@ -272,6 +283,7 @@ class FacturacionModel
 
         return [
             'nombre' => $nombre,
+            'nombre_comercial' => $venta['cs_nombre_comercial'] ?? $venta['cliente_nombre'] ?? null,
             'rfc' => $rfc,
             'domicilio_fiscal_receptor' => $cp,
             'regimen_fiscal_receptor' => $regimen,
@@ -287,6 +299,63 @@ class FacturacionModel
             ]),
             'cliente_id' => (int)($venta['cliente_id'] ?? 0),
             'es_publico_general' => $esPublicoGeneral,
+        ];
+    }
+
+    private function buildInformacionGlobal(array $venta, array $receptor): array
+    {
+        $aplica = (bool)($receptor['es_publico_general'] ?? false);
+
+        return [
+            'aplica' => $aplica,
+            'motivo' => $aplica
+                ? 'La venta se identificó como público en general; revisa los datos fiscales del receptor antes de emitir el CFDI.'
+                : 'No aplica información global para esta venta individual.',
+        ];
+    }
+
+    private function buildFormaPago(array $venta, array $emisor, array $cfdiActual): array
+    {
+        return [
+            'moneda' => $this->firstNonEmpty([
+                $cfdiActual['moneda'] ?? null,
+                $venta['moneda'] ?? null,
+                $emisor['moneda'] ?? null,
+                'MXN',
+            ]),
+            'metodo_pago' => $this->firstNonEmpty([
+                $cfdiActual['metodo_pago'] ?? null,
+                $venta['metodo_pago'] ?? null,
+                'PUE',
+            ]),
+            'forma_pago' => $this->firstNonEmpty([
+                $venta['forma_pago_sat'] ?? null,
+            ]),
+            'forma_pago_descripcion' => $this->firstNonEmpty([
+                $venta['forma_pago'] ?? null,
+            ]),
+            'condiciones_pago' => $this->firstNonEmpty([
+                $cfdiActual['condiciones_pago'] ?? null,
+                $venta['condiciones_pago'] ?? null,
+            ]),
+            'tipo_cambio' => $this->firstNonEmpty([
+                $cfdiActual['tipo_cambio'] ?? null,
+                $venta['tipo_cambio'] ?? null,
+            ]),
+            'tipo_comprobante' => $this->firstNonEmpty([
+                $cfdiActual['tipo_comprobante'] ?? null,
+                $emisor['tipo_comprobante'] ?? null,
+                'I',
+            ]),
+            'exportacion' => $this->firstNonEmpty([
+                $cfdiActual['exportacion'] ?? null,
+                $emisor['exportacion'] ?? null,
+                '01',
+            ]),
+            'fecha' => $this->firstNonEmpty([
+                $cfdiActual['fecha_emision'] ?? null,
+                $venta['fecha'] ?? null,
+            ]),
         ];
     }
 
@@ -330,6 +399,30 @@ class FacturacionModel
         }
 
         return $out;
+    }
+
+    private function buildTotales(array $venta, array $conceptos): array
+    {
+        $subtotal = (float)($venta['subtotal_factura'] ?? ($venta['subtotal'] ?? $venta['total'] ?? 0));
+        $descuento = (float)($venta['descuento_factura'] ?? ($venta['descuento'] ?? 0));
+        $impuestos = 0.0;
+
+        foreach ($conceptos as $concepto) {
+            foreach (($concepto['Traslados'] ?? []) as $traslado) {
+                $impuestos += (float)($traslado['Importe'] ?? 0);
+            }
+            foreach (($concepto['Retenciones'] ?? []) as $retencion) {
+                $impuestos -= (float)($retencion['Importe'] ?? 0);
+            }
+        }
+
+        return [
+            'subtotal' => $subtotal,
+            'descuento' => $descuento,
+            'impuestos' => round($impuestos, 2),
+            'total' => (float)($venta['total'] ?? max(0, ($subtotal - $descuento) + $impuestos)),
+            'importe_letra' => null,
+        ];
     }
 
     private function resolveSubtotalVenta(array $venta, int $idVenta): float
@@ -403,6 +496,7 @@ class FacturacionModel
     private function normalizarDatosFiscales(array $data, array $venta): array
     {
         $payload = [
+            'nombre_comercial' => trim((string)($data['nombre_comercial'] ?? '')),
             'razon_social' => trim((string)($data['razon_social'] ?? $data['nombre'] ?? '')),
             'rfc' => strtoupper(trim((string)($data['rfc'] ?? ''))),
             'email' => trim((string)($data['email'] ?? $data['correo'] ?? '')),
@@ -453,7 +547,7 @@ class FacturacionModel
     {
         $base = [
             ':id' => $idCliente,
-            ':nombre_comercial' => $venta['cliente_nombre'] ?: $payload['razon_social'],
+            ':nombre_comercial' => $payload['nombre_comercial'] !== '' ? $payload['nombre_comercial'] : ($venta['cliente_nombre'] ?: $payload['razon_social']),
             ':rfc' => $payload['rfc'] !== '' ? $payload['rfc'] : null,
             ':razon_social' => $payload['razon_social'] !== '' ? $payload['razon_social'] : null,
             ':regimen_fiscal' => $payload['regimen_fiscal'] !== '' ? $payload['regimen_fiscal'] : null,
