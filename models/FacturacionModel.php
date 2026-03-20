@@ -19,7 +19,7 @@ class FacturacionModel
         $detalles = $this->getVentaDetalle($idVenta);
         $cfdiActual = $this->getCfdiByVenta($idVenta);
         $emisor = $this->getEmisorByVenta($idVenta);
-        $receptor = $this->getReceptorByVenta($venta ?: []);
+        $receptor = $this->getReceptorByVenta($venta ?: [], $emisor);
         $conceptos = $this->buildConceptos($detalles);
 
         return [
@@ -28,6 +28,10 @@ class FacturacionModel
             'cfdi_actual' => $cfdiActual,
             'emisor' => $emisor,
             'receptor' => $receptor,
+            'catalogos' => [
+                'regimenes_fiscales' => $this->listarRegimenesFiscales(),
+                'usos_cfdi' => $this->listarUsosCfdi(),
+            ],
             'conceptos' => $conceptos,
             'totales' => [
                 'subtotal' => $venta['subtotal_factura'] ?? ($venta['subtotal'] ?? $venta['total'] ?? 0),
@@ -107,41 +111,86 @@ class FacturacionModel
         return 'FAC-' . preg_replace('/[^A-Za-z0-9\-]/', '', $folio) . '-' . date('YmdHis');
     }
 
-    private function getVenta(int $idVenta): ?array
+    public function guardarDatosFiscalesVenta(int $idVenta, array $data): array
     {
-        $clienteNombre = $this->schema->pickColumn('clientes', ['nombre', 'razon_social', 'nombre_fiscal'], true);
-        $clienteRfc = $this->schema->pickColumn('clientes', ['rfc']);
-        $clienteUsoCfdi = $this->schema->pickColumn('clientes', ['uso_cfdi', 'uso_cdfi']);
-        $clienteRegimen = $this->schema->pickColumn('clientes', ['regimen_fiscal']);
-        $clienteCp = $this->schema->pickColumn('clientes', ['codigo_postal', 'cp', 'dom_fiscal_cp']);
-        $clienteDireccion = $this->schema->pickColumn('clientes', ['direccion']);
-        $clienteTelefono = $this->schema->pickColumn('clientes', ['telefono']);
-
-        $satSelect = '';
-        $satJoin = '';
-        if ($this->schema->tableExists('clientes_sat')) {
-            $satSelect = ", cs.razon_social AS cs_razon_social, cs.regimen_fiscal AS cs_regimen_fiscal, cs.dom_fiscal_cp AS cs_dom_fiscal_cp,
-                cs.uso_cdfi AS cs_uso_cfdi, cs.numero_registro_tributario AS cs_num_reg_id_trib, cs.residencia_fiscal AS cs_residencia_fiscal";
-            $satJoin = ' LEFT JOIN clientes_sat cs ON cs.rfc = c.rfc ';
+        $venta = $this->getVenta($idVenta);
+        if (!$venta) {
+            throw new RuntimeException('La venta no existe.');
         }
 
+        $idCliente = (int)($venta['id_cliente'] ?? 0);
+        if ($idCliente <= 0) {
+            return [
+                'guardado' => false,
+                'msg' => 'La venta no tiene cliente registrado. Se usarán los datos fiscales del cliente genérico.',
+            ];
+        }
+
+        $payload = $this->normalizarDatosFiscales($data, $venta);
+        $this->conn->beginTransaction();
+
+        try {
+            $this->actualizarClienteBase($idCliente, $payload);
+            $this->upsertClienteSat($idCliente, $payload, $venta);
+            $this->conn->commit();
+
+            return [
+                'guardado' => true,
+                'msg' => 'Datos fiscales guardados correctamente.',
+            ];
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    private function getVenta(int $idVenta): ?array
+    {
         $sql = "SELECT
                 v.*,
                 COALESCE(fp.clave_sat, '') AS forma_pago_sat,
                 COALESCE(fp.descripcion, '') AS forma_pago,
-                c.{$clienteNombre} AS cliente_nombre" .
-                ($clienteRfc ? ", c.{$clienteRfc} AS cliente_rfc" : '') .
-                ($clienteUsoCfdi ? ", c.{$clienteUsoCfdi} AS cliente_uso_cfdi" : '') .
-                ($clienteRegimen ? ", c.{$clienteRegimen} AS cliente_regimen_fiscal" : '') .
-                ($clienteCp ? ", c.{$clienteCp} AS cliente_codigo_postal" : '') .
-                ($clienteDireccion ? ", c.{$clienteDireccion} AS cliente_direccion" : '') .
-                ($clienteTelefono ? ", c.{$clienteTelefono} AS cliente_telefono" : '') .
-                ", cj.id_sucursal AS id_sucursal{$satSelect}
+                c.id_cliente AS cliente_id,
+                c.nombre AS cliente_nombre,
+                c.rfc AS cliente_rfc,
+                c.correo AS cliente_correo,
+                c.telefono AS cliente_telefono,
+                c.direccion AS cliente_direccion,
+                c.uso_cfdi AS cliente_uso_cfdi,
+                cs.id AS cliente_sat_id,
+                cs.nombre_comercial AS cs_nombre_comercial,
+                cs.rfc AS cs_rfc,
+                cs.razon_social AS cs_razon_social,
+                cs.regimen_fiscal AS cs_regimen_fiscal,
+                cs.numero_registro_tributario AS cs_num_reg_id_trib,
+                cs.uso_cdfi AS cs_uso_cfdi,
+                cs.email AS cs_email,
+                cs.email_alterno AS cs_email_alterno,
+                cs.dom_fiscal_cp AS cs_dom_fiscal_cp,
+                cs.estado AS cs_estado,
+                cs.municipio AS cs_municipio,
+                cs.localidad AS cs_localidad,
+                cs.colonia AS cs_colonia,
+                cs.calle AS cs_calle,
+                cs.numero_exterior AS cs_numero_exterior,
+                cs.numero_interior AS cs_numero_interior,
+                cs.referencia AS cs_referencia,
+                cs.residencia_fiscal AS cs_residencia_fiscal,
+                cj.id_sucursal AS id_sucursal
             FROM ventas v
             LEFT JOIN clientes c ON c.id_cliente = v.id_cliente
             LEFT JOIN formas_pago fp ON fp.id_forma_pago = v.id_forma_pago
             INNER JOIN cajas cj ON cj.id_caja = v.id_caja
-            {$satJoin}
+            LEFT JOIN clientes_sat cs
+                ON cs.id = c.id_cliente
+                OR (
+                    cs.id IS NULL
+                    AND NULLIF(TRIM(cs.rfc), '') IS NOT NULL
+                    AND NULLIF(TRIM(c.rfc), '') IS NOT NULL
+                    AND cs.rfc = c.rfc
+                )
             WHERE v.id_venta = :id
             LIMIT 1";
 
@@ -194,28 +243,36 @@ class FacturacionModel
         ];
     }
 
-    private function getReceptorByVenta(array $venta): array
+    private function getReceptorByVenta(array $venta, array $emisor = []): array
     {
+        $esPublicoGeneral = $this->esPublicoGeneral($venta);
+        $rfc = $this->firstNonEmpty([
+            $venta['cs_rfc'] ?? null,
+            $venta['cliente_rfc'] ?? null,
+            $esPublicoGeneral ? 'XAXX010101000' : null,
+        ]);
         $nombre = $this->firstNonEmpty([
-            $venta['cliente_nombre'] ?? null,
             $venta['cs_razon_social'] ?? null,
+            $venta['cliente_nombre'] ?? null,
+            $esPublicoGeneral ? 'PUBLICO EN GENERAL' : null,
         ]);
         $regimen = $this->firstNonEmpty([
-            $venta['cliente_regimen_fiscal'] ?? null,
             $venta['cs_regimen_fiscal'] ?? null,
+            $esPublicoGeneral ? '616' : null,
         ]);
         $cp = $this->firstNonEmpty([
-            $venta['cliente_codigo_postal'] ?? null,
             $venta['cs_dom_fiscal_cp'] ?? null,
+            $esPublicoGeneral ? ($emisor['lugar_expedicion'] ?? null) : null,
         ]);
         $usoCfdi = $this->firstNonEmpty([
-            $venta['cliente_uso_cfdi'] ?? null,
             $venta['cs_uso_cfdi'] ?? null,
+            $venta['cliente_uso_cfdi'] ?? null,
+            $esPublicoGeneral ? 'S01' : null,
         ]);
 
         return [
             'nombre' => $nombre,
-            'rfc' => $venta['cliente_rfc'] ?? null,
+            'rfc' => $rfc,
             'domicilio_fiscal_receptor' => $cp,
             'regimen_fiscal_receptor' => $regimen,
             'uso_cfdi' => $usoCfdi,
@@ -223,6 +280,13 @@ class FacturacionModel
             'residencia_fiscal' => $venta['cs_residencia_fiscal'] ?? null,
             'direccion' => $venta['cliente_direccion'] ?? null,
             'telefono' => $venta['cliente_telefono'] ?? null,
+            'correo' => $this->firstNonEmpty([
+                $venta['cs_email'] ?? null,
+                $venta['cliente_correo'] ?? null,
+                $venta['cs_email_alterno'] ?? null,
+            ]),
+            'cliente_id' => (int)($venta['cliente_id'] ?? 0),
+            'es_publico_general' => $esPublicoGeneral,
         ];
     }
 
@@ -305,5 +369,151 @@ class FacturacionModel
     private function n($value): string
     {
         return number_format((float)$value, 2, '.', '');
+    }
+
+    private function listarRegimenesFiscales(): array
+    {
+        $st = $this->conn->query("SELECT ClaveRegimenFiscal, Descripcion FROM cat_sat_regimen_fiscal WHERE Activo = 1 ORDER BY ClaveRegimenFiscal ASC");
+        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private function listarUsosCfdi(): array
+    {
+        $st = $this->conn->query("SELECT ClaveUsoCFDI, Descripcion FROM cat_sat_uso_cfdi WHERE Activo = 1 ORDER BY ClaveUsoCFDI ASC");
+        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private function esPublicoGeneral(array $venta): bool
+    {
+        $idCliente = (int)($venta['id_cliente'] ?? 0);
+        $rfc = strtoupper(trim((string)($venta['cs_rfc'] ?? $venta['cliente_rfc'] ?? '')));
+        $nombre = strtoupper(trim((string)($venta['cs_razon_social'] ?? $venta['cliente_nombre'] ?? '')));
+
+        if ($rfc === 'XAXX010101000') {
+            return true;
+        }
+
+        if (strpos($nombre, 'PUBLICO') !== false || strpos($nombre, 'MOSTRADOR') !== false) {
+            return true;
+        }
+
+        return $idCliente <= 0;
+    }
+
+    private function normalizarDatosFiscales(array $data, array $venta): array
+    {
+        $payload = [
+            'razon_social' => trim((string)($data['razon_social'] ?? $data['nombre'] ?? '')),
+            'rfc' => strtoupper(trim((string)($data['rfc'] ?? ''))),
+            'email' => trim((string)($data['email'] ?? $data['correo'] ?? '')),
+            'dom_fiscal_cp' => trim((string)($data['dom_fiscal_cp'] ?? $data['codigo_postal'] ?? '')),
+            'regimen_fiscal' => trim((string)($data['regimen_fiscal'] ?? '')),
+            'uso_cdfi' => trim((string)($data['uso_cfdi'] ?? $data['uso_cdfi'] ?? '')),
+            'numero_registro_tributario' => trim((string)($data['numero_registro_tributario'] ?? '')),
+            'residencia_fiscal' => trim((string)($data['residencia_fiscal'] ?? '')),
+        ];
+
+        if ($this->esPublicoGeneral($venta)) {
+            if ($payload['razon_social'] === '') {
+                $payload['razon_social'] = 'PUBLICO EN GENERAL';
+            }
+            if ($payload['rfc'] === '') {
+                $payload['rfc'] = 'XAXX010101000';
+            }
+            if ($payload['regimen_fiscal'] === '') {
+                $payload['regimen_fiscal'] = '616';
+            }
+            if ($payload['uso_cdfi'] === '') {
+                $payload['uso_cdfi'] = 'S01';
+            }
+        }
+
+        return $payload;
+    }
+
+    private function actualizarClienteBase(int $idCliente, array $payload): void
+    {
+        $sql = "UPDATE clientes
+                SET nombre = :nombre,
+                    rfc = :rfc,
+                    correo = :correo,
+                    uso_cfdi = :uso_cfdi
+                WHERE id_cliente = :id_cliente";
+        $st = $this->conn->prepare($sql);
+        $st->execute([
+            ':nombre' => $payload['razon_social'],
+            ':rfc' => $payload['rfc'] !== '' ? $payload['rfc'] : null,
+            ':correo' => $payload['email'] !== '' ? $payload['email'] : null,
+            ':uso_cfdi' => $payload['uso_cdfi'] !== '' ? $payload['uso_cdfi'] : null,
+            ':id_cliente' => $idCliente,
+        ]);
+    }
+
+    private function upsertClienteSat(int $idCliente, array $payload, array $venta): void
+    {
+        $base = [
+            ':id' => $idCliente,
+            ':nombre_comercial' => $venta['cliente_nombre'] ?: $payload['razon_social'],
+            ':rfc' => $payload['rfc'] !== '' ? $payload['rfc'] : null,
+            ':razon_social' => $payload['razon_social'] !== '' ? $payload['razon_social'] : null,
+            ':regimen_fiscal' => $payload['regimen_fiscal'] !== '' ? $payload['regimen_fiscal'] : null,
+            ':numero_registro_tributario' => $payload['numero_registro_tributario'] !== '' ? $payload['numero_registro_tributario'] : null,
+            ':uso_cdfi' => $payload['uso_cdfi'] !== '' ? $payload['uso_cdfi'] : null,
+            ':telefono' => $venta['cliente_telefono'] ?: null,
+            ':celular' => null,
+            ':email' => $payload['email'] !== '' ? $payload['email'] : null,
+            ':email_alterno' => null,
+            ':pais' => 'MEX',
+            ':dom_fiscal_cp' => $payload['dom_fiscal_cp'] !== '' ? $payload['dom_fiscal_cp'] : null,
+            ':estado' => $venta['cs_estado'] ?: null,
+            ':municipio' => $venta['cs_municipio'] ?: null,
+            ':localidad' => $venta['cs_localidad'] ?: null,
+            ':colonia' => $venta['cs_colonia'] ?: null,
+            ':calle' => $venta['cs_calle'] ?: null,
+            ':numero_exterior' => $venta['cs_numero_exterior'] ?: null,
+            ':numero_interior' => $venta['cs_numero_interior'] ?: null,
+            ':referencia' => $venta['cs_referencia'] ?: null,
+            ':residencia_fiscal' => $payload['residencia_fiscal'] !== '' ? $payload['residencia_fiscal'] : null,
+        ];
+
+        $exists = $this->conn->prepare("SELECT id FROM clientes_sat WHERE id = :id LIMIT 1");
+        $exists->execute([':id' => $idCliente]);
+
+        if ($exists->fetch(PDO::FETCH_ASSOC)) {
+            $sql = "UPDATE clientes_sat
+                    SET nombre_comercial = :nombre_comercial,
+                        rfc = :rfc,
+                        razon_social = :razon_social,
+                        regimen_fiscal = :regimen_fiscal,
+                        numero_registro_tributario = :numero_registro_tributario,
+                        uso_cdfi = :uso_cdfi,
+                        telefono = :telefono,
+                        email = :email,
+                        pais = :pais,
+                        dom_fiscal_cp = :dom_fiscal_cp,
+                        estado = :estado,
+                        municipio = :municipio,
+                        localidad = :localidad,
+                        colonia = :colonia,
+                        calle = :calle,
+                        numero_exterior = :numero_exterior,
+                        numero_interior = :numero_interior,
+                        referencia = :referencia,
+                        residencia_fiscal = :residencia_fiscal
+                    WHERE id = :id";
+        } else {
+            $sql = "INSERT INTO clientes_sat (
+                        id, nombre_comercial, rfc, razon_social, regimen_fiscal, numero_registro_tributario, uso_cdfi,
+                        telefono, celular, email, email_alterno, pais, dom_fiscal_cp, estado, municipio, localidad,
+                        colonia, calle, numero_exterior, numero_interior, referencia, residencia_fiscal
+                    ) VALUES (
+                        :id, :nombre_comercial, :rfc, :razon_social, :regimen_fiscal, :numero_registro_tributario, :uso_cdfi,
+                        :telefono, :celular, :email, :email_alterno, :pais, :dom_fiscal_cp, :estado, :municipio, :localidad,
+                        :colonia, :calle, :numero_exterior, :numero_interior, :referencia, :residencia_fiscal
+                    )";
+        }
+
+        $st = $this->conn->prepare($sql);
+        $st->execute($base);
     }
 }

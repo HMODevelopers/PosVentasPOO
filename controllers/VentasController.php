@@ -365,6 +365,30 @@ class VentasController
             break;
         }
 
+        case 'facturacion-guardar-receptor': {
+            $idVenta = self::asInt($_POST['id_venta'] ?? $_GET['id_venta'] ?? $raw['id_venta'] ?? 0);
+            if ($idVenta <= 0) self::jsonError('id_venta requerido.');
+
+            global $pdo;
+            $schema = new FacturacionSchemaHelper($pdo);
+            $model = new FacturacionModel($pdo, $schema);
+            $validator = new FacturacionValidator();
+
+            $model->guardarDatosFiscalesVenta($idVenta, $raw ?: $_POST);
+            $ctx = $model->loadContext($idVenta);
+            $validaciones = $validator->validate($ctx);
+
+            echo json_encode([
+                'ok' => true,
+                'facturable' => empty($validaciones),
+                'msg' => 'Datos fiscales actualizados.',
+                'contexto' => $ctx,
+                'validaciones' => $validaciones,
+                'advertencias' => [],
+            ], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
         case 'facturar': {
             $idVenta = self::asInt($_POST['id_venta'] ?? $_GET['id_venta'] ?? $raw['id_venta'] ?? 0);
             if ($idVenta <= 0) self::jsonError('id_venta requerido.');

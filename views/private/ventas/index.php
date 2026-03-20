@@ -2421,17 +2421,36 @@ function resetModalFacturacion(){
   $('#fac-validaciones').html('<li>Sin validaciones disponibles.</li>');
   $('#fac-detalles-body').html('<tr><td colspan="5" class="text-center text-muted">Sin conceptos</td></tr>');
   $('#fac-folio, #fac-fecha, #fac-cliente, #fac-forma-pago, #fac-rfc, #fac-razon-social, #fac-uso-cfdi, #fac-regimen, #fac-cp').text('—');
+  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp').val('').prop('readonly', false);
+  $('#fac-select-regimen, #fac-select-uso-cfdi').html('<option value="">Seleccione…</option>').prop('disabled', false);
+  $('#fac-publico-note').addClass('d-none').empty();
   $('#fac-total').text(mxn(0));
   $('#fac-estatus-fiscal').html(getBadgeFiscal(''));
   $('#fac-archivos').addClass('d-none');
   $('#fac-link-xml, #fac-link-pdf').attr('href', '#');
   $('#btnConfirmarFacturar').prop('disabled', true).data('idVenta', 0);
+  $('#btnGuardarDatosFiscales').prop('disabled', false).html('<i class="mdi mdi-content-save-outline mr-1"></i>Guardar datos fiscales');
+}
+
+function fillFacturacionSelect($select, items, valueKey, textKey, currentValue){
+  let html = '<option value="">Seleccione…</option>';
+  (items || []).forEach(item => {
+    const val = item?.[valueKey] ?? '';
+    const text = item?.[textKey] ?? val;
+    const selected = String(currentValue || '') === String(val) ? ' selected' : '';
+    html += `<option value="${String(val).replace(/"/g, '&quot;')}"${selected}>${String(text)}</option>`;
+  });
+  $select.html(html);
+  if (currentValue) {
+    $select.val(String(currentValue));
+  }
 }
 
 function renderFacturacionPreview(resp, idVenta){
   const ctx = resp?.contexto || {};
   const venta = ctx.venta || {};
   const receptor = ctx.receptor || {};
+  const catalogos = ctx.catalogos || {};
   const detalles = Array.isArray(ctx.detalles) ? ctx.detalles : [];
   const totales = ctx.totales || {};
   const cfdi = ctx.cfdi_actual || {};
@@ -2452,6 +2471,24 @@ function renderFacturacionPreview(resp, idVenta){
   $('#fac-uso-cfdi').text(receptor.uso_cfdi || '—');
   $('#fac-regimen').text(receptor.regimen_fiscal_receptor || '—');
   $('#fac-cp').text(receptor.domicilio_fiscal_receptor || '—');
+
+  $('#fac-input-rfc').val(receptor.rfc || '');
+  $('#fac-input-razon-social').val(receptor.nombre || '');
+  $('#fac-input-correo').val(receptor.correo || '');
+  $('#fac-input-cp').val(receptor.domicilio_fiscal_receptor || '');
+  fillFacturacionSelect($('#fac-select-regimen'), catalogos.regimenes_fiscales || [], 'ClaveRegimenFiscal', 'Descripcion', receptor.regimen_fiscal_receptor || '');
+  fillFacturacionSelect($('#fac-select-uso-cfdi'), catalogos.usos_cfdi || [], 'ClaveUsoCFDI', 'Descripcion', receptor.uso_cfdi || '');
+
+  const esPublicoGeneral = !!receptor.es_publico_general;
+  $('#fac-publico-note')
+    .toggleClass('d-none', !esPublicoGeneral)
+    .html(esPublicoGeneral
+      ? 'Venta tratada como <strong>Público en general</strong>. Se aplican los valores fiscales por defecto del CFDI 4.0.'
+      : '');
+
+  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-cp, #fac-select-regimen, #fac-select-uso-cfdi')
+    .prop('readonly', false)
+    .prop('disabled', false);
 
   let detalleHtml = '';
   if (!detalles.length) {
@@ -2514,6 +2551,49 @@ function cargarPreviewFacturacion(idVenta){
   });
 }
 
+function getPayloadFacturacion(){
+  return {
+    id_venta: Number($('#fac-id-venta').val() || 0),
+    rfc: ($('#fac-input-rfc').val() || '').trim().toUpperCase(),
+    razon_social: ($('#fac-input-razon-social').val() || '').trim(),
+    email: ($('#fac-input-correo').val() || '').trim(),
+    dom_fiscal_cp: ($('#fac-input-cp').val() || '').trim(),
+    regimen_fiscal: ($('#fac-select-regimen').val() || '').trim(),
+    uso_cfdi: ($('#fac-select-uso-cfdi').val() || '').trim()
+  };
+}
+
+function guardarDatosFiscalesFacturacion(idVenta, opciones = {}){
+  const settings = Object.assign({ silent: false }, opciones || {});
+  const payload = getPayloadFacturacion();
+  payload.id_venta = idVenta;
+
+  const $btn = $('#btnGuardarDatosFiscales');
+  const original = $btn.html();
+  $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Guardando...');
+
+  return $.ajax({
+    url: VENTAS_URL + '?accion=facturacion-guardar-receptor',
+    method: 'POST',
+    data: JSON.stringify(payload),
+    contentType: 'application/json; charset=UTF-8',
+    dataType: 'json'
+  }).done(function(resp){
+    if (!resp?.ok) {
+      $('#fac-error').removeClass('d-none').text(resp?.msg || 'No fue posible guardar los datos fiscales.');
+      return;
+    }
+    renderFacturacionPreview(resp, idVenta);
+    if (!settings.silent) {
+      $('#fac-success').removeClass('d-none').text(resp?.msg || 'Datos fiscales actualizados.');
+    }
+  }).fail(function(xhr){
+    $('#fac-error').removeClass('d-none').text(xhr?.responseJSON?.msg || 'Error al guardar los datos fiscales.');
+  }).always(function(){
+    $btn.prop('disabled', false).html(original);
+  });
+}
+
 function abrirModalFacturacion(idVenta, folio){
   resetModalFacturacion();
   $('#fac-id-venta').val(idVenta);
@@ -2530,6 +2610,13 @@ $(document).on('click', '.accion-facturar', function(e){
   abrirModalFacturacion(idVenta, folio);
 });
 
+$(document).off('click', '#btnGuardarDatosFiscales').on('click', '#btnGuardarDatosFiscales', function(){
+  const idVenta = Number($('#fac-id-venta').val() || 0);
+  if (!idVenta) return;
+  $('#fac-error, #fac-success').addClass('d-none').empty();
+  guardarDatosFiscalesFacturacion(idVenta);
+});
+
 $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta', function(e){
   e.preventDefault();
   const idVenta = Number($('#fac-id-venta').val() || $('#btnConfirmarFacturar').data('idVenta') || 0);
@@ -2541,30 +2628,38 @@ $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta
 
   $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Facturando...');
 
-  $.post(VENTAS_URL, { accion:'facturar', id_venta:idVenta }, function(resp){
-    $('#fac-loader').show();
-    $('#fac-contenido').addClass('d-none');
-    if (resp?.ok) {
-      toastr.success(resp.msg || 'CFDI timbrado correctamente.');
-      renderCfdiDetalle(resp.cfdi || null, idVenta);
-      cargarVentas(paginaActual || 1);
-      if ($('#modalDetalle').hasClass('show') && Number($('#modalDetalle').data('idVentaActual') || 0) === idVenta) {
-        $(`a.accion-ver-detalle[data-id="${idVenta}"]`).trigger('click');
-      }
-      cargarPreviewFacturacion(idVenta);
-      setTimeout(function(){
-        $('#fac-success').removeClass('d-none').text(resp.msg || 'CFDI timbrado correctamente.');
-      }, 250);
-    } else {
-      $('#fac-error').removeClass('d-none').text(resp?.msg || 'No fue posible facturar la venta.');
-      toastr.error(resp?.msg || 'No fue posible facturar la venta.');
-      cargarPreviewFacturacion(idVenta);
+  guardarDatosFiscalesFacturacion(idVenta, { silent: true }).then(function(saveResp){
+    if (!saveResp?.ok) {
+      return;
     }
-  }, 'json').fail(function(xhr){
-    const msg = xhr?.responseJSON?.msg || 'Error al facturar la venta.';
-    $('#fac-error').removeClass('d-none').text(msg);
-    toastr.error(msg);
-  }).always(function(){
+
+    $.post(VENTAS_URL, { accion:'facturar', id_venta:idVenta }, function(resp){
+      $('#fac-loader').show();
+      $('#fac-contenido').addClass('d-none');
+      if (resp?.ok) {
+        toastr.success(resp.msg || 'CFDI timbrado correctamente.');
+        renderCfdiDetalle(resp.cfdi || null, idVenta);
+        cargarVentas(paginaActual || 1);
+        if ($('#modalDetalle').hasClass('show') && Number($('#modalDetalle').data('idVentaActual') || 0) === idVenta) {
+          $(`a.accion-ver-detalle[data-id="${idVenta}"]`).trigger('click');
+        }
+        cargarPreviewFacturacion(idVenta);
+        setTimeout(function(){
+          $('#fac-success').removeClass('d-none').text(resp.msg || 'CFDI timbrado correctamente.');
+        }, 250);
+      } else {
+        $('#fac-error').removeClass('d-none').text(resp?.msg || 'No fue posible facturar la venta.');
+        toastr.error(resp?.msg || 'No fue posible facturar la venta.');
+        cargarPreviewFacturacion(idVenta);
+      }
+    }, 'json').fail(function(xhr){
+      const msg = xhr?.responseJSON?.msg || 'Error al facturar la venta.';
+      $('#fac-error').removeClass('d-none').text(msg);
+      toastr.error(msg);
+    }).always(function(){
+      $btn.html(original);
+    });
+  }).fail(function(){
     $btn.html(original);
   });
 });

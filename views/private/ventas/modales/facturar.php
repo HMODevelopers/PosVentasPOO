@@ -48,6 +48,42 @@
               </div>
             </div>
 
+            <div class="mt-3 border rounded p-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Completar datos fiscales</h6>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnGuardarDatosFiscales">
+                  <i class="mdi mdi-content-save-outline mr-1"></i>Guardar datos fiscales
+                </button>
+              </div>
+              <div class="alert alert-info py-2 px-3 d-none" id="fac-publico-note"></div>
+              <div class="row">
+                <div class="col-md-4">
+                  <label for="fac-input-rfc">RFC</label>
+                  <input type="text" class="form-control" id="fac-input-rfc" maxlength="13" autocomplete="off">
+                </div>
+                <div class="col-md-8 mt-2 mt-md-0">
+                  <label for="fac-input-razon-social">Nombre / razón social</label>
+                  <input type="text" class="form-control" id="fac-input-razon-social" maxlength="255" autocomplete="off">
+                </div>
+                <div class="col-md-6 mt-2">
+                  <label for="fac-input-correo">Correo</label>
+                  <input type="email" class="form-control" id="fac-input-correo" maxlength="255" autocomplete="off">
+                </div>
+                <div class="col-md-3 mt-2">
+                  <label for="fac-input-cp">C.P. fiscal</label>
+                  <input type="text" class="form-control" id="fac-input-cp" maxlength="10" autocomplete="off">
+                </div>
+                <div class="col-md-3 mt-2">
+                  <label for="fac-select-uso-cfdi">Uso CFDI</label>
+                  <select class="form-control" id="fac-select-uso-cfdi"></select>
+                </div>
+                <div class="col-md-4 mt-2">
+                  <label for="fac-select-regimen">Régimen fiscal</label>
+                  <select class="form-control" id="fac-select-regimen"></select>
+                </div>
+              </div>
+            </div>
+
             <div class="mt-3">
               <h6 class="mb-2">Conceptos</h6>
               <div class="table-responsive">
