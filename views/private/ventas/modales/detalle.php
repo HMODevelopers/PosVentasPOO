@@ -107,6 +107,39 @@
 
           <hr>
 
+          <div id="wrap-det-cfdi" class="mt-3">
+            <h5 class="mb-2">Facturación</h5>
+            <div class="row">
+              <div class="col-md-3 mb-3">
+                <small class="text-primary font-weight-bold">Estatus fiscal</small>
+                <div class="h5 mb-0" id="det-cfdi-estatus">SIN FACTURAR</div>
+              </div>
+              <div class="col-md-3 mb-3">
+                <small class="text-primary font-weight-bold">UUID</small>
+                <div class="h5 mb-0" id="det-cfdi-uuid">—</div>
+              </div>
+              <div class="col-md-3 mb-3">
+                <small class="text-primary font-weight-bold">Referencia</small>
+                <div class="h5 mb-0" id="det-cfdi-ref">—</div>
+              </div>
+              <div class="col-md-3 mb-3">
+                <small class="text-primary font-weight-bold">Fecha timbrado</small>
+                <div class="h5 mb-0" id="det-cfdi-fecha">—</div>
+              </div>
+              <div class="col-12 mb-2">
+                <div id="det-cfdi-msg" class="alert alert-light border mb-2">Sin CFDI generado.</div>
+              </div>
+              <div class="col-12 d-flex flex-wrap gap-2">
+                <a id="det-cfdi-xml" href="#" class="btn btn-outline-secondary btn-sm mr-2 d-none" target="_blank">
+                  <i class="mdi mdi-xml mr-1"></i>XML
+                </a>
+                <a id="det-cfdi-pdf" href="#" class="btn btn-outline-secondary btn-sm d-none" target="_blank">
+                  <i class="mdi mdi-file-pdf-box mr-1"></i>PDF
+                </a>
+              </div>
+            </div>
+          </div>
+
           <!-- Abonos (oculto por defecto) -->
           <div id="wrap-det-abonos" class="d-none">
             <h5 class="mb-2">Abonos</h5>

@@ -6,6 +6,10 @@
 require_once __DIR__ . '/../includes/controller_guard.php';
 controller_guard(__FILE__);
 require_once __DIR__ . '/../models/VentaModel.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../services/facturacion/FacturacionService.php';
+require_once __DIR__ . '/../services/facturacion/FacturacionSchemaHelper.php';
+require_once __DIR__ . '/../models/FacturacionModel.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -138,6 +142,9 @@ class VentasController
 
             $detalles = $ventaModel->obtenerDetalleVenta($idVenta);
             $pagos    = method_exists($ventaModel, 'obtenerPagosVenta') ? $ventaModel->obtenerPagosVenta($idVenta) : [];
+            global $pdo;
+            $cfdiModel = new FacturacionModel($pdo, new FacturacionSchemaHelper($pdo));
+            $cfdiVenta = $cfdiModel->getCfdiByVenta($idVenta);
 
             $idFp    = (int)($venta['id_forma_pago'] ?? 0);
             $fpDesc  = (string)($venta['forma_pago'] ?? '');
@@ -178,7 +185,8 @@ class VentasController
                 'pagos_venta'     => $pagosVenta,
                 'formas_tarjeta'  => method_exists($ventaModel, 'obtenerFormasPagoTarjetaCreditoDebito')
                     ? $ventaModel->obtenerFormasPagoTarjetaCreditoDebito()
-                    : []
+                    : [],
+                'cfdi'            => $cfdiVenta
             ], JSON_UNESCAPED_UNICODE);
 
             break;
@@ -327,6 +335,47 @@ class VentasController
          * Folio sugerido por fecha
          * GET/POST/JSON: fecha (Y-m-d)
          * ============================================================ */
+        case 'facturar': {
+            $idVenta = self::asInt($_POST['id_venta'] ?? $_GET['id_venta'] ?? $raw['id_venta'] ?? 0);
+            if ($idVenta <= 0) self::jsonError('id_venta requerido.');
+
+            global $pdo;
+            $service = new FacturacionService($pdo);
+            $resp = $service->facturarVenta($idVenta);
+            echo json_encode($resp, JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
+        case 'descargar-cfdi-archivo': {
+            $idVenta = self::asInt($_POST['id_venta'] ?? $_GET['id_venta'] ?? $raw['id_venta'] ?? 0);
+            $tipo = strtolower(trim((string)($_POST['tipo'] ?? $_GET['tipo'] ?? $raw['tipo'] ?? 'xml')));
+            if ($idVenta <= 0) self::jsonError('id_venta requerido.');
+
+            global $pdo;
+            $schema = new FacturacionSchemaHelper($pdo);
+            $model = new FacturacionModel($pdo, $schema);
+            $cfdi = $model->getCfdiByVenta($idVenta);
+            if (!$cfdi) {
+                self::jsonError('No existe CFDI para la venta.', 404);
+            }
+
+            if ($tipo === 'pdf') {
+                $pdf = (string)($cfdi['pdf_base64'] ?? '');
+                if ($pdf === '') self::jsonError('El CFDI no tiene PDF disponible.', 404);
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: inline; filename=cfdi-' . ($cfdi['uuid'] ?? $idVenta) . '.pdf');
+                echo base64_decode($pdf, true) ?: '';
+                exit;
+            }
+
+            $xml = (string)($cfdi['xml_timbrado'] ?? '');
+            if ($xml === '') self::jsonError('El CFDI no tiene XML disponible.', 404);
+            header('Content-Type: application/xml; charset=UTF-8');
+            header('Content-Disposition: inline; filename=cfdi-' . ($cfdi['uuid'] ?? $idVenta) . '.xml');
+            echo $xml;
+            exit;
+        }
+
         case 'folio-sugerido': {
             $fecha = $_GET['fecha'] ?? $_POST['fecha'] ?? $raw['fecha'] ?? date('Y-m-d');
             $resp  = $ventaModel->sugerirFolioPorFecha($fecha);

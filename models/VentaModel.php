@@ -375,8 +375,12 @@ class VentaModel
                                           FROM ventas_abonos a2
                                          WHERE a2.id_venta = v.id_venta AND a2.activo=1)
                     ) AS saldo,
-                    v.estatus_credito
+                    v.estatus_credito,
+                    cfdi.estatus AS estatus_fiscal,
+                    cfdi.uuid AS cfdi_uuid,
+                    cfdi.referencia AS cfdi_referencia
                 FROM ventas v
+                LEFT JOIN ventas_cfdi cfdi ON cfdi.id_venta = v.id_venta
                 LEFT JOIN clientes     c  ON v.id_cliente     = c.id_cliente
                 INNER JOIN usuarios    u  ON v.id_usuario     = u.id_usuario
                 INNER JOIN cajas       cj ON v.id_caja        = cj.id_caja
@@ -496,6 +500,9 @@ class VentaModel
         $st = $this->conn->prepare(
             "SELECT v.*,
                     c.nombre AS cliente,
+                    c.rfc AS cliente_rfc,
+                    c.direccion AS cliente_domicilio,
+                    c.telefono AS cliente_telefono,
                     u.nombre AS usuario,
                     cj.nombre AS caja,
                     COALESCE(fp.descripcion,'—') AS forma_pago,
@@ -508,8 +515,14 @@ class VentaModel
                                           FROM ventas_abonos a2
                                          WHERE a2.id_venta = v.id_venta AND a2.activo=1)
                     ) AS saldo,
-                    v.estatus_credito
+                    v.estatus_credito,
+                    cfdi.estatus AS estatus_fiscal,
+                    cfdi.uuid AS cfdi_uuid,
+                    cfdi.referencia AS cfdi_referencia,
+                    cfdi.fecha_timbrado AS cfdi_fecha_timbrado,
+                    cfdi.mensaje_respuesta AS cfdi_mensaje_respuesta
              FROM ventas v
+             LEFT JOIN ventas_cfdi cfdi ON cfdi.id_venta = v.id_venta
              LEFT JOIN clientes     c  ON v.id_cliente     = c.id_cliente
              INNER JOIN usuarios    u  ON v.id_usuario     = u.id_usuario
              INNER JOIN cajas       cj ON v.id_caja        = cj.id_caja

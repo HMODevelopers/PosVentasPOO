@@ -262,6 +262,7 @@ session_start();
                       <th class="text-end">Saldo</th>
                       <th>Estatus crédito</th>
                       <th>Estatus</th>
+                      <th>Fiscal</th>
                       <th>Cliente</th>
                       <th>Fecha</th>
                       <th>Acciones</th>
@@ -387,6 +388,13 @@ function accionesVenta(v){
       </a>`;
   }
 
+  if ((v.estatus === 'Activa' || v.estatus === 'Credito') && String(v.estatus_fiscal || '').toUpperCase() !== 'TIMBRADO') {
+    out += `
+      <a class="dropdown-item accion-facturar" href="#" data-id="${v.id_venta}" data-folio="${v.folio}">
+        <i class="mdi mdi-receipt-text-check-outline mr-2 text-muted font-18 vertical-middle"></i>Facturar
+      </a>`;
+  }
+
   if (v.estatus === 'Activa' || v.estatus === 'Credito'){
     out += `
       <a class="dropdown-item accion-eliminar" href="#" data-id="${v.id_venta}" data-folio="${v.folio}">
@@ -394,6 +402,16 @@ function accionesVenta(v){
       </a>`;
   }
   return out;
+}
+
+function getBadgeFiscal(st){
+  switch((st||'').toUpperCase()){
+    case 'TIMBRADO': return '<span class="badge badge-light-success badge-pill">TIMBRADO</span>';
+    case 'PENDIENTE': return '<span class="badge badge-light-warning badge-pill">PENDIENTE</span>';
+    case 'ERROR': return '<span class="badge badge-light-danger badge-pill">ERROR</span>';
+    case 'CANCELADO': return '<span class="badge badge-light-secondary badge-pill">CANCELADO</span>';
+    default: return '<span class="badge badge-light-secondary badge-pill">SIN FACTURAR</span>';
+  }
 }
 
 function getBadgeCredito(st){
@@ -429,7 +447,7 @@ function cargarVentas(pagina){
     let tbody='';
 
     if (!ventas.length){
-      tbody = '<tr><td colspan="12" class="text-center">No hay ventas disponibles</td></tr>';
+      tbody = '<tr><td colspan="13" class="text-center">No hay ventas disponibles</td></tr>';
     } else {
       ventas.forEach(v=>{
        tbody += `
@@ -443,6 +461,7 @@ function cargarVentas(pagina){
               <td class="text-right">${mxn(v.saldo ?? (num(v.total) - num(v.abonado)))}</td>
               <td class="text-center">${getBadgeCredito(v.estatus_credito || 'N/A')}</td>
               <td class="text-center">${getBadge(v.estatus)}</td>
+              <td class="text-center">${getBadgeFiscal(v.estatus_fiscal)}</td>
               <td class="text-center">${v.cliente || 'Público en general'}</td>
               <td class="text-center">${fechaMx(v.fecha)}</td>
               <td class="text-center">
@@ -688,7 +707,7 @@ $(document).on('click','a.accion-ver-detalle',function(e){
   $('#det-error').hide(); 
   $('#det-contenido').hide(); 
   $('#det-loader').show();
-  $('#modalDetalle').modal('show');
+  $('#modalDetalle').data('idVentaActual', id).modal('show');
 
   // Oculta bloques de crédito hasta saber si aplica
   const $wrapsCredito = $('#wrap-det-estatus-credito, #wrap-det-abonado, #wrap-det-saldo, #wrap-det-abonos, #det-btn-abonar');
@@ -697,6 +716,7 @@ $(document).on('click','a.accion-ver-detalle',function(e){
   // Limpia tablas
   $('#det-tbody').empty();
   $('#det-total').text('$0.00');
+  renderCfdiDetalle(null, id);
   $('#det-abonos-body').html('<tr><td colspan="4" class="text-center text-muted">Sin abonos</td></tr>');
 
   // Obtiene detalle
@@ -722,6 +742,7 @@ $(document).on('click','a.accion-ver-detalle',function(e){
     $('#det-caja').text(v.caja || '—');
     $('#det-forma').text(v.forma_pago || '—');
     $('#det-tipo').text(v.tipo_precio || '—');
+    renderCfdiDetalle(resp.cfdi || null, id);
 
     // Productos
     let tb='', total=0;
@@ -2391,10 +2412,60 @@ $('#formAbonoVenta').on('submit', function (e) {
 /* ==========================================================================
    MÓDULO: Inicialización
    ========================================================================== */
+$(document).on('click', '.accion-facturar', function(e){
+  e.preventDefault();
+  const idVenta = Number($(this).data('id') || 0);
+  const folio = $(this).data('folio') || '';
+  if (!idVenta) return;
+
+  Swal.fire({
+    title: 'Facturar venta',
+    text: `Se enviará la venta ${folio || ('#'+idVenta)} a Folios Digitales.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Sí, facturar',
+    cancelButtonText: 'Cancelar'
+  }).then((res) => {
+    if (!res.isConfirmed) return;
+
+    $.post(VENTAS_URL, { accion:'facturar', id_venta:idVenta }, function(resp){
+      if (resp?.ok) {
+        toastr.success(resp.msg || 'CFDI timbrado correctamente.');
+      } else {
+        toastr.error(resp?.msg || 'No fue posible facturar la venta.');
+      }
+      cargarVentas(paginaActual || 1);
+      if ($('#modalDetalle').hasClass('show') && Number($('#modalDetalle').data('idVentaActual') || 0) === idVenta) {
+        $(`a.accion-ver-detalle[data-id="${idVenta}"]`).trigger('click');
+      }
+    }, 'json').fail(function(xhr){
+      toastr.error(xhr?.responseJSON?.msg || 'Error al facturar la venta.');
+    });
+  });
+});
+
 $(function(){
   cargarVentas(paginaActual);
 });
 
+
+function renderCfdiDetalle(cfdi, idVenta){
+  const data = cfdi || {};
+  const estatus = String(data.estatus || '').toUpperCase();
+  $('#det-cfdi-estatus').html(getBadgeFiscal(estatus));
+  $('#det-cfdi-uuid').text(data.uuid || '—');
+  $('#det-cfdi-ref').text(data.referencia || '—');
+  $('#det-cfdi-fecha').text(data.fecha_timbrado ? fechaMx(data.fecha_timbrado) : '—');
+  $('#det-cfdi-msg')
+    .removeClass('alert-danger alert-success alert-warning alert-light')
+    .addClass(estatus === 'TIMBRADO' ? 'alert-success' : (estatus === 'ERROR' ? 'alert-danger' : (estatus === 'PENDIENTE' ? 'alert-warning' : 'alert-light')) )
+    .text(data.mensaje_respuesta || (estatus ? `Estatus fiscal: ${estatus}` : 'Sin CFDI generado.'));
+
+  const xmlUrl = `${VENTAS_URL}?accion=descargar-cfdi-archivo&id_venta=${idVenta}&tipo=xml`;
+  const pdfUrl = `${VENTAS_URL}?accion=descargar-cfdi-archivo&id_venta=${idVenta}&tipo=pdf`;
+  $('#det-cfdi-xml').attr('href', xmlUrl).toggleClass('d-none', !(data.xml_timbrado || estatus === 'TIMBRADO'));
+  $('#det-cfdi-pdf').attr('href', pdfUrl).toggleClass('d-none', !(data.pdf_base64 || estatus === 'TIMBRADO'));
+}
 
 /* ======================= INVOICE (A4/Carta) ======================= */
 function renderInvRow({cantidad, clave, descripcion, pu, importe}) {
