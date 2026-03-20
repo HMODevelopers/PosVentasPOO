@@ -9,6 +9,7 @@ require_once __DIR__ . '/../models/VentaModel.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../services/facturacion/FacturacionService.php';
 require_once __DIR__ . '/../services/facturacion/FacturacionSchemaHelper.php';
+require_once __DIR__ . '/../services/facturacion/FacturacionValidator.php';
 require_once __DIR__ . '/../models/FacturacionModel.php';
 
 header('Content-Type: application/json; charset=UTF-8');
@@ -335,6 +336,35 @@ class VentasController
          * Folio sugerido por fecha
          * GET/POST/JSON: fecha (Y-m-d)
          * ============================================================ */
+        case 'facturacion-preview': {
+            $idVenta = self::asInt($_POST['id_venta'] ?? $_GET['id_venta'] ?? $raw['id_venta'] ?? 0);
+            if ($idVenta <= 0) self::jsonError('id_venta requerido.');
+
+            global $pdo;
+            $schema = new FacturacionSchemaHelper($pdo);
+            $model = new FacturacionModel($pdo, $schema);
+            $validator = new FacturacionValidator();
+
+            $ctx = $model->loadContext($idVenta);
+            $validaciones = $validator->validate($ctx);
+            $cfdiActual = $ctx['cfdi_actual'] ?? [];
+            $advertencias = [];
+
+            if (strtoupper((string)($cfdiActual['estatus'] ?? '')) === 'TIMBRADO') {
+                $advertencias[] = 'La venta ya cuenta con un CFDI timbrado.';
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'facturable' => empty($validaciones),
+                'msg' => empty($validaciones) ? 'Información de facturación cargada.' : 'La venta tiene observaciones antes de facturar.',
+                'contexto' => $ctx,
+                'validaciones' => $validaciones,
+                'advertencias' => $advertencias,
+            ], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
         case 'facturar': {
             $idVenta = self::asInt($_POST['id_venta'] ?? $_GET['id_venta'] ?? $raw['id_venta'] ?? 0);
             if ($idVenta <= 0) self::jsonError('id_venta requerido.');
