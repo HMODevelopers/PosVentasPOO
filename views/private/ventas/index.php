@@ -59,6 +59,7 @@ session_start();
     <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet" />
     <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
     <link href="<?= BASE_URL ?>/assets/css/ticket.css" rel="stylesheet" />
+    <link href="<?= BASE_URL ?>/assets/libs/select2/select2.min.css" rel="stylesheet" />
 
     <!-- Toastr -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css"/>
@@ -307,6 +308,7 @@ session_start();
     <script>const BASE_URL='<?= BASE_URL ?>';</script>
     <script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
+    <script src="<?= BASE_URL ?>/assets/libs/select2/select2.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
     <!-- QZ Tray (CDN) -->
@@ -2413,16 +2415,114 @@ $('#formAbonoVenta').on('submit', function (e) {
 /* ==========================================================================
    MÓDULO: Inicialización
    ========================================================================== */
+function escapeHtml(value){
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function initFacturacionClienteSelect(){
+  const $select = $('#fac-select-cliente');
+  const $modal = $('#modalFacturarVenta');
+
+  if (!$select.length || typeof $.fn.select2 !== 'function') return;
+  if ($select.hasClass('select2-hidden-accessible')) return;
+
+  $select.select2({
+    width: '100%',
+    dropdownParent: $modal,
+    placeholder: $select.data('placeholder') || 'Buscar cliente',
+    allowClear: true,
+    minimumInputLength: 1,
+    ajax: {
+      url: VENTAS_URL,
+      dataType: 'json',
+      delay: 250,
+      data: params => ({
+        accion: 'facturacion-buscar-clientes',
+        q: params.term || '',
+        limite: 20
+      }),
+      processResults: resp => ({
+        results: Array.isArray(resp?.results) ? resp.results : []
+      }),
+      cache: true
+    },
+    templateResult: function(item){
+      if (item.loading) return item.text;
+      const razon = item.nombre || item.text || 'Sin nombre';
+      const rfc = item.rfc || 'Sin RFC';
+      const correo = item.correo || '';
+      return $(`
+        <div>
+          <div class="font-weight-bold">${escapeHtml(razon)}</div>
+          <small class="text-muted">${escapeHtml(rfc)}${correo ? ' · ' + escapeHtml(correo) : ''}</small>
+        </div>
+      `);
+    },
+    templateSelection: function(item){
+      return item.text || item.nombre || 'Buscar cliente';
+    },
+    language: {
+      inputTooShort: () => 'Escribe al menos 1 carácter para buscar clientes.',
+      searching: () => 'Buscando clientes...',
+      noResults: () => 'No se encontraron clientes.',
+      errorLoading: () => 'No se pudieron cargar los clientes.'
+    }
+  });
+}
+
+function setFacturacionClienteSeleccionado(cliente){
+  const $select = $('#fac-select-cliente');
+  if (!$select.length) return;
+
+  const idCliente = Number(cliente?.id_cliente || 0);
+  if (!idCliente) {
+    $select.val(null).trigger('change');
+    return;
+  }
+
+  const texto = cliente.text || [
+    cliente.nombre || 'Cliente',
+    cliente.rfc || null
+  ].filter(Boolean).join(' · ');
+
+  const option = new Option(texto, String(idCliente), true, true);
+  $(option).data('clienteFacturacion', cliente);
+  $select.empty().append(option).trigger('change');
+}
+
+function fillFacturacionReceptor(data = {}){
+  $('#fac-input-rfc').val(data.rfc || '');
+  $('#fac-input-razon-social').val(data.nombre || '');
+  $('#fac-input-nombre-comercial').val(data.nombre_comercial || data.nombre || '');
+  $('#fac-input-correo').val(data.correo || '');
+  $('#fac-input-cp').val(data.domicilio_fiscal_receptor || '');
+  $('#fac-input-residencia-fiscal').val(data.residencia_fiscal || '');
+  $('#fac-input-num-reg-id-trib').val(data.num_reg_id_trib || '');
+  if (data.regimen_fiscal_receptor !== undefined) {
+    $('#fac-select-regimen').val(data.regimen_fiscal_receptor || '').trigger('change');
+  }
+  if (data.uso_cfdi !== undefined) {
+    $('#fac-select-uso-cfdi').val(data.uso_cfdi || '').trigger('change');
+  }
+}
+
 function resetModalFacturacion(){
+  initFacturacionClienteSelect();
   $('#fac-id-venta').val('');
   $('#fac-loader').show();
   $('#fac-contenido').addClass('d-none');
   $('#fac-error, #fac-warning, #fac-success').addClass('d-none').empty();
   $('#fac-validaciones').html('<li>Sin validaciones disponibles.</li>');
   $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
-  $('#fac-folio, #fac-fecha, #fac-cliente, #fac-forma-pago, #fac-rfc, #fac-razon-social, #fac-uso-cfdi, #fac-regimen, #fac-cp, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion, #fac-moneda, #fac-metodo-pago, #fac-tipo-cambio, #fac-condiciones-pago, #fac-tipo-comprobante, #fac-exportacion').text('—');
+  $('#fac-folio, #fac-fecha, #fac-cliente, #fac-forma-pago, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion, #fac-moneda, #fac-metodo-pago, #fac-tipo-cambio, #fac-condiciones-pago, #fac-tipo-comprobante, #fac-exportacion').text('—');
   $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial').val('').prop('readonly', false);
   $('#fac-select-regimen, #fac-select-uso-cfdi').html('<option value="">Seleccione…</option>').prop('disabled', false);
+  $('#fac-select-cliente').empty().val(null).trigger('change');
   $('#fac-publico-note').addClass('d-none').empty();
   $('#fac-info-global').removeClass('alert-warning').addClass('alert-light').text('No aplica información global para esta venta.');
   $('#fac-total').text(mxn(0));
@@ -2454,6 +2554,7 @@ function renderFacturacionPreview(resp, idVenta){
   const venta = ctx.venta || {};
   const emisor = ctx.emisor || {};
   const receptor = ctx.receptor || {};
+  const clienteSeleccionado = ctx.cliente_seleccionado || null;
   const infoGlobal = ctx.informacion_global || {};
   const formaPago = ctx.forma_pago || {};
   const catalogos = ctx.catalogos || {};
@@ -2494,21 +2595,10 @@ function renderFacturacionPreview(resp, idVenta){
   $('#fac-importe-letra').text(totales.importe_letra || 'No disponible en el flujo actual.');
   $('#fac-estatus-fiscal').html(getBadgeFiscal(estatusFiscal));
 
-  $('#fac-rfc').text(receptor.rfc || '—');
-  $('#fac-razon-social').text(receptor.nombre || '—');
-  $('#fac-uso-cfdi').text(receptor.uso_cfdi || '—');
-  $('#fac-regimen').text(receptor.regimen_fiscal_receptor || '—');
-  $('#fac-cp').text(receptor.domicilio_fiscal_receptor || '—');
-
-  $('#fac-input-rfc').val(receptor.rfc || '');
-  $('#fac-input-razon-social').val(receptor.nombre || '');
-  $('#fac-input-nombre-comercial').val(receptor.nombre_comercial || '');
-  $('#fac-input-correo').val(receptor.correo || '');
-  $('#fac-input-cp').val(receptor.domicilio_fiscal_receptor || '');
-  $('#fac-input-residencia-fiscal').val(receptor.residencia_fiscal || '');
-  $('#fac-input-num-reg-id-trib').val(receptor.num_reg_id_trib || '');
   fillFacturacionSelect($('#fac-select-regimen'), catalogos.regimenes_fiscales || [], 'ClaveRegimenFiscal', 'Descripcion', receptor.regimen_fiscal_receptor || '');
   fillFacturacionSelect($('#fac-select-uso-cfdi'), catalogos.usos_cfdi || [], 'ClaveUsoCFDI', 'Descripcion', receptor.uso_cfdi || '');
+  fillFacturacionReceptor(receptor);
+  setFacturacionClienteSeleccionado(clienteSeleccionado);
 
   const esPublicoGeneral = !!receptor.es_publico_general;
   $('#fac-publico-note')
@@ -2602,6 +2692,7 @@ function cargarPreviewFacturacion(idVenta){
 function getPayloadFacturacion(){
   return {
     id_venta: Number($('#fac-id-venta').val() || 0),
+    id_cliente: Number($('#fac-select-cliente').val() || 0),
     rfc: ($('#fac-input-rfc').val() || '').trim().toUpperCase(),
     razon_social: ($('#fac-input-razon-social').val() || '').trim(),
     nombre_comercial: ($('#fac-input-nombre-comercial').val() || '').trim(),
@@ -2666,6 +2757,43 @@ $(document).off('click', '#btnGuardarDatosFiscales').on('click', '#btnGuardarDat
   if (!idVenta) return;
   $('#fac-error, #fac-success').addClass('d-none').empty();
   guardarDatosFiscalesFacturacion(idVenta);
+});
+
+$(document).off('select2:select', '#fac-select-cliente').on('select2:select', '#fac-select-cliente', function(e){
+  const cliente = e?.params?.data || {};
+  if (!cliente?.id_cliente) return;
+  $('#fac-error, #fac-success').addClass('d-none').empty();
+  fillFacturacionReceptor(cliente);
+  $('#fac-publico-note').addClass('d-none').empty();
+});
+
+$(document).off('select2:clear', '#fac-select-cliente').on('select2:clear', '#fac-select-cliente', function(){
+  fillFacturacionReceptor({
+    rfc: '',
+    nombre: '',
+    nombre_comercial: '',
+    correo: '',
+    domicilio_fiscal_receptor: '',
+    regimen_fiscal_receptor: '',
+    uso_cfdi: '',
+    residencia_fiscal: '',
+    num_reg_id_trib: ''
+  });
+});
+
+$(document).off('click', '#btnFacLimpiarCliente').on('click', '#btnFacLimpiarCliente', function(){
+  $('#fac-select-cliente').val(null).trigger('change');
+  fillFacturacionReceptor({
+    rfc: '',
+    nombre: '',
+    nombre_comercial: '',
+    correo: '',
+    domicilio_fiscal_receptor: '',
+    regimen_fiscal_receptor: '',
+    uso_cfdi: '',
+    residencia_fiscal: '',
+    num_reg_id_trib: ''
+  });
 });
 
 $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta', function(e){

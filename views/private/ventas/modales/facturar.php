@@ -1,9 +1,35 @@
 <style>
+  #modalFacturarVenta .modal-xxl-custom {
+    max-width: 98vw;
+    width: 98vw;
+  }
+  @media (min-width: 1200px) {
+    #modalFacturarVenta .modal-xxl-custom {
+      max-width: 1400px;
+      width: 1400px;
+    }
+  }
+  @media (min-width: 1600px) {
+    #modalFacturarVenta .modal-xxl-custom {
+      max-width: 1600px;
+      width: 1600px;
+    }
+  }
   #modalFacturarVenta .modal-dialog {
-    max-width: 980px;
+    margin: 1.25rem auto;
+  }
+  #modalFacturarVenta .modal-content {
+    border: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: 92vh;
+    min-height: 70vh;
   }
   #modalFacturarVenta .modal-body {
     background: #f8fafc;
+    flex: 1 1 auto;
+    max-height: calc(92vh - 140px);
+    overflow-y: auto;
   }
   #modalFacturarVenta .cfdi-section {
     background: #fff;
@@ -76,11 +102,32 @@
   #modalFacturarVenta .table th {
     vertical-align: middle;
   }
+  #modalFacturarVenta .select2-container {
+    width: 100% !important;
+  }
+  #modalFacturarVenta .select2-container--default .select2-selection--single {
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    height: calc(1.5em + 0.75rem + 2px);
+    padding: 0.275rem 0.25rem;
+  }
+  #modalFacturarVenta .select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 1.8;
+    padding-left: 0.5rem;
+    padding-right: 1.75rem;
+  }
+  #modalFacturarVenta .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: calc(1.5em + 0.75rem + 2px);
+  }
+  #modalFacturarVenta .cfdi-helper {
+    color: #7a8797;
+    font-size: 0.78rem;
+  }
 </style>
 
 <!-- Modal Facturar Venta -->
 <div class="modal fade" id="modalFacturarVenta" tabindex="-1" role="dialog" aria-labelledby="modalFacturarVentaLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-xxl-custom" role="document">
     <div class="modal-content">
       <form id="formFacturarVenta" autocomplete="off">
         <div class="modal-header">
@@ -134,6 +181,16 @@
                   <div class="col-md-2 col-sm-6">
                     <div class="cfdi-kv"><small>Exportación</small><span id="fac-emisor-exportacion">—</span></div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="cfdi-section">
+              <div class="cfdi-section__head">
+                <h6 class="cfdi-section__title mb-0">2. Resumen de la venta</h6>
+              </div>
+              <div class="cfdi-section__body">
+                <div class="row">
                   <div class="col-md-3 col-sm-6">
                     <div class="cfdi-kv"><small>Venta / folio</small><span id="fac-folio">—</span></div>
                   </div>
@@ -149,7 +206,7 @@
 
             <div class="cfdi-section">
               <div class="cfdi-section__head">
-                <h6 class="cfdi-section__title mb-0">2. Receptor</h6>
+                <h6 class="cfdi-section__title mb-0">3. Receptor</h6>
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btnGuardarDatosFiscales">
                   <i class="mdi mdi-content-save-outline mr-1"></i>Guardar datos fiscales
                 </button>
@@ -157,6 +214,16 @@
               <div class="cfdi-section__body">
                 <div class="alert alert-info py-2 px-3 d-none" id="fac-publico-note"></div>
                 <div class="row">
+                  <div class="col-12">
+                    <label for="fac-select-cliente">Cliente existente</label>
+                    <div class="d-flex flex-column flex-md-row align-items-stretch align-items-md-center">
+                      <select class="form-control" id="fac-select-cliente" data-placeholder="Buscar por nombre, razón social o RFC"></select>
+                      <button type="button" class="btn btn-outline-secondary btn-sm mt-2 mt-md-0 ml-md-2" id="btnFacLimpiarCliente">
+                        <i class="mdi mdi-refresh mr-1"></i>Captura manual / público en general
+                      </button>
+                    </div>
+                    <small class="form-text cfdi-helper mb-2">Busca clientes existentes por nombre, razón social o RFC para cargar sus datos fiscales al instante.</small>
+                  </div>
                   <div class="col-md-4">
                     <label for="fac-input-rfc">RFC</label>
                     <input type="text" class="form-control" id="fac-input-rfc" maxlength="13" autocomplete="off">
@@ -193,29 +260,13 @@
                     <label for="fac-input-num-reg-id-trib">Num. Reg. Id. Trib.</label>
                     <input type="text" class="form-control" id="fac-input-num-reg-id-trib" maxlength="40" autocomplete="off">
                   </div>
-                  <div class="col-md-8 mt-2">
-                    <div class="row">
-                      <div class="col-md-4">
-                        <div class="cfdi-kv mt-4 mt-md-0"><small>RFC actual</small><span id="fac-rfc">—</span></div>
-                      </div>
-                      <div class="col-md-4">
-                        <div class="cfdi-kv mt-4 mt-md-0"><small>Régimen actual</small><span id="fac-regimen">—</span></div>
-                      </div>
-                      <div class="col-md-4">
-                        <div class="cfdi-kv mt-4 mt-md-0"><small>Uso CFDI actual</small><span id="fac-uso-cfdi">—</span></div>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="col-md-12 mt-2">
-                    <div class="cfdi-kv mb-0"><small>Razón social actual</small><span id="fac-razon-social">—</span></div>
-                  </div>
                 </div>
               </div>
             </div>
 
             <div class="cfdi-section">
               <div class="cfdi-section__head">
-                <h6 class="cfdi-section__title mb-0">3. Información global</h6>
+                <h6 class="cfdi-section__title mb-0">4. Información global</h6>
               </div>
               <div class="cfdi-section__body">
                 <div id="fac-info-global" class="alert alert-light border mb-0">No aplica información global para esta venta.</div>
@@ -224,7 +275,7 @@
 
             <div class="cfdi-section">
               <div class="cfdi-section__head">
-                <h6 class="cfdi-section__title mb-0">4. Forma de pago</h6>
+                <h6 class="cfdi-section__title mb-0">5. Forma de pago</h6>
               </div>
               <div class="cfdi-section__body">
                 <div class="row">
@@ -241,7 +292,7 @@
 
             <div class="cfdi-section">
               <div class="cfdi-section__head">
-                <h6 class="cfdi-section__title mb-0">5. Conceptos</h6>
+                <h6 class="cfdi-section__title mb-0">6. Conceptos</h6>
               </div>
               <div class="cfdi-section__body p-0">
                 <div class="table-responsive">
@@ -270,7 +321,7 @@
 
             <div class="cfdi-section mb-0">
               <div class="cfdi-section__head">
-                <h6 class="cfdi-section__title mb-0">6. Total / acciones finales</h6>
+                <h6 class="cfdi-section__title mb-0">7. Total / acciones finales</h6>
               </div>
               <div class="cfdi-section__body">
                 <div class="row">

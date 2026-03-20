@@ -365,6 +365,21 @@ class VentasController
             break;
         }
 
+        case 'facturacion-buscar-clientes': {
+            $q = trim((string)($_POST['q'] ?? $_GET['q'] ?? $raw['q'] ?? ''));
+            $limite = self::asInt($_POST['limite'] ?? $_GET['limite'] ?? $raw['limite'] ?? 20);
+
+            global $pdo;
+            $schema = new FacturacionSchemaHelper($pdo);
+            $model = new FacturacionModel($pdo, $schema);
+
+            echo json_encode([
+                'ok' => true,
+                'results' => $model->buscarClientesFacturacion($q, $limite),
+            ], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
         case 'facturacion-guardar-receptor': {
             $idVenta = self::asInt($_POST['id_venta'] ?? $_GET['id_venta'] ?? $raw['id_venta'] ?? 0);
             if ($idVenta <= 0) self::jsonError('id_venta requerido.');

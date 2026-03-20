@@ -20,6 +20,9 @@ class FacturacionModel
         $cfdiActual = $this->getCfdiByVenta($idVenta);
         $emisor = $this->getEmisorByVenta($idVenta);
         $receptor = $this->getReceptorByVenta($venta ?: [], $emisor);
+        $clienteSeleccionado = !empty($receptor['cliente_id'])
+            ? $this->obtenerClienteFacturacion((int)$receptor['cliente_id'])
+            : null;
         $conceptos = $this->buildConceptos($detalles);
         $formaPago = $this->buildFormaPago($venta ?: [], $emisor, $cfdiActual ?: []);
         $totales = $this->buildTotales($venta ?: [], $conceptos);
@@ -30,6 +33,7 @@ class FacturacionModel
             'cfdi_actual' => $cfdiActual,
             'emisor' => $emisor,
             'receptor' => $receptor,
+            'cliente_seleccionado' => $clienteSeleccionado,
             'informacion_global' => $this->buildInformacionGlobal($venta ?: [], $receptor),
             'catalogos' => [
                 'regimenes_fiscales' => $this->listarRegimenesFiscales(),
@@ -119,6 +123,13 @@ class FacturacionModel
         }
 
         $idCliente = (int)($venta['id_cliente'] ?? 0);
+        $idClienteSeleccionado = (int)($data['id_cliente'] ?? 0);
+        if ($idClienteSeleccionado > 0 && $idClienteSeleccionado !== $idCliente) {
+            $this->actualizarClienteVenta($idVenta, $idClienteSeleccionado);
+            $venta = $this->getVenta($idVenta);
+            $idCliente = (int)($venta['id_cliente'] ?? 0);
+        }
+
         if ($idCliente <= 0) {
             return [
                 'guardado' => false,
@@ -221,6 +232,104 @@ class FacturacionModel
         $st = $this->conn->prepare($sql);
         $st->execute([':id' => $idVenta]);
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function buscarClientesFacturacion(string $q = '', int $limite = 20): array
+    {
+        $limite = max(1, min(50, $limite));
+        $sql = "SELECT
+                    c.id_cliente,
+                    c.nombre AS cliente_nombre,
+                    c.rfc AS cliente_rfc,
+                    c.correo AS cliente_correo,
+                    c.uso_cfdi AS cliente_uso_cfdi,
+                    cs.nombre_comercial,
+                    cs.rfc AS cs_rfc,
+                    cs.razon_social,
+                    cs.regimen_fiscal,
+                    cs.uso_cdfi,
+                    cs.email AS cs_email,
+                    cs.email_alterno,
+                    cs.dom_fiscal_cp,
+                    cs.residencia_fiscal,
+                    cs.numero_registro_tributario,
+                    rf.Descripcion AS regimen_fiscal_descripcion,
+                    uc.Descripcion AS uso_cfdi_descripcion
+                FROM clientes c
+                LEFT JOIN clientes_sat cs ON cs.id = c.id_cliente
+                LEFT JOIN cat_sat_regimen_fiscal rf ON rf.ClaveRegimenFiscal = cs.regimen_fiscal
+                LEFT JOIN cat_sat_uso_cfdi uc ON uc.ClaveUsoCFDI = COALESCE(NULLIF(cs.uso_cdfi, ''), NULLIF(c.uso_cfdi, ''))
+                WHERE c.activo = 1";
+
+        $params = [];
+        if ($q !== '') {
+            $sql .= " AND (
+                        c.nombre LIKE :q_nombre
+                        OR c.rfc LIKE :q_rfc
+                        OR COALESCE(cs.razon_social, '') LIKE :q_razon
+                        OR COALESCE(cs.rfc, '') LIKE :q_cs_rfc
+                    )";
+            $like = '%' . $q . '%';
+            $params = [
+                ':q_nombre' => $like,
+                ':q_rfc' => $like,
+                ':q_razon' => $like,
+                ':q_cs_rfc' => $like,
+            ];
+        }
+
+        $sql .= " ORDER BY COALESCE(NULLIF(cs.razon_social, ''), NULLIF(c.nombre, ''), c.id_cliente) ASC
+                  LIMIT :limite";
+
+        $st = $this->conn->prepare($sql);
+        foreach ($params as $key => $value) {
+            $st->bindValue($key, $value);
+        }
+        $st->bindValue(':limite', $limite, PDO::PARAM_INT);
+        $st->execute();
+
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return array_map(fn(array $row) => $this->mapClienteFacturacion($row), $rows);
+    }
+
+    public function obtenerClienteFacturacion(int $idCliente): ?array
+    {
+        if ($idCliente <= 0) {
+            return null;
+        }
+
+        $sql = "SELECT
+                    c.id_cliente,
+                    c.nombre AS cliente_nombre,
+                    c.rfc AS cliente_rfc,
+                    c.correo AS cliente_correo,
+                    c.uso_cfdi AS cliente_uso_cfdi,
+                    cs.nombre_comercial,
+                    cs.rfc AS cs_rfc,
+                    cs.razon_social,
+                    cs.regimen_fiscal,
+                    cs.uso_cdfi,
+                    cs.email AS cs_email,
+                    cs.email_alterno,
+                    cs.dom_fiscal_cp,
+                    cs.residencia_fiscal,
+                    cs.numero_registro_tributario,
+                    rf.Descripcion AS regimen_fiscal_descripcion,
+                    uc.Descripcion AS uso_cfdi_descripcion
+                FROM clientes c
+                LEFT JOIN clientes_sat cs ON cs.id = c.id_cliente
+                LEFT JOIN cat_sat_regimen_fiscal rf ON rf.ClaveRegimenFiscal = cs.regimen_fiscal
+                LEFT JOIN cat_sat_uso_cfdi uc ON uc.ClaveUsoCFDI = COALESCE(NULLIF(cs.uso_cdfi, ''), NULLIF(c.uso_cfdi, ''))
+                WHERE c.id_cliente = :id_cliente
+                  AND c.activo = 1
+                LIMIT 1";
+
+        $st = $this->conn->prepare($sql);
+        $st->bindValue(':id_cliente', $idCliente, PDO::PARAM_INT);
+        $st->execute();
+        $row = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        return $row ? $this->mapClienteFacturacion($row) : null;
     }
 
     private function getEmisorByVenta(int $idVenta): array
@@ -476,6 +585,58 @@ class FacturacionModel
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
+    private function mapClienteFacturacion(array $row): array
+    {
+        $idCliente = (int)($row['id_cliente'] ?? 0);
+        $razonSocial = $this->firstNonEmpty([
+            $row['razon_social'] ?? null,
+            $row['cliente_nombre'] ?? null,
+        ]);
+        $rfc = strtoupper((string)$this->firstNonEmpty([
+            $row['cs_rfc'] ?? null,
+            $row['cliente_rfc'] ?? null,
+        ]));
+        $correo = $this->firstNonEmpty([
+            $row['cs_email'] ?? null,
+            $row['cliente_correo'] ?? null,
+            $row['email_alterno'] ?? null,
+        ]);
+        $usoCfdi = $this->firstNonEmpty([
+            $row['uso_cdfi'] ?? null,
+            $row['cliente_uso_cfdi'] ?? null,
+        ]);
+        $regimen = $this->firstNonEmpty([
+            $row['regimen_fiscal'] ?? null,
+        ]);
+        $nombreComercial = $this->firstNonEmpty([
+            $row['nombre_comercial'] ?? null,
+            $row['cliente_nombre'] ?? null,
+            $razonSocial,
+        ]);
+
+        $partes = array_filter([
+            $razonSocial,
+            $rfc !== '' ? $rfc : null,
+            $correo,
+        ], fn($value) => $value !== null && $value !== '');
+
+        return [
+            'id_cliente' => $idCliente,
+            'text' => implode(' · ', $partes) ?: ('Cliente #' . $idCliente),
+            'nombre' => $razonSocial,
+            'nombre_comercial' => $nombreComercial,
+            'rfc' => $rfc,
+            'correo' => $correo,
+            'domicilio_fiscal_receptor' => $row['dom_fiscal_cp'] ?? null,
+            'regimen_fiscal_receptor' => $regimen,
+            'regimen_fiscal_descripcion' => $row['regimen_fiscal_descripcion'] ?? null,
+            'uso_cfdi' => $usoCfdi,
+            'uso_cfdi_descripcion' => $row['uso_cfdi_descripcion'] ?? null,
+            'residencia_fiscal' => $row['residencia_fiscal'] ?? null,
+            'num_reg_id_trib' => $row['numero_registro_tributario'] ?? null,
+        ];
+    }
+
     private function esPublicoGeneral(array $venta): bool
     {
         $idCliente = (int)($venta['id_cliente'] ?? 0);
@@ -540,6 +701,15 @@ class FacturacionModel
             ':correo' => $payload['email'] !== '' ? $payload['email'] : null,
             ':uso_cfdi' => $payload['uso_cdfi'] !== '' ? $payload['uso_cdfi'] : null,
             ':id_cliente' => $idCliente,
+        ]);
+    }
+
+    private function actualizarClienteVenta(int $idVenta, int $idCliente): void
+    {
+        $st = $this->conn->prepare("UPDATE ventas SET id_cliente = :id_cliente WHERE id_venta = :id_venta");
+        $st->execute([
+            ':id_cliente' => $idCliente,
+            ':id_venta' => $idVenta,
         ]);
     }
 
