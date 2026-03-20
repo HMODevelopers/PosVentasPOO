@@ -20,8 +20,8 @@ class FacturacionModel
         $cfdiActual = $this->getCfdiByVenta($idVenta);
         $emisor = $this->getEmisorByVenta($idVenta);
         $receptor = $this->getReceptorByVenta($venta ?: [], $emisor);
-        $clienteSeleccionado = !empty($receptor['cliente_id'])
-            ? $this->obtenerClienteFacturacion((int)$receptor['cliente_id'])
+        $clienteSeleccionado = !empty($receptor['cliente_sat_id'])
+            ? $this->obtenerClienteFacturacion((int)$receptor['cliente_sat_id'])
             : null;
         $conceptos = $this->buildConceptos($detalles);
         $formaPago = $this->buildFormaPago($venta ?: [], $emisor, $cfdiActual ?: []);
@@ -133,7 +133,7 @@ class FacturacionModel
         if ($idCliente <= 0) {
             return [
                 'guardado' => false,
-                'msg' => 'La venta no tiene cliente registrado. Se usarán los datos fiscales del cliente genérico.',
+                'msg' => 'La venta no tiene un cliente SAT vinculado. Selecciona un receptor válido desde clientes_sat antes de guardar.',
             ];
         }
 
@@ -196,14 +196,7 @@ class FacturacionModel
             LEFT JOIN formas_pago fp ON fp.id_forma_pago = v.id_forma_pago
             INNER JOIN cajas cj ON cj.id_caja = v.id_caja
             LEFT JOIN sucursales s ON s.id_sucursal = cj.id_sucursal
-            LEFT JOIN clientes_sat cs
-                ON cs.id = c.id_cliente
-                OR (
-                    cs.id IS NULL
-                    AND NULLIF(TRIM(cs.rfc), '') IS NOT NULL
-                    AND NULLIF(TRIM(c.rfc), '') IS NOT NULL
-                    AND cs.rfc = c.rfc
-                )
+            LEFT JOIN clientes_sat cs ON cs.id = v.id_cliente
             WHERE v.id_venta = :id
             LIMIT 1";
 
@@ -238,47 +231,40 @@ class FacturacionModel
     {
         $limite = max(1, min(50, $limite));
         $sql = "SELECT
-                    c.id_cliente,
-                    c.nombre AS cliente_nombre,
-                    c.rfc AS cliente_rfc,
-                    c.correo AS cliente_correo,
-                    c.uso_cfdi AS cliente_uso_cfdi,
+                    cs.id,
                     cs.nombre_comercial,
-                    cs.rfc AS cs_rfc,
+                    cs.rfc,
                     cs.razon_social,
                     cs.regimen_fiscal,
                     cs.uso_cdfi,
-                    cs.email AS cs_email,
+                    cs.email,
                     cs.email_alterno,
                     cs.dom_fiscal_cp,
                     cs.residencia_fiscal,
                     cs.numero_registro_tributario,
                     rf.Descripcion AS regimen_fiscal_descripcion,
                     uc.Descripcion AS uso_cfdi_descripcion
-                FROM clientes c
-                LEFT JOIN clientes_sat cs ON cs.id = c.id_cliente
+                FROM clientes_sat cs
                 LEFT JOIN cat_sat_regimen_fiscal rf ON rf.ClaveRegimenFiscal = cs.regimen_fiscal
-                LEFT JOIN cat_sat_uso_cfdi uc ON uc.ClaveUsoCFDI = COALESCE(NULLIF(cs.uso_cdfi, ''), NULLIF(c.uso_cfdi, ''))
-                WHERE c.activo = 1";
+                LEFT JOIN cat_sat_uso_cfdi uc ON uc.ClaveUsoCFDI = cs.uso_cdfi
+                WHERE 1 = 1";
 
         $params = [];
         if ($q !== '') {
             $sql .= " AND (
-                        c.nombre LIKE :q_nombre
-                        OR c.rfc LIKE :q_rfc
+                        COALESCE(cs.rfc, '') LIKE :q_rfc
                         OR COALESCE(cs.razon_social, '') LIKE :q_razon
-                        OR COALESCE(cs.rfc, '') LIKE :q_cs_rfc
+                        OR COALESCE(cs.nombre_comercial, '') LIKE :q_nombre_comercial
                     )";
             $like = '%' . $q . '%';
             $params = [
-                ':q_nombre' => $like,
                 ':q_rfc' => $like,
                 ':q_razon' => $like,
-                ':q_cs_rfc' => $like,
+                ':q_nombre_comercial' => $like,
             ];
         }
 
-        $sql .= " ORDER BY COALESCE(NULLIF(cs.razon_social, ''), NULLIF(c.nombre, ''), c.id_cliente) ASC
+        $sql .= " ORDER BY COALESCE(NULLIF(cs.razon_social, ''), NULLIF(cs.nombre_comercial, ''), cs.rfc, cs.id) ASC
                   LIMIT :limite";
 
         $st = $this->conn->prepare($sql);
@@ -299,29 +285,23 @@ class FacturacionModel
         }
 
         $sql = "SELECT
-                    c.id_cliente,
-                    c.nombre AS cliente_nombre,
-                    c.rfc AS cliente_rfc,
-                    c.correo AS cliente_correo,
-                    c.uso_cfdi AS cliente_uso_cfdi,
+                    cs.id,
                     cs.nombre_comercial,
-                    cs.rfc AS cs_rfc,
+                    cs.rfc,
                     cs.razon_social,
                     cs.regimen_fiscal,
                     cs.uso_cdfi,
-                    cs.email AS cs_email,
+                    cs.email,
                     cs.email_alterno,
                     cs.dom_fiscal_cp,
                     cs.residencia_fiscal,
                     cs.numero_registro_tributario,
                     rf.Descripcion AS regimen_fiscal_descripcion,
                     uc.Descripcion AS uso_cfdi_descripcion
-                FROM clientes c
-                LEFT JOIN clientes_sat cs ON cs.id = c.id_cliente
+                FROM clientes_sat cs
                 LEFT JOIN cat_sat_regimen_fiscal rf ON rf.ClaveRegimenFiscal = cs.regimen_fiscal
-                LEFT JOIN cat_sat_uso_cfdi uc ON uc.ClaveUsoCFDI = COALESCE(NULLIF(cs.uso_cdfi, ''), NULLIF(c.uso_cfdi, ''))
-                WHERE c.id_cliente = :id_cliente
-                  AND c.activo = 1
+                LEFT JOIN cat_sat_uso_cfdi uc ON uc.ClaveUsoCFDI = cs.uso_cdfi
+                WHERE cs.id = :id_cliente
                 LIMIT 1";
 
         $st = $this->conn->prepare($sql);
@@ -368,31 +348,23 @@ class FacturacionModel
         $esPublicoGeneral = $this->esPublicoGeneral($venta);
         $rfc = $this->firstNonEmpty([
             $venta['cs_rfc'] ?? null,
-            $venta['cliente_rfc'] ?? null,
-            $esPublicoGeneral ? 'XAXX010101000' : null,
         ]);
         $nombre = $this->firstNonEmpty([
             $venta['cs_razon_social'] ?? null,
-            $venta['cliente_nombre'] ?? null,
-            $esPublicoGeneral ? 'PUBLICO EN GENERAL' : null,
         ]);
         $regimen = $this->firstNonEmpty([
             $venta['cs_regimen_fiscal'] ?? null,
-            $esPublicoGeneral ? '616' : null,
         ]);
         $cp = $this->firstNonEmpty([
             $venta['cs_dom_fiscal_cp'] ?? null,
-            $esPublicoGeneral ? ($emisor['lugar_expedicion'] ?? null) : null,
         ]);
         $usoCfdi = $this->firstNonEmpty([
             $venta['cs_uso_cfdi'] ?? null,
-            $venta['cliente_uso_cfdi'] ?? null,
-            $esPublicoGeneral ? 'S01' : null,
         ]);
 
         return [
             'nombre' => $nombre,
-            'nombre_comercial' => $venta['cs_nombre_comercial'] ?? $venta['cliente_nombre'] ?? null,
+            'nombre_comercial' => $venta['cs_nombre_comercial'] ?? null,
             'rfc' => $rfc,
             'domicilio_fiscal_receptor' => $cp,
             'regimen_fiscal_receptor' => $regimen,
@@ -403,10 +375,10 @@ class FacturacionModel
             'telefono' => $venta['cliente_telefono'] ?? null,
             'correo' => $this->firstNonEmpty([
                 $venta['cs_email'] ?? null,
-                $venta['cliente_correo'] ?? null,
                 $venta['cs_email_alterno'] ?? null,
             ]),
             'cliente_id' => (int)($venta['cliente_id'] ?? 0),
+            'cliente_sat_id' => (int)($venta['cliente_sat_id'] ?? 0),
             'es_publico_general' => $esPublicoGeneral,
         ];
     }
@@ -587,30 +559,27 @@ class FacturacionModel
 
     private function mapClienteFacturacion(array $row): array
     {
-        $idCliente = (int)($row['id_cliente'] ?? 0);
+        $idCliente = (int)($row['id'] ?? $row['cliente_sat_id'] ?? 0);
         $razonSocial = $this->firstNonEmpty([
             $row['razon_social'] ?? null,
-            $row['cliente_nombre'] ?? null,
         ]);
         $rfc = strtoupper((string)$this->firstNonEmpty([
+            $row['rfc'] ?? null,
             $row['cs_rfc'] ?? null,
-            $row['cliente_rfc'] ?? null,
         ]));
         $correo = $this->firstNonEmpty([
+            $row['email'] ?? null,
             $row['cs_email'] ?? null,
-            $row['cliente_correo'] ?? null,
             $row['email_alterno'] ?? null,
         ]);
         $usoCfdi = $this->firstNonEmpty([
             $row['uso_cdfi'] ?? null,
-            $row['cliente_uso_cfdi'] ?? null,
         ]);
         $regimen = $this->firstNonEmpty([
             $row['regimen_fiscal'] ?? null,
         ]);
         $nombreComercial = $this->firstNonEmpty([
             $row['nombre_comercial'] ?? null,
-            $row['cliente_nombre'] ?? null,
             $razonSocial,
         ]);
 
@@ -621,8 +590,10 @@ class FacturacionModel
         ], fn($value) => $value !== null && $value !== '');
 
         return [
+            'id' => $idCliente,
             'id_cliente' => $idCliente,
-            'text' => implode(' · ', $partes) ?: ('Cliente #' . $idCliente),
+            'id_cliente_sat' => $idCliente,
+            'text' => implode(' · ', $partes) ?: ('Cliente SAT #' . $idCliente),
             'nombre' => $razonSocial,
             'nombre_comercial' => $nombreComercial,
             'rfc' => $rfc,
@@ -639,7 +610,6 @@ class FacturacionModel
 
     private function esPublicoGeneral(array $venta): bool
     {
-        $idCliente = (int)($venta['id_cliente'] ?? 0);
         $rfc = strtoupper(trim((string)($venta['cs_rfc'] ?? $venta['cliente_rfc'] ?? '')));
         $nombre = strtoupper(trim((string)($venta['cs_razon_social'] ?? $venta['cliente_nombre'] ?? '')));
 
@@ -651,7 +621,7 @@ class FacturacionModel
             return true;
         }
 
-        return $idCliente <= 0;
+        return false;
     }
 
     private function normalizarDatosFiscales(array $data, array $venta): array
@@ -667,21 +637,6 @@ class FacturacionModel
             'numero_registro_tributario' => trim((string)($data['numero_registro_tributario'] ?? '')),
             'residencia_fiscal' => trim((string)($data['residencia_fiscal'] ?? '')),
         ];
-
-        if ($this->esPublicoGeneral($venta)) {
-            if ($payload['razon_social'] === '') {
-                $payload['razon_social'] = 'PUBLICO EN GENERAL';
-            }
-            if ($payload['rfc'] === '') {
-                $payload['rfc'] = 'XAXX010101000';
-            }
-            if ($payload['regimen_fiscal'] === '') {
-                $payload['regimen_fiscal'] = '616';
-            }
-            if ($payload['uso_cdfi'] === '') {
-                $payload['uso_cdfi'] = 'S01';
-            }
-        }
 
         return $payload;
     }

@@ -380,6 +380,26 @@ class VentasController
             break;
         }
 
+        case 'facturacion-cliente-detalle': {
+            $idCliente = self::asInt($_POST['id'] ?? $_GET['id'] ?? $raw['id'] ?? 0);
+            if ($idCliente <= 0) self::jsonError('id requerido.');
+
+            global $pdo;
+            $schema = new FacturacionSchemaHelper($pdo);
+            $model = new FacturacionModel($pdo, $schema);
+            $cliente = $model->obtenerClienteFacturacion($idCliente);
+
+            if (!$cliente) {
+                self::jsonError('Cliente SAT no encontrado.', 404);
+            }
+
+            echo json_encode([
+                'ok' => true,
+                'data' => $cliente,
+            ], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
         case 'facturacion-guardar-receptor': {
             $idVenta = self::asInt($_POST['id_venta'] ?? $_GET['id_venta'] ?? $raw['id_venta'] ?? 0);
             if ($idVenta <= 0) self::jsonError('id_venta requerido.');
@@ -389,7 +409,10 @@ class VentasController
             $model = new FacturacionModel($pdo, $schema);
             $validator = new FacturacionValidator();
 
-            $model->guardarDatosFiscalesVenta($idVenta, $raw ?: $_POST);
+            $guardado = $model->guardarDatosFiscalesVenta($idVenta, $raw ?: $_POST);
+            if (empty($guardado['guardado'])) {
+                self::jsonError($guardado['msg'] ?? 'No fue posible guardar los datos fiscales.', 422);
+            }
             $ctx = $model->loadContext($idVenta);
             $validaciones = $validator->validate($ctx);
 

@@ -17,19 +17,29 @@
   }
   #modalFacturarVenta .modal-dialog {
     margin: 1.25rem auto;
+    height: calc(100vh - 2.5rem);
   }
   #modalFacturarVenta .modal-content {
     border: 0;
     display: flex;
     flex-direction: column;
-    max-height: 92vh;
-    min-height: 70vh;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+  }
+  #modalFacturarVenta .modal-header,
+  #modalFacturarVenta .modal-footer {
+    background: #fff;
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 2;
   }
   #modalFacturarVenta .modal-body {
     background: #f8fafc;
     flex: 1 1 auto;
-    max-height: calc(92vh - 140px);
+    min-height: 0;
     overflow-y: auto;
+    overscroll-behavior: contain;
   }
   #modalFacturarVenta .cfdi-section {
     background: #fff;
@@ -105,6 +115,12 @@
   #modalFacturarVenta .select2-container {
     width: 100% !important;
   }
+  #modalFacturarVenta .select2-container--open {
+    z-index: 2055;
+  }
+  #modalFacturarVenta .select2-dropdown {
+    z-index: 2056;
+  }
   #modalFacturarVenta .select2-container--default .select2-selection--single {
     border: 1px solid #ced4da;
     border-radius: 0.25rem;
@@ -122,6 +138,9 @@
   #modalFacturarVenta .cfdi-helper {
     color: #7a8797;
     font-size: 0.78rem;
+  }
+  #modalFacturarVenta .cfdi-select-block .select2-selection--single {
+    background-color: #fff;
   }
 </style>
 
@@ -216,13 +235,10 @@
                 <div class="row">
                   <div class="col-12">
                     <label for="fac-select-cliente">Cliente existente</label>
-                    <div class="d-flex flex-column flex-md-row align-items-stretch align-items-md-center">
+                    <div class="cfdi-select-block">
                       <select class="form-control" id="fac-select-cliente" data-placeholder="Buscar por nombre, razón social o RFC"></select>
-                      <button type="button" class="btn btn-outline-secondary btn-sm mt-2 mt-md-0 ml-md-2" id="btnFacLimpiarCliente">
-                        <i class="mdi mdi-refresh mr-1"></i>Captura manual / público en general
-                      </button>
                     </div>
-                    <small class="form-text cfdi-helper mb-2">Busca clientes existentes por nombre, razón social o RFC para cargar sus datos fiscales al instante.</small>
+                    <small class="form-text cfdi-helper mb-2">Busca en <code>clientes_sat</code> por RFC, razón social o nombre comercial para cargar el receptor fiscal.</small>
                   </div>
                   <div class="col-md-4">
                     <label for="fac-input-rfc">RFC</label>

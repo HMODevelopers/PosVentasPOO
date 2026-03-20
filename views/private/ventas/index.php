@@ -2429,12 +2429,14 @@ function initFacturacionClienteSelect(){
   const $modal = $('#modalFacturarVenta');
 
   if (!$select.length || typeof $.fn.select2 !== 'function') return;
-  if ($select.hasClass('select2-hidden-accessible')) return;
+  if ($select.hasClass('select2-hidden-accessible')) {
+    $select.select2('destroy');
+  }
 
   $select.select2({
     width: '100%',
     dropdownParent: $modal,
-    placeholder: $select.data('placeholder') || 'Buscar cliente',
+    placeholder: $select.data('placeholder') || 'Buscar cliente SAT',
     allowClear: true,
     minimumInputLength: 1,
     ajax: {
@@ -2453,24 +2455,25 @@ function initFacturacionClienteSelect(){
     },
     templateResult: function(item){
       if (item.loading) return item.text;
-      const razon = item.nombre || item.text || 'Sin nombre';
+      const razon = item.nombre || item.razon_social || item.text || 'Sin nombre fiscal';
+      const comercial = item.nombre_comercial || '';
       const rfc = item.rfc || 'Sin RFC';
       const correo = item.correo || '';
       return $(`
         <div>
           <div class="font-weight-bold">${escapeHtml(razon)}</div>
-          <small class="text-muted">${escapeHtml(rfc)}${correo ? ' · ' + escapeHtml(correo) : ''}</small>
+          <small class="text-muted">${escapeHtml(rfc)}${comercial ? ' · ' + escapeHtml(comercial) : ''}${correo ? ' · ' + escapeHtml(correo) : ''}</small>
         </div>
       `);
     },
     templateSelection: function(item){
-      return item.text || item.nombre || 'Buscar cliente';
+      return item.text || item.nombre || item.razon_social || 'Buscar cliente SAT';
     },
     language: {
-      inputTooShort: () => 'Escribe al menos 1 carácter para buscar clientes.',
-      searching: () => 'Buscando clientes...',
-      noResults: () => 'No se encontraron clientes.',
-      errorLoading: () => 'No se pudieron cargar los clientes.'
+      inputTooShort: () => 'Escribe al menos 1 carácter para buscar en clientes_sat.',
+      searching: () => 'Buscando clientes SAT...',
+      noResults: () => 'No se encontraron clientes SAT.',
+      errorLoading: () => 'No se pudieron cargar los clientes SAT.'
     }
   });
 }
@@ -2479,7 +2482,7 @@ function setFacturacionClienteSeleccionado(cliente){
   const $select = $('#fac-select-cliente');
   if (!$select.length) return;
 
-  const idCliente = Number(cliente?.id_cliente || 0);
+  const idCliente = Number(cliente?.id || cliente?.id_cliente_sat || cliente?.id_cliente || 0);
   if (!idCliente) {
     $select.val(null).trigger('change');
     return;
@@ -2492,13 +2495,18 @@ function setFacturacionClienteSeleccionado(cliente){
 
   const option = new Option(texto, String(idCliente), true, true);
   $(option).data('clienteFacturacion', cliente);
-  $select.empty().append(option).trigger('change');
+  $select.empty().append(option).trigger({
+    type: 'change',
+    params: {
+      data: cliente
+    }
+  });
 }
 
 function fillFacturacionReceptor(data = {}){
   $('#fac-input-rfc').val(data.rfc || '');
   $('#fac-input-razon-social').val(data.nombre || '');
-  $('#fac-input-nombre-comercial').val(data.nombre_comercial || data.nombre || '');
+  $('#fac-input-nombre-comercial').val(data.nombre_comercial || '');
   $('#fac-input-correo').val(data.correo || '');
   $('#fac-input-cp').val(data.domicilio_fiscal_receptor || '');
   $('#fac-input-residencia-fiscal').val(data.residencia_fiscal || '');
@@ -2576,7 +2584,7 @@ function renderFacturacionPreview(resp, idVenta){
   $('#fac-emisor-exportacion').text(emisor.exportacion || '—');
   $('#fac-folio').text(venta.folio || ('#' + idVenta));
   $('#fac-fecha').text(fechaMx(venta.fecha));
-  $('#fac-cliente').text(venta.cliente_nombre || venta.cliente || 'Público en general');
+  $('#fac-cliente').text(venta.cliente_nombre || venta.cliente || '—');
   $('#fac-forma-pago').text(
     formaPago.forma_pago
       ? `${formaPago.forma_pago}${formaPago.forma_pago_descripcion ? ' · ' + formaPago.forma_pago_descripcion : ''}`
@@ -2604,7 +2612,7 @@ function renderFacturacionPreview(resp, idVenta){
   $('#fac-publico-note')
     .toggleClass('d-none', !esPublicoGeneral)
     .html(esPublicoGeneral
-      ? 'Venta tratada como <strong>Público en general</strong>. Se aplican los valores fiscales por defecto del CFDI 4.0.'
+      ? 'La venta ya cuenta con un receptor fiscal explícito de <strong>Público en general</strong>.'
       : '');
 
   $('#fac-info-global')
@@ -2761,7 +2769,7 @@ $(document).off('click', '#btnGuardarDatosFiscales').on('click', '#btnGuardarDat
 
 $(document).off('select2:select', '#fac-select-cliente').on('select2:select', '#fac-select-cliente', function(e){
   const cliente = e?.params?.data || {};
-  if (!cliente?.id_cliente) return;
+  if (!cliente?.id && !cliente?.id_cliente_sat && !cliente?.id_cliente) return;
   $('#fac-error, #fac-success').addClass('d-none').empty();
   fillFacturacionReceptor(cliente);
   $('#fac-publico-note').addClass('d-none').empty();
@@ -2781,8 +2789,10 @@ $(document).off('select2:clear', '#fac-select-cliente').on('select2:clear', '#fa
   });
 });
 
-$(document).off('click', '#btnFacLimpiarCliente').on('click', '#btnFacLimpiarCliente', function(){
-  $('#fac-select-cliente').val(null).trigger('change');
+$(document).off('change', '#fac-select-cliente').on('change', '#fac-select-cliente', function(e){
+  const valor = $(this).val();
+  if (valor) return;
+  if (e?.params?.data) return;
   fillFacturacionReceptor({
     rfc: '',
     nombre: '',
@@ -2794,6 +2804,19 @@ $(document).off('click', '#btnFacLimpiarCliente').on('click', '#btnFacLimpiarCli
     residencia_fiscal: '',
     num_reg_id_trib: ''
   });
+});
+
+$(document).off('shown.bs.modal', '#modalFacturarVenta').on('shown.bs.modal', '#modalFacturarVenta', function(){
+  initFacturacionClienteSelect();
+});
+
+$(document).off('select2:open', '#fac-select-cliente').on('select2:open', '#fac-select-cliente', function(){
+  window.setTimeout(function(){
+    const $search = $('.select2-container--open .select2-search__field');
+    if ($search.length) {
+      $search.trigger('focus');
+    }
+  }, 0);
 });
 
 $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta', function(e){
