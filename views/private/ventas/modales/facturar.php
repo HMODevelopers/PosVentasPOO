@@ -1,20 +1,27 @@
 <style>
-  #modalFacturarVenta .modal-xxl-custom {
-    margin: 1rem auto;
-    max-width: min(1400px, calc(100vw - 2rem));
-    width: calc(100vw - 2rem);
+  #modalFacturarVenta .modal-dialog {
+    height: calc(100vh - 40px);
+    margin: 20px auto;
+    max-width: 1400px;
+    width: 95%;
   }
   @media (min-width: 1600px) {
-    #modalFacturarVenta .modal-xxl-custom {
-      max-width: min(1600px, calc(100vw - 3rem));
-      width: calc(100vw - 3rem);
+    #modalFacturarVenta .modal-dialog {
+      max-width: 1600px;
     }
   }
   #modalFacturarVenta .modal-content {
     border: 0;
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 2rem);
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  #modalFacturarVenta #formFacturarVenta {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
     min-height: 0;
   }
   #modalFacturarVenta .modal-header,
@@ -26,6 +33,7 @@
   }
   #modalFacturarVenta .modal-body {
     background: #f8fafc;
+    -webkit-overflow-scrolling: touch;
     flex: 1 1 auto;
     min-height: 0;
     overflow-x: hidden;
@@ -170,7 +178,7 @@
 
 <!-- Modal Facturar Venta -->
 <div class="modal fade" id="modalFacturarVenta" tabindex="-1" role="dialog" aria-labelledby="modalFacturarVentaLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable modal-xxl-custom" role="document">
+  <div class="modal-dialog" role="document">
     <div class="modal-content">
       <form id="formFacturarVenta" autocomplete="off">
         <div class="modal-header">
@@ -259,7 +267,7 @@
                     <div class="cfdi-select-block">
                       <select class="form-control" id="fac-select-cliente" data-placeholder="Buscar por nombre, razón social o RFC"></select>
                     </div>
-                    <small class="form-text cfdi-helper mb-2">Busca en <code>clientes_sat</code> por RFC, razón social o nombre comercial para cargar el receptor fiscal.</small>
+                    <small class="form-text cfdi-helper mb-2">Busca por RFC, razón social o nombre comercial para cargar el receptor fiscal.</small>
                   </div>
                   <div class="col-md-4">
                     <label for="fac-input-rfc">RFC</label>

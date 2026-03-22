@@ -394,7 +394,7 @@ function accionesVenta(v){
   if ((v.estatus === 'Activa' || v.estatus === 'Credito') && String(v.estatus_fiscal || '').toUpperCase() !== 'TIMBRADO') {
     out += `
       <a class="dropdown-item accion-facturar" href="#" data-id="${v.id_venta}" data-folio="${v.folio}">
-        <i class="mdi mdi-file-document-check-outline mr-2 text-muted font-18 vertical-middle"></i>Facturar
+        <i class="mdi mdi-receipt mr-2 text-muted font-18 vertical-middle"></i>Facturar
       </a>`;
   }
 
