@@ -38,6 +38,11 @@ class FacturacionModel
             'catalogos' => [
                 'regimenes_fiscales' => $this->listarRegimenesFiscales(),
                 'usos_cfdi' => $this->listarUsosCfdi(),
+                'monedas' => $this->listarMonedas(),
+                'formas_pago' => $this->listarFormasPagoSat(),
+                'metodos_pago' => $this->listarMetodosPago(),
+                'tipos_comprobante' => $this->listarTiposComprobante(),
+                'exportaciones' => $this->listarExportaciones(),
             ],
             'forma_pago' => $formaPago,
             'conceptos' => $conceptos,
@@ -143,6 +148,7 @@ class FacturacionModel
         try {
             $this->actualizarClienteBase($idCliente, $payload);
             $this->upsertClienteSat($idCliente, $payload, $venta);
+            $this->guardarComprobanteVenta($idVenta, $data, $venta);
             $this->conn->commit();
 
             return [
@@ -397,32 +403,47 @@ class FacturacionModel
 
     private function buildFormaPago(array $venta, array $emisor, array $cfdiActual): array
     {
+        $moneda = $this->firstNonEmpty([
+            $cfdiActual['moneda'] ?? null,
+            $venta['moneda'] ?? null,
+            $emisor['moneda'] ?? null,
+            'MXN',
+        ]) ?: 'MXN';
+
+        $monedaMeta = $this->obtenerMetaMoneda($moneda);
+        $tipoCambio = $this->firstNonEmpty([
+            $cfdiActual['tipo_cambio'] ?? null,
+            $venta['tipo_cambio'] ?? null,
+        ]);
+
+        if ($moneda === 'MXN') {
+            $tipoCambio = '1';
+        }
+        if ($moneda === 'XXX') {
+            $tipoCambio = null;
+        }
+
         return [
-            'moneda' => $this->firstNonEmpty([
-                $cfdiActual['moneda'] ?? null,
-                $venta['moneda'] ?? null,
-                $emisor['moneda'] ?? null,
-                'MXN',
-            ]),
+            'moneda' => $moneda,
             'metodo_pago' => $this->firstNonEmpty([
                 $cfdiActual['metodo_pago'] ?? null,
                 $venta['metodo_pago'] ?? null,
+                ((string)($venta['estatus'] ?? '') === 'Credito') ? 'PPD' : null,
                 'PUE',
             ]),
             'forma_pago' => $this->firstNonEmpty([
+                $cfdiActual['forma_pago'] ?? null,
                 $venta['forma_pago_sat'] ?? null,
             ]),
             'forma_pago_descripcion' => $this->firstNonEmpty([
+                $cfdiActual['forma_pago_descripcion'] ?? null,
                 $venta['forma_pago'] ?? null,
             ]),
             'condiciones_pago' => $this->firstNonEmpty([
                 $cfdiActual['condiciones_pago'] ?? null,
                 $venta['condiciones_pago'] ?? null,
             ]),
-            'tipo_cambio' => $this->firstNonEmpty([
-                $cfdiActual['tipo_cambio'] ?? null,
-                $venta['tipo_cambio'] ?? null,
-            ]),
+            'tipo_cambio' => $tipoCambio,
             'tipo_comprobante' => $this->firstNonEmpty([
                 $cfdiActual['tipo_comprobante'] ?? null,
                 $emisor['tipo_comprobante'] ?? null,
@@ -437,6 +458,10 @@ class FacturacionModel
                 $cfdiActual['fecha_emision'] ?? null,
                 $venta['fecha'] ?? null,
             ]),
+            'moneda_descripcion' => $monedaMeta['Descripcion'] ?? null,
+            'permite_tipo_cambio' => (int)($monedaMeta['PermiteTipoCambio'] ?? (($moneda === 'MXN' || $moneda === 'XXX') ? 0 : 1)),
+            'decimales_moneda' => isset($monedaMeta['Decimales']) ? (int)$monedaMeta['Decimales'] : 2,
+            'tipo_cambio_requerido' => !in_array($moneda, ['MXN', 'XXX'], true),
         ];
     }
 
@@ -555,6 +580,115 @@ class FacturacionModel
     {
         $st = $this->conn->query("SELECT ClaveUsoCFDI, Descripcion FROM cat_sat_uso_cfdi WHERE Activo = 1 ORDER BY ClaveUsoCFDI ASC");
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+
+    private function listarMonedas(): array
+    {
+        if (!$this->schema->tableExists('cat_sat_moneda')) {
+            return [
+                ['ClaveMoneda' => 'MXN', 'Descripcion' => 'Peso Mexicano', 'Decimales' => 2, 'PermiteTipoCambio' => 0],
+                ['ClaveMoneda' => 'USD', 'Descripcion' => 'Dólar estadounidense', 'Decimales' => 2, 'PermiteTipoCambio' => 1],
+                ['ClaveMoneda' => 'XXX', 'Descripcion' => 'Sin moneda', 'Decimales' => 2, 'PermiteTipoCambio' => 0],
+            ];
+        }
+
+        $st = $this->conn->query("SELECT ClaveMoneda, Descripcion, Decimales, PermiteTipoCambio FROM cat_sat_moneda WHERE Activo = 1 ORDER BY ClaveMoneda ASC");
+        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private function listarFormasPagoSat(): array
+    {
+        if (!$this->schema->tableExists('formas_pago')) {
+            return [];
+        }
+
+        $st = $this->conn->query("SELECT clave_sat, descripcion FROM formas_pago WHERE activo = 1 AND COALESCE(clave_sat, '') <> '' ORDER BY clave_sat ASC, descripcion ASC");
+        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private function listarMetodosPago(): array
+    {
+        return [
+            ['clave' => 'PUE', 'descripcion' => 'Pago en una sola exhibición'],
+            ['clave' => 'PPD', 'descripcion' => 'Pago en parcialidades o diferido'],
+        ];
+    }
+
+    private function listarTiposComprobante(): array
+    {
+        return [
+            ['clave' => 'I', 'descripcion' => 'Ingreso'],
+        ];
+    }
+
+    private function listarExportaciones(): array
+    {
+        return [
+            ['clave' => '01', 'descripcion' => 'No aplica'],
+            ['clave' => '02', 'descripcion' => 'Definitiva'],
+            ['clave' => '03', 'descripcion' => 'Temporal'],
+        ];
+    }
+
+    private function obtenerMetaMoneda(string $claveMoneda): array
+    {
+        foreach ($this->listarMonedas() as $moneda) {
+            if (strcasecmp((string)($moneda['ClaveMoneda'] ?? ''), $claveMoneda) === 0) {
+                return $moneda;
+            }
+        }
+        return [];
+    }
+
+    private function normalizarDatosComprobante(array $data, array $venta): array
+    {
+        $moneda = strtoupper(trim((string)($data['moneda'] ?? 'MXN')));
+        $metodoPago = strtoupper(trim((string)($data['metodo_pago'] ?? (((string)($venta['estatus'] ?? '') === 'Credito') ? 'PPD' : 'PUE'))));
+        $formaPago = strtoupper(trim((string)($data['forma_pago'] ?? ($venta['forma_pago_sat'] ?? ''))));
+        $tipoComprobante = strtoupper(trim((string)($data['tipo_comprobante'] ?? 'I')));
+        $exportacion = trim((string)($data['exportacion'] ?? '01'));
+        $condiciones = trim((string)($data['condiciones_pago'] ?? ''));
+        $tipoCambio = trim((string)($data['tipo_cambio'] ?? ''));
+
+        if ($moneda === 'MXN') {
+            $tipoCambio = '1';
+        } elseif ($moneda === 'XXX') {
+            $tipoCambio = '';
+        }
+
+        return [
+            'moneda' => $moneda,
+            'metodo_pago' => $metodoPago,
+            'forma_pago' => $formaPago,
+            'condiciones_pago' => $condiciones,
+            'tipo_cambio' => $tipoCambio,
+            'tipo_comprobante' => $tipoComprobante,
+            'exportacion' => $exportacion,
+        ];
+    }
+
+    private function guardarComprobanteVenta(int $idVenta, array $data, array $venta): void
+    {
+        if (!$this->schema->tableExists('ventas_cfdi')) {
+            return;
+        }
+
+        $payload = $this->schema->filterData('ventas_cfdi', $this->normalizarDatosComprobante($data, $venta));
+        if (!$payload) {
+            return;
+        }
+
+        $existing = $this->getCfdiByVenta($idVenta);
+        if ($existing) {
+            $this->updateCfdiRecord((int)$existing[$this->pkCfdi()], $payload);
+            return;
+        }
+
+        $this->createOrGetCfdiRecord($idVenta, $payload + [
+            'estatus' => 'BORRADOR',
+            'mensaje_respuesta' => 'Datos del comprobante capturados desde el modal de facturación.',
+        ]);
     }
 
     private function mapClienteFacturacion(array $row): array

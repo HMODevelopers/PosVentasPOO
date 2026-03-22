@@ -9,6 +9,8 @@ class FacturacionValidator
         $receptor = $ctx['receptor'] ?? [];
         $emisor = $ctx['emisor'] ?? [];
         $conceptos = $ctx['conceptos'] ?? [];
+        $formaPago = $ctx['forma_pago'] ?? [];
+        $catalogos = $ctx['catalogos'] ?? [];
 
         if (!$venta) {
             $errors[] = 'La venta no existe.';
@@ -48,8 +50,75 @@ class FacturacionValidator
             }
         }
 
-        if (empty($venta['forma_pago_sat'])) {
-            $errors[] = 'La venta no tiene una forma de pago SAT válida.';
+        $moneda = strtoupper(trim((string)($formaPago['moneda'] ?? '')));
+        $metodoPago = strtoupper(trim((string)($formaPago['metodo_pago'] ?? '')));
+        $formaPagoSat = strtoupper(trim((string)($formaPago['forma_pago'] ?? '')));
+        $tipoComprobante = strtoupper(trim((string)($formaPago['tipo_comprobante'] ?? '')));
+        $exportacion = trim((string)($formaPago['exportacion'] ?? ''));
+        $tipoCambio = trim((string)($formaPago['tipo_cambio'] ?? ''));
+
+        if ($moneda === '') {
+            $errors[] = 'Debes seleccionar una moneda válida.';
+        }
+
+        $monedasValidas = array_map(
+            fn(array $row) => strtoupper(trim((string)($row['ClaveMoneda'] ?? ''))),
+            is_array($catalogos['monedas'] ?? null) ? $catalogos['monedas'] : []
+        );
+        if ($moneda !== '' && $monedasValidas && !in_array($moneda, $monedasValidas, true)) {
+            $errors[] = 'La moneda seleccionada no existe en el catálogo SAT disponible.';
+        }
+
+        $metodosValidos = array_map(
+            fn(array $row) => strtoupper(trim((string)($row['clave'] ?? ''))),
+            is_array($catalogos['metodos_pago'] ?? null) ? $catalogos['metodos_pago'] : []
+        );
+        if ($metodoPago === '') {
+            $errors[] = 'Debes seleccionar un método de pago.';
+        } elseif ($metodosValidos && !in_array($metodoPago, $metodosValidos, true)) {
+            $errors[] = 'El método de pago seleccionado no es válido.';
+        }
+
+        $formasValidas = array_map(
+            fn(array $row) => strtoupper(trim((string)($row['clave_sat'] ?? ''))),
+            is_array($catalogos['formas_pago'] ?? null) ? $catalogos['formas_pago'] : []
+        );
+        if ($formaPagoSat === '') {
+            $errors[] = 'Debes seleccionar una forma de pago SAT.';
+        } elseif ($formasValidas && !in_array($formaPagoSat, $formasValidas, true)) {
+            $errors[] = 'La forma de pago seleccionada no es válida.';
+        }
+
+        if ($moneda === 'MXN') {
+            if ($tipoCambio === '' || (float)$tipoCambio !== 1.0) {
+                $errors[] = 'Para moneda MXN el tipo de cambio debe ser 1.';
+            }
+        } elseif ($moneda === 'XXX') {
+            if ($tipoCambio !== '') {
+                $errors[] = 'Para moneda XXX no debe enviarse tipo de cambio.';
+            }
+        } elseif ($moneda !== '') {
+            if ($tipoCambio === '') {
+                $errors[] = 'Para moneda distinta de MXN/XXX el tipo de cambio es obligatorio.';
+            } elseif (!is_numeric($tipoCambio) || (float)$tipoCambio <= 0) {
+                $errors[] = 'El tipo de cambio debe ser un número mayor a 0.';
+            }
+        }
+
+        if ($tipoComprobante === '') {
+            $errors[] = 'Debes seleccionar el tipo de comprobante.';
+        } elseif ($tipoComprobante !== 'I') {
+            $errors[] = 'Este flujo solo soporta tipo de comprobante I (Ingreso).';
+        }
+
+        $exportacionesValidas = array_map(
+            fn(array $row) => trim((string)($row['clave'] ?? '')),
+            is_array($catalogos['exportaciones'] ?? null) ? $catalogos['exportaciones'] : []
+        );
+        if ($exportacion === '') {
+            $errors[] = 'Debes seleccionar la clave de exportación.';
+        } elseif ($exportacionesValidas && !in_array($exportacion, $exportacionesValidas, true)) {
+            $errors[] = 'La clave de exportación seleccionada no es válida.';
         }
 
         if (!$conceptos) {

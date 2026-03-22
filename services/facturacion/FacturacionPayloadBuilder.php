@@ -14,6 +14,13 @@ class FacturacionPayloadBuilder
         $descuento = $this->nullableAmount($ctx['totales']['descuento'] ?? 0);
         $total = $this->n($ctx['totales']['total'] ?? 0);
         $fecha = $ctx['fecha_emision'] ?? ($formaPago['fecha'] ?? date('Y-m-d\TH:i:s'));
+        $moneda = strtoupper((string)($formaPago['moneda'] ?? 'MXN'));
+        $tipoCambio = $formaPago['tipo_cambio'] ?? null;
+        if ($moneda === 'MXN') {
+            $tipoCambio = '1';
+        } elseif ($moneda === 'XXX') {
+            $tipoCambio = null;
+        }
 
         return [
             'Credenciales' => [
@@ -45,10 +52,11 @@ class FacturacionPayloadBuilder
                 'FormaDePago' => (string)($formaPago['forma_pago'] ?? $venta['forma_pago_sat']),
                 'LugarExpedicion' => (string)$emisor['lugar_expedicion'],
                 'MetodoDePago' => (string)($formaPago['metodo_pago'] ?? 'PUE'),
-                'Moneda' => (string)($formaPago['moneda'] ?? 'MXN'),
+                'Moneda' => $moneda,
                 'Referencia' => $ctx['referencia'],
                 'SubTotal' => $subTotal,
-                'TipoCambio' => $formaPago['tipo_cambio'] ?? null,
+                'TipoCambio' => $tipoCambio,
+                'TipoDeComprobante' => (string)($formaPago['tipo_comprobante'] ?? 'I'),
                 'Total' => $total,
                 'Confirmacion' => null,
                 'Descuento' => $descuento,

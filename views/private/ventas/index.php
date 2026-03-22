@@ -2529,12 +2529,14 @@ function resetModalFacturacion(){
   $('#fac-error, #fac-warning, #fac-success').addClass('d-none').empty();
   $('#fac-validaciones').html('<li>Sin validaciones disponibles.</li>');
   $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
-  $('#fac-folio, #fac-fecha, #fac-cliente, #fac-forma-pago, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion, #fac-moneda, #fac-metodo-pago, #fac-tipo-cambio, #fac-condiciones-pago, #fac-tipo-comprobante, #fac-exportacion').text('—');
-  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial').val('').prop('readonly', false);
-  $('#fac-select-regimen, #fac-select-uso-cfdi').html('<option value="">Seleccione…</option>').prop('disabled', false);
+  $('#fac-folio, #fac-fecha, #fac-cliente, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion').text('—');
+  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial, #fac-input-condiciones-pago, #fac-input-tipo-cambio').val('').prop('readonly', false).prop('disabled', false);
+  $('#fac-select-regimen, #fac-select-uso-cfdi, #fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion').html('<option value="">Seleccione…</option>').prop('disabled', false);
   $('#fac-select-cliente').empty().val(null).trigger('change');
   $('#fac-publico-note').addClass('d-none').empty();
   $('#fac-info-global').removeClass('alert-warning').addClass('alert-light').text('No aplica información global para esta venta.');
+  $('#fac-forma-pago-alerta').removeClass('alert-warning alert-danger').addClass('alert-light').text('Captura los datos del comprobante fiscal que se enviarán para construir el CFDI 4.0.');
+  $('#fac-tipo-cambio-help').text('Se ajusta automáticamente según la moneda seleccionada.');
   $('#fac-total').text(mxn(0));
   $('#fac-total-subtotal, #fac-total-descuento, #fac-total-impuestos').text(mxn(0));
   $('#fac-importe-letra').text('No disponible en el flujo actual.');
@@ -2544,18 +2546,135 @@ function resetModalFacturacion(){
   $('#btnConfirmarFacturar').prop('disabled', true).data('idVenta', 0);
 }
 
-function fillFacturacionSelect($select, items, valueKey, textKey, currentValue){
-  let html = '<option value="">Seleccione…</option>';
+function fillFacturacionSelect($select, items, valueKey, textKey, currentValue, placeholder = 'Seleccione…'){
+  let html = `<option value="">${placeholder}</option>`;
   (items || []).forEach(item => {
     const val = item?.[valueKey] ?? '';
     const text = item?.[textKey] ?? val;
     const selected = String(currentValue || '') === String(val) ? ' selected' : '';
-    html += `<option value="${String(val).replace(/"/g, '&quot;')}"${selected}>${String(text)}</option>`;
+    html += `<option value="${escapeHtml(String(val))}"${selected}>${escapeHtml(String(text))}</option>`;
   });
   $select.html(html);
-  if (currentValue) {
-    $select.val(String(currentValue));
+  $select.val(currentValue !== undefined && currentValue !== null ? String(currentValue) : '');
+}
+
+function fillFacturacionSelectFromPairs($select, items, currentValue, placeholder = 'Seleccione…'){
+  let html = `<option value="">${placeholder}</option>`;
+  (items || []).forEach(item => {
+    const val = item?.clave ?? '';
+    const descripcion = item?.descripcion ?? val;
+    const selected = String(currentValue || '') === String(val) ? ' selected' : '';
+    html += `<option value="${escapeHtml(String(val))}"${selected}>${escapeHtml(String(val))}${descripcion ? ' · ' + escapeHtml(String(descripcion)) : ''}</option>`;
+  });
+  $select.html(html);
+  $select.val(currentValue !== undefined && currentValue !== null ? String(currentValue) : '');
+}
+
+function syncTipoCambioFacturacion(){
+  const moneda = ($('#fac-select-moneda').val() || '').trim().toUpperCase();
+  const $tipoCambio = $('#fac-input-tipo-cambio');
+  const $help = $('#fac-tipo-cambio-help');
+
+  if (moneda === 'MXN') {
+    $tipoCambio.val('1').prop('readonly', true).prop('disabled', false);
+    $help.text('Para MXN el tipo de cambio se envía fijo en 1.');
+    return;
   }
+
+  if (moneda === 'XXX') {
+    $tipoCambio.val('').prop('readonly', true).prop('disabled', true);
+    $help.text('Para la clave XXX no debe enviarse tipo de cambio.');
+    return;
+  }
+
+  $tipoCambio.prop('readonly', false).prop('disabled', false);
+  if (!$tipoCambio.val()) {
+    $tipoCambio.val('');
+  }
+  $help.text('Para monedas distintas de MXN y XXX el tipo de cambio es obligatorio.');
+}
+
+function updateFormaPagoAlert(){
+  const moneda = ($('#fac-select-moneda').val() || '').trim().toUpperCase();
+  const metodo = ($('#fac-select-metodo-pago').val() || '').trim().toUpperCase();
+  const tipo = ($('#fac-select-tipo-comprobante').val() || '').trim().toUpperCase();
+  const exportacion = ($('#fac-select-exportacion').val() || '').trim();
+  const $alert = $('#fac-forma-pago-alerta');
+
+  let messages = [];
+  let alertClass = 'alert-light';
+
+  if (moneda === 'MXN') {
+    messages.push('Moneda MXN: el tipo de cambio se enviará como 1.');
+  } else if (moneda === 'XXX') {
+    messages.push('Moneda XXX: el tipo de cambio no se enviará al PAC.');
+  } else if (moneda) {
+    messages.push('Moneda distinta de MXN/XXX: captura un tipo de cambio válido.');
+    alertClass = 'alert-warning';
+  }
+
+  if (metodo === 'PPD') {
+    messages.push('Método PPD seleccionado: valida que la forma de pago represente la clave SAT real del cobro.');
+  }
+
+  if (tipo && tipo !== 'I') {
+    messages.push('Este flujo solo soporta comprobantes tipo I (Ingreso).');
+    alertClass = 'alert-danger';
+  }
+
+  if (!exportacion) {
+    messages.push('Selecciona una clave de exportación.');
+    alertClass = 'alert-warning';
+  }
+
+  if (!messages.length) {
+    messages.push('Captura los datos del comprobante fiscal que se enviarán para construir el CFDI 4.0.');
+  }
+
+  $alert.removeClass('alert-light alert-warning alert-danger').addClass(alertClass).html(messages.join('<br>'));
+}
+
+function fillFacturacionComprobante(formaPago, catalogos, venta, emisor){
+  const monedaActual = formaPago.moneda || emisor.moneda || 'MXN';
+  const metodoActual = formaPago.metodo_pago || ((venta.estatus || '') === 'Credito' ? 'PPD' : 'PUE');
+  const formaPagoActual = formaPago.forma_pago || '';
+  const condicionesActual = formaPago.condiciones_pago || '';
+  const tipoComprobanteActual = formaPago.tipo_comprobante || emisor.tipo_comprobante || 'I';
+  const exportacionActual = formaPago.exportacion || emisor.exportacion || '01';
+
+  fillFacturacionSelect($('#fac-select-moneda'), catalogos.monedas || [], 'ClaveMoneda', 'Descripcion', monedaActual);
+  fillFacturacionSelectFromPairs($('#fac-select-metodo-pago'), catalogos.metodos_pago || [], metodoActual);
+  fillFacturacionSelect($('#fac-select-forma-pago'), catalogos.formas_pago || [], 'clave_sat', 'descripcion', formaPagoActual);
+  fillFacturacionSelectFromPairs($('#fac-select-tipo-comprobante'), catalogos.tipos_comprobante || [], tipoComprobanteActual);
+  fillFacturacionSelectFromPairs($('#fac-select-exportacion'), catalogos.exportaciones || [], exportacionActual);
+
+  $('#fac-input-condiciones-pago').val(condicionesActual);
+  $('#fac-input-tipo-cambio').val(formaPago.tipo_cambio || '');
+  syncTipoCambioFacturacion();
+  updateFormaPagoAlert();
+}
+
+function validarFormularioComprobanteFacturacion(){
+  const moneda = ($('#fac-select-moneda').val() || '').trim().toUpperCase();
+  const metodoPago = ($('#fac-select-metodo-pago').val() || '').trim().toUpperCase();
+  const formaPago = ($('#fac-select-forma-pago').val() || '').trim().toUpperCase();
+  const tipoComprobante = ($('#fac-select-tipo-comprobante').val() || '').trim().toUpperCase();
+  const exportacion = ($('#fac-select-exportacion').val() || '').trim();
+  const tipoCambio = ($('#fac-input-tipo-cambio').val() || '').trim();
+
+  if (!moneda) return 'Debes seleccionar la moneda del comprobante.';
+  if (!metodoPago) return 'Debes seleccionar el método de pago.';
+  if (!formaPago) return 'Debes seleccionar la forma de pago SAT.';
+  if (!tipoComprobante) return 'Debes seleccionar el tipo de comprobante.';
+  if (tipoComprobante !== 'I') return 'Este flujo de ventas solo permite comprobantes tipo I (Ingreso).';
+  if (!exportacion) return 'Debes seleccionar la clave de exportación.';
+  if (moneda === 'MXN' && String(tipoCambio || '1') !== '1') return 'Para MXN el tipo de cambio debe permanecer en 1.';
+  if (moneda === 'XXX' && tipoCambio !== '') return 'Para la moneda XXX no debe enviarse tipo de cambio.';
+  if (moneda && moneda !== 'MXN' && moneda !== 'XXX') {
+    if (!tipoCambio) return 'El tipo de cambio es obligatorio cuando la moneda es distinta de MXN y XXX.';
+    if (Number(tipoCambio) <= 0 || Number.isNaN(Number(tipoCambio))) return 'El tipo de cambio debe ser mayor a 0.';
+  }
+  return '';
 }
 
 function renderFacturacionPreview(resp, idVenta){
@@ -2586,17 +2705,6 @@ function renderFacturacionPreview(resp, idVenta){
   $('#fac-folio').text(venta.folio || ('#' + idVenta));
   $('#fac-fecha').text(fechaMx(venta.fecha));
   $('#fac-cliente').text(venta.cliente_nombre || venta.cliente || '—');
-  $('#fac-forma-pago').text(
-    formaPago.forma_pago
-      ? `${formaPago.forma_pago}${formaPago.forma_pago_descripcion ? ' · ' + formaPago.forma_pago_descripcion : ''}`
-      : (formaPago.forma_pago_descripcion || '—')
-  );
-  $('#fac-moneda').text(formaPago.moneda || '—');
-  $('#fac-metodo-pago').text(formaPago.metodo_pago || '—');
-  $('#fac-tipo-cambio').text(formaPago.tipo_cambio || '—');
-  $('#fac-condiciones-pago').text(formaPago.condiciones_pago || '—');
-  $('#fac-tipo-comprobante').text(formaPago.tipo_comprobante || emisor.tipo_comprobante || '—');
-  $('#fac-exportacion').text(formaPago.exportacion || emisor.exportacion || '—');
   $('#fac-total-subtotal').text(mxn(totales.subtotal ?? venta.subtotal_factura ?? venta.total ?? 0));
   $('#fac-total-descuento').text(mxn(totales.descuento ?? venta.descuento_factura ?? 0));
   $('#fac-total-impuestos').text(mxn(totales.impuestos ?? 0));
@@ -2607,6 +2715,7 @@ function renderFacturacionPreview(resp, idVenta){
   fillFacturacionSelect($('#fac-select-regimen'), catalogos.regimenes_fiscales || [], 'ClaveRegimenFiscal', 'Descripcion', receptor.regimen_fiscal_receptor || '');
   fillFacturacionSelect($('#fac-select-uso-cfdi'), catalogos.usos_cfdi || [], 'ClaveUsoCFDI', 'Descripcion', receptor.uso_cfdi || '');
   fillFacturacionReceptor(receptor);
+  fillFacturacionComprobante(formaPago, catalogos, venta, emisor);
   setFacturacionClienteSeleccionado(clienteSeleccionado);
 
   const esPublicoGeneral = !!receptor.es_publico_general;
@@ -2621,10 +2730,12 @@ function renderFacturacionPreview(resp, idVenta){
     .toggleClass('alert-light', !infoGlobal.aplica)
     .text(infoGlobal.motivo || 'No aplica información global para esta venta.');
 
-  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-cp, #fac-input-correo, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-select-regimen, #fac-select-uso-cfdi')
+  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-cp, #fac-input-correo, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-select-regimen, #fac-select-uso-cfdi, #fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-input-tipo-cambio, #fac-input-condiciones-pago, #fac-select-tipo-comprobante, #fac-select-exportacion')
     .prop('readonly', false)
     .prop('disabled', false);
   $('#fac-input-nombre-comercial').prop('readonly', true);
+  syncTipoCambioFacturacion();
+  updateFormaPagoAlert();
 
   let detalleHtml = '';
   if (!detalles.length) {
@@ -2699,6 +2810,8 @@ function cargarPreviewFacturacion(idVenta){
 }
 
 function getPayloadFacturacion(){
+  const moneda = ($('#fac-select-moneda').val() || '').trim().toUpperCase();
+  const tipoCambio = ($('#fac-input-tipo-cambio').val() || '').trim();
   return {
     id_venta: Number($('#fac-id-venta').val() || 0),
     id_cliente: Number($('#fac-select-cliente').val() || 0),
@@ -2710,12 +2823,25 @@ function getPayloadFacturacion(){
     regimen_fiscal: ($('#fac-select-regimen').val() || '').trim(),
     uso_cfdi: ($('#fac-select-uso-cfdi').val() || '').trim(),
     residencia_fiscal: ($('#fac-input-residencia-fiscal').val() || '').trim().toUpperCase(),
-    numero_registro_tributario: ($('#fac-input-num-reg-id-trib').val() || '').trim()
+    numero_registro_tributario: ($('#fac-input-num-reg-id-trib').val() || '').trim(),
+    moneda,
+    metodo_pago: ($('#fac-select-metodo-pago').val() || '').trim().toUpperCase(),
+    forma_pago: ($('#fac-select-forma-pago').val() || '').trim().toUpperCase(),
+    tipo_cambio: moneda === 'XXX' ? '' : (moneda === 'MXN' ? '1' : tipoCambio),
+    condiciones_pago: ($('#fac-input-condiciones-pago').val() || '').trim(),
+    tipo_comprobante: ($('#fac-select-tipo-comprobante').val() || '').trim().toUpperCase(),
+    exportacion: ($('#fac-select-exportacion').val() || '').trim()
   };
 }
 
 function guardarDatosFiscalesFacturacion(idVenta, opciones = {}){
   const settings = Object.assign({ silent: false }, opciones || {});
+  const validationMessage = validarFormularioComprobanteFacturacion();
+  if (validationMessage) {
+    $('#fac-error').removeClass('d-none').text(validationMessage);
+    return $.Deferred().reject({ ok: false, msg: validationMessage }).promise();
+  }
+
   const payload = getPayloadFacturacion();
   payload.id_venta = idVenta;
 
@@ -2794,6 +2920,19 @@ $(document).off('change', '#fac-select-cliente').on('change', '#fac-select-clien
   });
 });
 
+$(document)
+  .off('change', '#fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion')
+  .on('change', '#fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion', function(){
+    syncTipoCambioFacturacion();
+    updateFormaPagoAlert();
+  });
+
+$(document)
+  .off('input', '#fac-input-tipo-cambio, #fac-input-condiciones-pago')
+  .on('input', '#fac-input-tipo-cambio, #fac-input-condiciones-pago', function(){
+    updateFormaPagoAlert();
+  });
+
 $(document).off('shown.bs.modal', '#modalFacturarVenta').on('shown.bs.modal', '#modalFacturarVenta', function(){
   initFacturacionClienteSelect();
   const modalBody = this.querySelector('.modal-body');
@@ -2824,6 +2963,7 @@ $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta
 
   guardarDatosFiscalesFacturacion(idVenta, { silent: true }).then(function(saveResp){
     if (!saveResp?.ok) {
+      $btn.prop('disabled', false).html(original);
       return;
     }
 
@@ -2851,10 +2991,10 @@ $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta
       $('#fac-error').removeClass('d-none').text(msg);
       toastr.error(msg);
     }).always(function(){
-      $btn.html(original);
+      $btn.prop('disabled', false).html(original);
     });
   }).fail(function(){
-    $btn.html(original);
+    $btn.prop('disabled', false).html(original);
   });
 });
 

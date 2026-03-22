@@ -324,13 +324,40 @@
               </div>
               <div class="cfdi-section__body">
                 <div class="row">
-                  <div class="col-md-3 col-sm-6"><div class="cfdi-kv"><small>Moneda</small><span id="fac-moneda">—</span></div></div>
-                  <div class="col-md-3 col-sm-6"><div class="cfdi-kv"><small>Método de pago</small><span id="fac-metodo-pago">—</span></div></div>
-                  <div class="col-md-3 col-sm-6"><div class="cfdi-kv"><small>Forma de pago</small><span id="fac-forma-pago">—</span></div></div>
-                  <div class="col-md-3 col-sm-6"><div class="cfdi-kv"><small>Tipo de cambio</small><span id="fac-tipo-cambio">—</span></div></div>
-                  <div class="col-md-6 col-sm-12"><div class="cfdi-kv mb-0"><small>Condiciones de pago</small><span id="fac-condiciones-pago">—</span></div></div>
-                  <div class="col-md-3 col-sm-6"><div class="cfdi-kv mb-0"><small>Tipo comprobante</small><span id="fac-tipo-comprobante">—</span></div></div>
-                  <div class="col-md-3 col-sm-6"><div class="cfdi-kv mb-0"><small>Exportación</small><span id="fac-exportacion">—</span></div></div>
+                  <div class="col-md-4 col-sm-6">
+                    <label for="fac-select-moneda">Moneda</label>
+                    <select class="form-control" id="fac-select-moneda"></select>
+                  </div>
+                  <div class="col-md-4 col-sm-6">
+                    <label for="fac-select-metodo-pago">Método de pago</label>
+                    <select class="form-control" id="fac-select-metodo-pago"></select>
+                  </div>
+                  <div class="col-md-4 col-sm-6 mt-2 mt-md-0">
+                    <label for="fac-select-forma-pago">Forma de pago</label>
+                    <select class="form-control" id="fac-select-forma-pago"></select>
+                  </div>
+                  <div class="col-md-4 col-sm-6 mt-2">
+                    <label for="fac-input-tipo-cambio">Tipo de cambio</label>
+                    <input type="number" class="form-control" id="fac-input-tipo-cambio" min="0" step="0.000001" inputmode="decimal" autocomplete="off">
+                    <small id="fac-tipo-cambio-help" class="form-text cfdi-helper mb-0">Se ajusta automáticamente según la moneda seleccionada.</small>
+                  </div>
+                  <div class="col-md-4 col-sm-6 mt-2">
+                    <label for="fac-input-condiciones-pago">Condiciones de pago</label>
+                    <input type="text" class="form-control" id="fac-input-condiciones-pago" maxlength="255" autocomplete="off">
+                  </div>
+                  <div class="col-md-4 col-sm-6 mt-2">
+                    <label for="fac-select-tipo-comprobante">Tipo de comprobante</label>
+                    <select class="form-control" id="fac-select-tipo-comprobante"></select>
+                  </div>
+                  <div class="col-md-4 col-sm-6 mt-2">
+                    <label for="fac-select-exportacion">Exportación</label>
+                    <select class="form-control" id="fac-select-exportacion"></select>
+                  </div>
+                  <div class="col-12 mt-2">
+                    <div id="fac-forma-pago-alerta" class="alert alert-light border py-2 px-3 mb-0">
+                      Captura los datos del comprobante fiscal que se enviarán para construir el CFDI 4.0.
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
