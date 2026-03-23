@@ -4,7 +4,12 @@ class FacturacionValidator
 {
     public function validate(array $ctx): array
     {
-        $errors = [];
+        $report = $this->validateDetailed($ctx);
+        return $report['listaErrores'];
+    }
+
+    public function validateDetailed(array $ctx): array
+    {
         $venta = $ctx['venta'] ?? [];
         $receptor = $ctx['receptor'] ?? [];
         $emisor = $ctx['emisor'] ?? [];
@@ -12,20 +17,26 @@ class FacturacionValidator
         $formaPago = $ctx['forma_pago'] ?? [];
         $catalogos = $ctx['catalogos'] ?? [];
 
+        $erroresVenta = [];
+        $erroresReceptor = [];
+        $erroresEmisor = [];
+        $erroresComprobante = [];
+        $erroresConceptos = [];
+
         if (!$venta) {
-            $errors[] = 'La venta no existe.';
+            $erroresVenta[] = 'La venta no existe.';
         }
 
         if (empty($ctx['detalles'])) {
-            $errors[] = 'La venta no tiene detalle para facturar.';
+            $erroresVenta[] = 'La venta no tiene detalle para facturar.';
         }
 
         if (!in_array((string)($venta['estatus'] ?? ''), ['Activa', 'Credito'], true)) {
-            $errors[] = 'El estatus de la venta no es facturable.';
+            $erroresVenta[] = 'El estatus de la venta no es facturable.';
         }
 
         if (strtoupper((string)($ctx['cfdi_actual']['estatus'] ?? '')) === 'TIMBRADO') {
-            $errors[] = 'La venta ya cuenta con un CFDI timbrado.';
+            $erroresVenta[] = 'La venta ya cuenta con un CFDI timbrado.';
         }
 
         foreach ([
@@ -36,17 +47,18 @@ class FacturacionValidator
             'uso_cfdi' => 'Uso CFDI del receptor',
         ] as $key => $label) {
             if (empty($receptor[$key])) {
-                $errors[] = "Falta {$label}.";
+                $erroresReceptor[] = "Falta {$label}.";
             }
         }
 
         foreach ([
+            'rfc' => 'RFC del emisor',
             'nombre' => 'Nombre o razón social del emisor',
             'regimen_fiscal' => 'Régimen fiscal del emisor',
             'lugar_expedicion' => 'Código postal de expedición del emisor',
         ] as $key => $label) {
             if (empty($emisor[$key])) {
-                $errors[] = "Falta {$label}.";
+                $erroresEmisor[] = "Falta {$label}.";
             }
         }
 
@@ -58,7 +70,7 @@ class FacturacionValidator
         $tipoCambio = trim((string)($formaPago['tipo_cambio'] ?? ''));
 
         if ($moneda === '') {
-            $errors[] = 'Debes seleccionar una moneda válida.';
+            $erroresComprobante[] = 'Debes seleccionar una moneda válida.';
         }
 
         $monedasValidas = array_map(
@@ -66,7 +78,7 @@ class FacturacionValidator
             is_array($catalogos['monedas'] ?? null) ? $catalogos['monedas'] : []
         );
         if ($moneda !== '' && $monedasValidas && !in_array($moneda, $monedasValidas, true)) {
-            $errors[] = 'La moneda seleccionada no existe en el catálogo SAT disponible.';
+            $erroresComprobante[] = 'La moneda seleccionada no existe en el catálogo SAT disponible.';
         }
 
         $metodosValidos = array_map(
@@ -74,9 +86,9 @@ class FacturacionValidator
             is_array($catalogos['metodos_pago'] ?? null) ? $catalogos['metodos_pago'] : []
         );
         if ($metodoPago === '') {
-            $errors[] = 'Debes seleccionar un método de pago.';
+            $erroresComprobante[] = 'Debes seleccionar un método de pago.';
         } elseif ($metodosValidos && !in_array($metodoPago, $metodosValidos, true)) {
-            $errors[] = 'El método de pago seleccionado no es válido.';
+            $erroresComprobante[] = 'El método de pago seleccionado no es válido.';
         }
 
         $formasValidas = array_map(
@@ -84,31 +96,31 @@ class FacturacionValidator
             is_array($catalogos['formas_pago'] ?? null) ? $catalogos['formas_pago'] : []
         );
         if ($formaPagoSat === '') {
-            $errors[] = 'Debes seleccionar una forma de pago SAT.';
+            $erroresComprobante[] = 'Debes seleccionar una forma de pago SAT.';
         } elseif ($formasValidas && !in_array($formaPagoSat, $formasValidas, true)) {
-            $errors[] = 'La forma de pago seleccionada no es válida.';
+            $erroresComprobante[] = 'La forma de pago seleccionada no es válida.';
         }
 
         if ($moneda === 'MXN') {
             if ($tipoCambio === '' || (float)$tipoCambio !== 1.0) {
-                $errors[] = 'Para moneda MXN el tipo de cambio debe ser 1.';
+                $erroresComprobante[] = 'Para moneda MXN el tipo de cambio debe ser 1.';
             }
         } elseif ($moneda === 'XXX') {
             if ($tipoCambio !== '') {
-                $errors[] = 'Para moneda XXX no debe enviarse tipo de cambio.';
+                $erroresComprobante[] = 'Para moneda XXX no debe enviarse tipo de cambio.';
             }
         } elseif ($moneda !== '') {
             if ($tipoCambio === '') {
-                $errors[] = 'Para moneda distinta de MXN/XXX el tipo de cambio es obligatorio.';
+                $erroresComprobante[] = 'Para moneda distinta de MXN/XXX el tipo de cambio es obligatorio.';
             } elseif (!is_numeric($tipoCambio) || (float)$tipoCambio <= 0) {
-                $errors[] = 'El tipo de cambio debe ser un número mayor a 0.';
+                $erroresComprobante[] = 'El tipo de cambio debe ser un número mayor a 0.';
             }
         }
 
         if ($tipoComprobante === '') {
-            $errors[] = 'Debes seleccionar el tipo de comprobante.';
+            $erroresComprobante[] = 'Debes seleccionar el tipo de comprobante.';
         } elseif ($tipoComprobante !== 'I') {
-            $errors[] = 'Este flujo solo soporta tipo de comprobante I (Ingreso).';
+            $erroresComprobante[] = 'Este flujo solo soporta tipo de comprobante I (Ingreso).';
         }
 
         $exportacionesValidas = array_map(
@@ -116,13 +128,13 @@ class FacturacionValidator
             is_array($catalogos['exportaciones'] ?? null) ? $catalogos['exportaciones'] : []
         );
         if ($exportacion === '') {
-            $errors[] = 'Debes seleccionar la clave de exportación.';
+            $erroresComprobante[] = 'Debes seleccionar la clave de exportación.';
         } elseif ($exportacionesValidas && !in_array($exportacion, $exportacionesValidas, true)) {
-            $errors[] = 'La clave de exportación seleccionada no es válida.';
+            $erroresComprobante[] = 'La clave de exportación seleccionada no es válida.';
         }
 
         if (!$conceptos) {
-            $errors[] = 'No se pudieron construir los conceptos del CFDI.';
+            $erroresConceptos[] = 'No se pudieron construir los conceptos del CFDI.';
         }
 
         foreach ($conceptos as $index => $concepto) {
@@ -137,11 +149,49 @@ class FacturacionValidator
                 'ValorUnitario' => 'valor unitario',
             ] as $field => $label) {
                 if (!isset($concepto[$field]) || $concepto[$field] === null || $concepto[$field] === '') {
-                    $errors[] = "Falta {$label} en el concepto {$linea}.";
+                    $erroresConceptos[] = "Falta {$label} en el concepto {$linea}.";
                 }
             }
         }
 
-        return $errors;
+        $listaErrores = array_values(array_merge(
+            $erroresVenta,
+            $erroresReceptor,
+            $erroresEmisor,
+            $erroresComprobante,
+            $erroresConceptos
+        ));
+
+        return [
+            'ventaValida' => empty($erroresVenta),
+            'receptorCompleto' => empty($erroresReceptor),
+            'emisorValido' => empty($erroresEmisor),
+            'comprobanteCompleto' => empty($erroresComprobante),
+            'conceptosValidos' => empty($erroresConceptos),
+            'bloques' => [
+                'venta' => [
+                    'completo' => empty($erroresVenta),
+                    'errores' => array_values($erroresVenta),
+                ],
+                'receptor' => [
+                    'completo' => empty($erroresReceptor),
+                    'errores' => array_values($erroresReceptor),
+                ],
+                'emisor' => [
+                    'completo' => empty($erroresEmisor),
+                    'errores' => array_values($erroresEmisor),
+                ],
+                'comprobante' => [
+                    'completo' => empty($erroresComprobante),
+                    'errores' => array_values($erroresComprobante),
+                ],
+                'conceptos' => [
+                    'completo' => empty($erroresConceptos),
+                    'errores' => array_values($erroresConceptos),
+                ],
+            ],
+            'listaErrores' => $listaErrores,
+            'listoParaTimbrar' => empty($listaErrores),
+        ];
     }
 }

@@ -27,6 +27,16 @@ class FacturacionModel
         $conceptos = $this->buildConceptos($detalles);
         $formaPago = $this->buildFormaPago($venta ?: [], $emisor, $cfdiActual ?: []);
         $totales = $this->buildTotales($venta ?: [], $conceptos);
+        $catalogos = [
+            'regimenes_fiscales' => $this->listarRegimenesFiscales(),
+            'usos_cfdi' => $this->listarUsosCfdi(),
+            'monedas' => $this->listarMonedas(),
+            'formas_pago' => $this->listarFormasPagoSat(),
+            'metodos_pago' => $this->listarMetodosPago(),
+            'tipos_comprobante' => $this->listarTiposComprobante(),
+            'exportaciones' => $this->listarExportaciones(),
+        ];
+        $facturaDraft = $this->buildFacturaDraft($idVenta, $venta ?: [], $emisor, $receptor, $formaPago, $conceptos, $totales, $catalogos, $detalles);
 
         return [
             'venta' => $venta,
@@ -36,18 +46,11 @@ class FacturacionModel
             'receptor' => $receptor,
             'cliente_seleccionado' => $clienteSeleccionado,
             'informacion_global' => $this->buildInformacionGlobal($receptor),
-            'catalogos' => [
-                'regimenes_fiscales' => $this->listarRegimenesFiscales(),
-                'usos_cfdi' => $this->listarUsosCfdi(),
-                'monedas' => $this->listarMonedas(),
-                'formas_pago' => $this->listarFormasPagoSat(),
-                'metodos_pago' => $this->listarMetodosPago(),
-                'tipos_comprobante' => $this->listarTiposComprobante(),
-                'exportaciones' => $this->listarExportaciones(),
-            ],
+            'catalogos' => $catalogos,
             'forma_pago' => $formaPago,
             'conceptos' => $conceptos,
             'totales' => $totales,
+            'factura_draft' => $facturaDraft,
         ];
     }
 
@@ -431,6 +434,65 @@ class FacturacionModel
         return $out;
     }
 
+    private function buildFacturaDraft(int $idVenta, array $venta, array $emisor, array $receptor, array $formaPago, array $conceptos, array $totales, array $catalogos, array $detalles): array
+    {
+        return [
+            'venta' => [
+                'id_venta' => $idVenta,
+                'folio' => $venta['folio'] ?? null,
+                'fecha' => $venta['fecha'] ?? null,
+                'referencia_interna' => $venta['folio'] ?? null,
+                'conceptos' => $conceptos,
+                'detalle_origen' => $detalles,
+                'subtotal' => $totales['subtotal'] ?? 0,
+                'descuento' => $totales['descuento'] ?? 0,
+                'impuestos' => $totales['impuestos'] ?? 0,
+                'total' => $totales['total'] ?? 0,
+            ],
+            'emisor' => [
+                'rfc' => $emisor['rfc'] ?? '',
+                'nombre' => $emisor['nombre'] ?? '',
+                'regimen_fiscal' => $emisor['regimen_fiscal'] ?? '',
+                'lugar_expedicion' => $emisor['lugar_expedicion'] ?? '',
+                'serie' => $emisor['serie'] ?? '',
+                'sucursal' => $emisor['sucursal'] ?? '',
+            ],
+            'receptor' => [
+                'id_cliente_fiscal' => (int)($receptor['cliente_sat_id'] ?? 0),
+                'rfc' => $receptor['rfc'] ?? '',
+                'nombre' => $receptor['nombre'] ?? '',
+                'nombre_comercial' => $receptor['nombre_comercial'] ?? '',
+                'correo' => $receptor['correo'] ?? '',
+                'codigo_postal' => $receptor['domicilio_fiscal_receptor'] ?? '',
+                'regimen_fiscal' => $receptor['regimen_fiscal_receptor'] ?? '',
+                'uso_cfdi' => $receptor['uso_cfdi'] ?? '',
+                'residencia_fiscal' => $receptor['residencia_fiscal'] ?? '',
+                'numero_registro_tributario' => $receptor['num_reg_id_trib'] ?? '',
+                'es_publico_general' => !empty($receptor['es_publico_general']),
+            ],
+            'comprobante' => [
+                'moneda' => $formaPago['moneda'] ?? 'MXN',
+                'metodo_pago' => $formaPago['metodo_pago'] ?? '',
+                'forma_pago' => $formaPago['forma_pago'] ?? '',
+                'tipo_cambio' => $formaPago['tipo_cambio'] ?? '',
+                'exportacion' => $formaPago['exportacion'] ?? '01',
+                'tipo_comprobante' => $formaPago['tipo_comprobante'] ?? 'I',
+                'condiciones_pago' => $formaPago['condiciones_pago'] ?? '',
+            ],
+            'catalogos' => $catalogos,
+            'validaciones' => [
+                'receptorCompleto' => false,
+                'comprobanteCompleto' => false,
+                'conceptosValidos' => false,
+                'emisorValido' => false,
+                'ventaValida' => false,
+                'bloques' => [],
+                'listaErrores' => [],
+            ],
+            'listoParaTimbrar' => false,
+        ];
+    }
+
     private function buildTotales(array $venta, array $conceptos): array
     {
         $subtotal = (float)($venta['subtotal_factura'] ?? ($venta['subtotal'] ?? $venta['total'] ?? 0));
@@ -639,7 +701,8 @@ class FacturacionModel
         $comprobante = $this->normalizarDatosComprobante($data, $venta);
         $payload = $this->schema->filterData('ventas_cfdi', $comprobante);
         $existing = $this->getCfdiByVenta($idVenta);
-        $requestPayload = $this->mergeDraftIntoRequestPayload($existing['request_payload'] ?? null, $receptor, $comprobante);
+        $draftFromModal = is_array($data['draft'] ?? null) ? $data['draft'] : [];
+        $requestPayload = $this->mergeDraftIntoRequestPayload($existing['request_payload'] ?? null, $receptor, $comprobante, $draftFromModal);
         if ($this->schema->hasColumn('ventas_cfdi', 'request_payload')) {
             $payload['request_payload'] = $requestPayload;
         }
@@ -725,7 +788,7 @@ class FacturacionModel
 
     private function normalizarDatosFiscales(array $data): array
     {
-        $idClienteSat = (int)($data['id_cliente'] ?? 0);
+        $idClienteSat = (int)($data['id_cliente_fiscal'] ?? ($data['id_cliente_sat'] ?? ($data['id_cliente'] ?? 0)));
         $payload = [
             'nombre' => trim((string)($data['razon_social'] ?? $data['nombre'] ?? '')),
             'nombre_comercial' => trim((string)($data['nombre_comercial'] ?? '')),
@@ -806,15 +869,15 @@ class FacturacionModel
         return $receptor;
     }
 
-    private function mergeDraftIntoRequestPayload(?string $existingPayload, array $receptor, array $comprobante): string
+    private function mergeDraftIntoRequestPayload(?string $existingPayload, array $receptor, array $comprobante, array $draftFromModal = []): string
     {
         $payload = $this->decodeJsonObject($existingPayload);
-        $payload['draft'] = [
-            'receptor' => $receptor,
-            'comprobante' => $comprobante,
-            'updated_at' => date('c'),
-            'source' => 'modal_facturacion',
-        ];
+        $draft = is_array($draftFromModal) ? $draftFromModal : [];
+        $draft['receptor'] = array_merge(is_array($draft['receptor'] ?? null) ? $draft['receptor'] : [], $receptor);
+        $draft['comprobante'] = array_merge(is_array($draft['comprobante'] ?? null) ? $draft['comprobante'] : [], $comprobante);
+        $draft['updated_at'] = date('c');
+        $draft['source'] = 'modal_facturacion';
+        $payload['draft'] = $draft;
 
         return json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }

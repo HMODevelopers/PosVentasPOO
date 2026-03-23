@@ -346,7 +346,10 @@ class VentasController
             $validator = new FacturacionValidator();
 
             $ctx = $model->loadContext($idVenta);
-            $validaciones = $validator->validate($ctx);
+            $validationReport = $validator->validateDetailed($ctx);
+            $validaciones = $validationReport['listaErrores'];
+            $ctx['factura_draft']['validaciones'] = $validationReport;
+            $ctx['factura_draft']['listoParaTimbrar'] = $validationReport['listoParaTimbrar'];
             $cfdiActual = $ctx['cfdi_actual'] ?? [];
             $advertencias = [];
 
@@ -360,6 +363,7 @@ class VentasController
                 'msg' => empty($validaciones) ? 'Información de facturación cargada.' : 'La venta tiene observaciones antes de facturar.',
                 'contexto' => $ctx,
                 'validaciones' => $validaciones,
+                'validation_report' => $validationReport,
                 'advertencias' => $advertencias,
             ], JSON_UNESCAPED_UNICODE);
             break;
@@ -414,7 +418,10 @@ class VentasController
                 self::jsonError($guardado['msg'] ?? 'No fue posible guardar los datos fiscales.', 422);
             }
             $ctx = $model->loadContext($idVenta);
-            $validaciones = $validator->validate($ctx);
+            $validationReport = $validator->validateDetailed($ctx);
+            $validaciones = $validationReport['listaErrores'];
+            $ctx['factura_draft']['validaciones'] = $validationReport;
+            $ctx['factura_draft']['listoParaTimbrar'] = $validationReport['listoParaTimbrar'];
 
             echo json_encode([
                 'ok' => true,
@@ -422,6 +429,7 @@ class VentasController
                 'msg' => 'Datos fiscales actualizados.',
                 'contexto' => $ctx,
                 'validaciones' => $validaciones,
+                'validation_report' => $validationReport,
                 'advertencias' => [],
             ], JSON_UNESCAPED_UNICODE);
             break;

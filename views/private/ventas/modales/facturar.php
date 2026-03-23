@@ -174,6 +174,51 @@
   #modalFacturarVenta .cfdi-select-block .select2-selection--single {
     background-color: #fff;
   }
+
+  #modalFacturarVenta .cfdi-block-status {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin-bottom: 1rem;
+  }
+  #modalFacturarVenta .cfdi-block-status__item {
+    background: #f8fafc;
+    border: 1px solid #dfe7f1;
+    border-radius: 0.75rem;
+    padding: 0.85rem 0.95rem;
+  }
+  #modalFacturarVenta .cfdi-block-status__item.is-complete {
+    border-color: #b7ebc6;
+    background: #f0fff4;
+  }
+  #modalFacturarVenta .cfdi-block-status__item.is-incomplete {
+    border-color: #f5c2c7;
+    background: #fff5f5;
+  }
+  #modalFacturarVenta .cfdi-block-status__title {
+    align-items: center;
+    display: flex;
+    font-size: 0.84rem;
+    font-weight: 700;
+    justify-content: space-between;
+    margin-bottom: 0.35rem;
+    text-transform: uppercase;
+  }
+  #modalFacturarVenta .cfdi-block-status__desc {
+    color: #526273;
+    font-size: 0.8rem;
+    margin: 0;
+  }
+  #modalFacturarVenta .cfdi-draft-preview {
+    background: #0f172a;
+    border-radius: 0.75rem;
+    color: #dbeafe;
+    font-size: 0.78rem;
+    margin-top: 1rem;
+    max-height: 240px;
+    overflow: auto;
+    padding: 1rem;
+  }
 </style>
 
 <!-- Modal Facturar Venta -->
@@ -199,6 +244,7 @@
           <div id="fac-error" class="alert alert-danger d-none mb-3"></div>
           <div id="fac-warning" class="alert alert-warning d-none mb-3"></div>
           <div id="fac-success" class="alert alert-success d-none mb-3"></div>
+          <input type="hidden" id="fac-draft-json" value="">
 
           <div id="fac-contenido" class="d-none">
             <div class="cfdi-section">
@@ -399,11 +445,22 @@
                 <div class="row">
                   <div class="col-lg-7">
                     <h6 class="mb-2">Validación previa</h6>
+                    <div id="fac-validacion-bloques" class="cfdi-block-status">
+                      <div class="cfdi-block-status__item is-incomplete">
+                        <div class="cfdi-block-status__title"><span>Sin estado</span><span class="badge badge-secondary">Pendiente</span></div>
+                        <p class="cfdi-block-status__desc">Abre una venta para calcular el draft de facturación.</p>
+                      </div>
+                    </div>
                     <ul id="fac-validaciones" class="mb-3 pl-3 text-muted">
                       <li>Sin validaciones disponibles.</li>
                     </ul>
 
-                    <div id="fac-archivos" class="d-none">
+                    <div class="cfdi-draft-preview">
+                      <strong class="d-block mb-2">Draft actual</strong>
+                      <pre id="fac-draft-preview" class="mb-0 text-light">{}</pre>
+                    </div>
+
+                    <div id="fac-archivos" class="d-none mt-3">
                       <h6 class="mb-2">Archivos CFDI</h6>
                       <div class="btn-group btn-group-sm" role="group" aria-label="Archivos CFDI">
                         <a id="fac-link-xml" href="#" target="_blank" class="btn btn-outline-secondary">
