@@ -2733,7 +2733,7 @@ function renderFacturacionPreview(resp, idVenta){
   $('#fac-publico-note')
     .toggleClass('d-none', !esPublicoGeneral)
     .html(esPublicoGeneral
-      ? 'La venta ya cuenta con un receptor fiscal explícito de <strong>Público en general</strong>.'
+      ? 'El receptor fiscal capturado corresponde a <strong>Público en general</strong>.'
       : '');
 
   $('#fac-info-global')
