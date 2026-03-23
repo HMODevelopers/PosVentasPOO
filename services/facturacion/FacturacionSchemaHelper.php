@@ -5,6 +5,7 @@ class FacturacionSchemaHelper
     private PDO $conn;
     private array $columnsCache = [];
     private array $tableCache = [];
+    private ?string $databaseName = null;
 
     public function __construct(PDO $conn)
     {
@@ -18,8 +19,22 @@ class FacturacionSchemaHelper
         }
 
         try {
-            $st = $this->conn->prepare('SHOW TABLES LIKE :table');
-            $st->execute([':table' => $table]);
+            $database = $this->databaseName();
+            if ($database === '') {
+                return $this->tableCache[$table] = false;
+            }
+
+            $st = $this->conn->prepare(
+                'SELECT 1
+                   FROM information_schema.tables
+                  WHERE table_schema = :database
+                    AND table_name = :table
+                  LIMIT 1'
+            );
+            $st->execute([
+                ':database' => $database,
+                ':table' => $table,
+            ]);
             return $this->tableCache[$table] = (bool)$st->fetchColumn();
         } catch (Throwable $e) {
             return $this->tableCache[$table] = false;
@@ -36,12 +51,48 @@ class FacturacionSchemaHelper
             return $this->columnsCache[$table] = [];
         }
 
-        $cols = [];
-        $st = $this->conn->query("SHOW COLUMNS FROM `{$table}`");
-        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $cols[] = $row['Field'];
+        try {
+            $database = $this->databaseName();
+            if ($database === '') {
+                return $this->columnsCache[$table] = [];
+            }
+
+            $st = $this->conn->prepare(
+                'SELECT COLUMN_NAME
+                   FROM information_schema.columns
+                  WHERE table_schema = :database
+                    AND table_name = :table
+                  ORDER BY ORDINAL_POSITION ASC'
+            );
+            $st->execute([
+                ':database' => $database,
+                ':table' => $table,
+            ]);
+
+            $cols = [];
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $cols[] = $row['COLUMN_NAME'];
+            }
+            return $this->columnsCache[$table] = $cols;
+        } catch (Throwable $e) {
+            return $this->columnsCache[$table] = [];
         }
-        return $this->columnsCache[$table] = $cols;
+    }
+
+    private function databaseName(): string
+    {
+        if ($this->databaseName !== null) {
+            return $this->databaseName;
+        }
+
+        try {
+            $name = $this->conn->query('SELECT DATABASE()')->fetchColumn();
+            $this->databaseName = is_string($name) ? $name : '';
+        } catch (Throwable $e) {
+            $this->databaseName = '';
+        }
+
+        return $this->databaseName;
     }
 
     public function hasColumn(string $table, string $column): bool

@@ -586,15 +586,32 @@ class FacturacionModel
     private function listarMonedas(): array
     {
         if (!$this->schema->tableExists('cat_sat_moneda')) {
-            return [
-                ['ClaveMoneda' => 'MXN', 'Descripcion' => 'Peso Mexicano', 'Decimales' => 2, 'PermiteTipoCambio' => 0],
-                ['ClaveMoneda' => 'USD', 'Descripcion' => 'Dólar estadounidense', 'Decimales' => 2, 'PermiteTipoCambio' => 1],
-                ['ClaveMoneda' => 'XXX', 'Descripcion' => 'Sin moneda', 'Decimales' => 2, 'PermiteTipoCambio' => 0],
-            ];
+            return [];
         }
 
-        $st = $this->conn->query("SELECT ClaveMoneda, Descripcion, Decimales, PermiteTipoCambio FROM cat_sat_moneda WHERE Activo = 1 ORDER BY ClaveMoneda ASC");
-        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $columns = ['ClaveMoneda', 'Descripcion', 'Activo'];
+        if ($this->schema->hasColumn('cat_sat_moneda', 'Decimales')) {
+            $columns[] = 'Decimales';
+        }
+        if ($this->schema->hasColumn('cat_sat_moneda', 'PermiteTipoCambio')) {
+            $columns[] = 'PermiteTipoCambio';
+        }
+
+        $sql = sprintf(
+            'SELECT %s FROM cat_sat_moneda WHERE Activo = 1 ORDER BY ClaveMoneda ASC',
+            implode(', ', $columns)
+        );
+
+        $st = $this->conn->query($sql);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return $this->mapCatalogoConEtiqueta($rows, 'ClaveMoneda', 'Descripcion', [
+            'Decimales' => 2,
+            'PermiteTipoCambio' => static function (array $row): int {
+                $clave = strtoupper(trim((string)($row['ClaveMoneda'] ?? '')));
+                return in_array($clave, ['MXN', 'XXX'], true) ? 0 : 1;
+            },
+        ]);
     }
 
     private function listarFormasPagoSat(): array
@@ -603,8 +620,29 @@ class FacturacionModel
             return [];
         }
 
-        $st = $this->conn->query("SELECT clave_sat, descripcion FROM formas_pago WHERE activo = 1 AND COALESCE(clave_sat, '') <> '' ORDER BY clave_sat ASC, descripcion ASC");
-        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $st = $this->conn->query("SELECT id_forma_pago, clave_sat, descripcion, activo FROM formas_pago WHERE activo = 1 AND COALESCE(clave_sat, '') <> '' ORDER BY clave_sat ASC");
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return $this->mapCatalogoConEtiqueta($rows, 'clave_sat', 'descripcion');
+    }
+
+    private function mapCatalogoConEtiqueta(array $rows, string $valueKey, string $descriptionKey, array $defaults = []): array
+    {
+        return array_map(static function (array $row) use ($valueKey, $descriptionKey, $defaults): array {
+            $value = trim((string)($row[$valueKey] ?? ''));
+            $description = trim((string)($row[$descriptionKey] ?? ''));
+            $row['label'] = $value !== ''
+                ? $value . ($description !== '' ? ' - ' . $description : '')
+                : $description;
+
+            foreach ($defaults as $field => $defaultValue) {
+                if (!array_key_exists($field, $row)) {
+                    $row[$field] = is_callable($defaultValue) ? $defaultValue($row) : $defaultValue;
+                }
+            }
+
+            return $row;
+        }, $rows);
     }
 
     private function listarMetodosPago(): array

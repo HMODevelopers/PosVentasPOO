@@ -2550,7 +2550,7 @@ function fillFacturacionSelect($select, items, valueKey, textKey, currentValue, 
   let html = `<option value="">${placeholder}</option>`;
   (items || []).forEach(item => {
     const val = item?.[valueKey] ?? '';
-    const text = item?.[textKey] ?? val;
+    const text = item?.label ?? item?.[textKey] ?? val;
     const selected = String(currentValue || '') === String(val) ? ' selected' : '';
     html += `<option value="${escapeHtml(String(val))}"${selected}>${escapeHtml(String(text))}</option>`;
   });
@@ -2641,12 +2641,23 @@ function fillFacturacionComprobante(formaPago, catalogos, venta, emisor){
   const condicionesActual = formaPago.condiciones_pago || '';
   const tipoComprobanteActual = formaPago.tipo_comprobante || emisor.tipo_comprobante || 'I';
   const exportacionActual = formaPago.exportacion || emisor.exportacion || '01';
+  const monedas = Array.isArray(catalogos.monedas) ? catalogos.monedas : [];
+  const formasPago = Array.isArray(catalogos.formas_pago) ? catalogos.formas_pago : [];
 
-  fillFacturacionSelect($('#fac-select-moneda'), catalogos.monedas || [], 'ClaveMoneda', 'Descripcion', monedaActual);
+  fillFacturacionSelect($('#fac-select-moneda'), monedas, 'ClaveMoneda', 'Descripcion', monedaActual);
   fillFacturacionSelectFromPairs($('#fac-select-metodo-pago'), catalogos.metodos_pago || [], metodoActual);
-  fillFacturacionSelect($('#fac-select-forma-pago'), catalogos.formas_pago || [], 'clave_sat', 'descripcion', formaPagoActual);
+  fillFacturacionSelect($('#fac-select-forma-pago'), formasPago, 'clave_sat', 'descripcion', formaPagoActual);
   fillFacturacionSelectFromPairs($('#fac-select-tipo-comprobante'), catalogos.tipos_comprobante || [], tipoComprobanteActual);
   fillFacturacionSelectFromPairs($('#fac-select-exportacion'), catalogos.exportaciones || [], exportacionActual);
+
+  if (!monedas.length || !formasPago.length) {
+    const faltantes = [];
+    if (!monedas.length) faltantes.push('Moneda');
+    if (!formasPago.length) faltantes.push('Forma de pago');
+    $('#fac-warning')
+      .removeClass('d-none')
+      .html(`No fue posible cargar desde base de datos: ${faltantes.join(' y ')}.`);
+  }
 
   $('#fac-input-condiciones-pago').val(condicionesActual);
   $('#fac-input-tipo-cambio').val(formaPago.tipo_cambio || '');
