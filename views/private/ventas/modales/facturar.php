@@ -209,15 +209,33 @@
     font-size: 0.8rem;
     margin: 0;
   }
-  #modalFacturarVenta .cfdi-draft-preview {
-    background: #0f172a;
+  #modalFacturarVenta .cfdi-validation-list {
+    display: grid;
+    gap: 0.6rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  #modalFacturarVenta .cfdi-validation-list__item {
+    background: #fff8e6;
+    border: 1px solid #ffe08a;
     border-radius: 0.75rem;
-    color: #dbeafe;
+    color: #6b5300;
+    font-size: 0.85rem;
+    padding: 0.75rem 0.9rem;
+  }
+  #modalFacturarVenta .cfdi-validation-list__item strong {
+    color: #5a4300;
+    display: block;
     font-size: 0.78rem;
-    margin-top: 1rem;
-    max-height: 240px;
-    overflow: auto;
-    padding: 1rem;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+  }
+  #modalFacturarVenta .cfdi-validation-list__item.is-success {
+    background: #f0fff4;
+    border-color: #b7ebc6;
+    color: #1f6f43;
   }
 </style>
 
@@ -451,14 +469,12 @@
                         <p class="cfdi-block-status__desc">Abre una venta para calcular el draft de facturación.</p>
                       </div>
                     </div>
-                    <ul id="fac-validaciones" class="mb-3 pl-3 text-muted">
-                      <li>Sin validaciones disponibles.</li>
+                    <ul id="fac-validaciones" class="cfdi-validation-list">
+                      <li class="cfdi-validation-list__item">
+                        <strong>Validación</strong>
+                        Sin validaciones disponibles.
+                      </li>
                     </ul>
-
-                    <div class="cfdi-draft-preview">
-                      <strong class="d-block mb-2">Draft actual</strong>
-                      <pre id="fac-draft-preview" class="mb-0 text-light">{}</pre>
-                    </div>
 
                     <div id="fac-archivos" class="d-none mt-3">
                       <h6 class="mb-2">Archivos CFDI</h6>

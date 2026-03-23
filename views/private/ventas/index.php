@@ -2526,6 +2526,16 @@ function getCatalogValues(items, key){
   return (Array.isArray(items) ? items : []).map(item => String(item?.[key] ?? '').trim().toUpperCase()).filter(Boolean);
 }
 
+function formatValidationMessage(message){
+  return String(message ?? '')
+    .replace(/^Debes seleccionar\s+/i, 'Selecciona ')
+    .replace(/^Debe existir\s+/i, 'Debe existir ')
+    .replace(/^La venta no tiene\s+/i, 'La venta no tiene ')
+    .replace(/^Este flujo solo soporta\s+/i, '')
+    .replace(/\.\s*$/,'')
+    .trim();
+}
+
 function validateFacturaDraft(draft){
   const errors = [];
   const blocks = {};
@@ -2647,8 +2657,8 @@ function renderFacturaDraftUI(){
   const bloquesHtml = blockOrder.map(key => {
     const block = bloques[key] || { completo: false, errores: ['Sin información.'] };
     const desc = block.completo
-      ? 'Bloque completo y listo.'
-      : (block.errores[0] || 'Faltan datos por capturar.');
+      ? 'Información completa.'
+      : (formatValidationMessage(block.errores[0]) || 'Faltan datos por capturar.');
     return `
       <div class="cfdi-block-status__item ${block.completo ? 'is-complete' : 'is-incomplete'}">
         <div class="cfdi-block-status__title">
@@ -2661,14 +2671,36 @@ function renderFacturaDraftUI(){
   $('#fac-validacion-bloques').html(bloquesHtml);
 
   if (validaciones.listaErrores.length) {
-    $('#fac-validaciones').html(validaciones.listaErrores.map(msg => `<li class="text-danger">${escapeHtml(msg)}</li>`).join(''));
+    const mensajesPorBloque = blockOrder
+      .map(key => {
+        const errores = Array.isArray(bloques[key]?.errores) ? bloques[key].errores : [];
+        if (!errores.length) return '';
+        const faltantes = errores.map(formatValidationMessage).filter(Boolean).join(', ');
+        if (!faltantes) return '';
+        return `
+          <li class="cfdi-validation-list__item">
+            <strong>${escapeHtml(FACTURA_BLOCK_LABELS[key] || key)}</strong>
+            ${escapeHtml(faltantes)}
+          </li>`;
+      })
+      .filter(Boolean)
+      .join('');
+
+    $('#fac-validaciones').html(mensajesPorBloque || `
+      <li class="cfdi-validation-list__item">
+        <strong>Validación</strong>
+        Revisa la información faltante para continuar.
+      </li>`);
   } else {
-    $('#fac-validaciones').html('<li class="text-success">El draft de factura está completo y listo para timbrarse.</li>');
+    $('#fac-validaciones').html(`
+      <li class="cfdi-validation-list__item is-success">
+        <strong>Validación</strong>
+        La información está completa. Ya puedes facturar la venta.
+      </li>`);
   }
 
   $('#btnConfirmarFacturar').prop('disabled', !draft.listoParaTimbrar || String(draft?.cfdi?.estatus || '').toUpperCase() === 'TIMBRADO');
   $('#fac-draft-json').val(JSON.stringify(draft));
-  $('#fac-draft-preview').text(JSON.stringify(draft, null, 2));
 
   $('#fac-publico-note')
     .toggleClass('d-none', !draft?.receptor?.es_publico_general)
@@ -2828,9 +2860,12 @@ function resetModalFacturacion(){
   $('#fac-loader').show();
   $('#fac-contenido').addClass('d-none');
   $('#fac-error, #fac-warning, #fac-success').addClass('d-none').empty();
-  $('#fac-validaciones').html('<li>Sin validaciones disponibles.</li>');
+  $('#fac-validaciones').html(`
+    <li class="cfdi-validation-list__item">
+      <strong>Validación</strong>
+      Sin validaciones disponibles.
+    </li>`);
   $('#fac-validacion-bloques').html('<div class="cfdi-block-status__item is-incomplete"><div class="cfdi-block-status__title"><span>Sin estado</span><span class="badge badge-secondary">Pendiente</span></div><p class="cfdi-block-status__desc mb-0">Abre una venta para calcular el draft de facturación.</p></div>');
-  $('#fac-draft-preview').text('{}');
   $('#fac-draft-json').val('');
   $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
   $('#fac-folio, #fac-fecha, #fac-cliente, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion').text('—');
