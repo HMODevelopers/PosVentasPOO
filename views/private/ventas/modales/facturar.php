@@ -253,6 +253,7 @@
 
         <div class="modal-body">
           <input type="hidden" id="fac-id-venta" name="id_venta">
+          <input type="hidden" id="fac-id-cliente-sat" name="id_cliente_sat">
 
           <div id="fac-loader" class="text-center py-4">
             <div class="spinner-border text-primary" role="status"></div>

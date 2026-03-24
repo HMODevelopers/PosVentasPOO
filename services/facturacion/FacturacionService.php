@@ -30,9 +30,18 @@ class FacturacionService
         $this->responseMapper = new FacturacionResponseMapper();
     }
 
-    public function facturarVenta(int $idVenta): array
+    public function facturarVenta(int $idVenta, array $facturacionInput = []): array
     {
-        $ctx = $this->model->loadContext($idVenta);
+        try {
+            $ctx = $this->model->loadContext($idVenta);
+            if (!empty($facturacionInput)) {
+                $idClienteSat = (int)($facturacionInput['id_cliente_sat'] ?? 0);
+                $ctx = $this->model->aplicarDatosFacturacionExistente($ctx, $idClienteSat, $facturacionInput);
+            }
+        } catch (Throwable $e) {
+            return ['ok' => false, 'msg' => $e->getMessage()];
+        }
+
         $errors = $this->validator->validate($ctx);
 
         if ($errors) {

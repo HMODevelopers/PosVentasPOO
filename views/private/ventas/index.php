@@ -2856,6 +2856,7 @@ function resetModalFacturacion(){
   facturaDraftState = createEmptyFacturaDraft();
   initFacturacionClienteSelect();
   $('#fac-id-venta').val('');
+  $('#fac-id-cliente-sat').val('');
   $('#fac-loader').show();
   $('#fac-contenido').addClass('d-none');
   $('#fac-error, #fac-warning, #fac-success').addClass('d-none').empty();
@@ -2867,8 +2868,10 @@ function resetModalFacturacion(){
   $('#fac-validacion-bloques').html('<div class="cfdi-block-status__item is-incomplete"><div class="cfdi-block-status__title"><span>Sin estado</span><span class="badge badge-secondary">Pendiente</span></div><p class="cfdi-block-status__desc mb-0">Abre una venta para calcular el draft de facturación.</p></div>');
   $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
   $('#fac-folio, #fac-fecha, #fac-cliente, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion').text('—');
-  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial, #fac-input-condiciones-pago, #fac-input-tipo-cambio').val('').prop('readonly', false).prop('disabled', false);
-  $('#fac-select-regimen, #fac-select-uso-cfdi, #fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion').html('<option value="">Seleccione…</option>').prop('disabled', false);
+  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial').val('').prop('readonly', true).prop('disabled', false);
+  $('#fac-input-condiciones-pago, #fac-input-tipo-cambio').val('').prop('readonly', false).prop('disabled', false);
+  $('#fac-select-regimen, #fac-select-uso-cfdi').html('<option value="">Seleccione…</option>').prop('disabled', true);
+  $('#fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion').html('<option value="">Seleccione…</option>').prop('disabled', false);
   $('#fac-select-cliente').empty().val(null).trigger('change');
   $('#fac-publico-note').addClass('d-none').empty();
   $('#fac-info-global').removeClass('alert-warning').addClass('alert-light').text('No aplica información global para esta venta.');
@@ -3070,59 +3073,15 @@ function getPayloadFacturacion(){
   const draft = getFacturaDraft();
   return {
     id_venta: Number(draft.venta.id_venta || $('#fac-id-venta').val() || 0),
-    id_cliente_fiscal: Number(draft.receptor.id_cliente_fiscal || 0),
-    rfc: String(draft.receptor.rfc || '').trim().toUpperCase(),
-    razon_social: String(draft.receptor.nombre || '').trim(),
-    nombre_comercial: String(draft.receptor.nombre_comercial || '').trim(),
-    email: String(draft.receptor.correo || '').trim(),
-    dom_fiscal_cp: String(draft.receptor.codigo_postal || '').trim(),
-    regimen_fiscal: String(draft.receptor.regimen_fiscal || '').trim(),
-    uso_cfdi: String(draft.receptor.uso_cfdi || '').trim(),
-    residencia_fiscal: String(draft.receptor.residencia_fiscal || '').trim().toUpperCase(),
-    numero_registro_tributario: String(draft.receptor.numero_registro_tributario || '').trim(),
+    id_cliente_sat: Number(draft.receptor.id_cliente_fiscal || $('#fac-id-cliente-sat').val() || 0),
     moneda: String(draft.comprobante.moneda || '').trim().toUpperCase(),
     metodo_pago: String(draft.comprobante.metodo_pago || '').trim().toUpperCase(),
     forma_pago: String(draft.comprobante.forma_pago || '').trim().toUpperCase(),
     tipo_cambio: String(draft.comprobante.tipo_cambio || '').trim(),
     condiciones_pago: String(draft.comprobante.condiciones_pago || '').trim(),
     tipo_comprobante: String(draft.comprobante.tipo_comprobante || '').trim().toUpperCase(),
-    exportacion: String(draft.comprobante.exportacion || '').trim(),
-    draft
+    exportacion: String(draft.comprobante.exportacion || '').trim()
   };
-}
-
-function guardarDatosFiscalesFacturacion(idVenta, opciones = {}){
-  const settings = Object.assign({ silent: false }, opciones || {});
-  const draft = getFacturaDraft();
-  draft.validaciones = validateFacturaDraft(draft);
-  draft.listoParaTimbrar = !!draft.validaciones.listoParaTimbrar;
-  renderFacturaDraftUI();
-
-  if (!draft.listoParaTimbrar) {
-    const validationMessage = draft.validaciones.listaErrores[0] || 'El draft de factura aún no está completo.';
-    $('#fac-error').removeClass('d-none').text(validationMessage);
-    return $.Deferred().reject({ ok: false, msg: validationMessage }).promise();
-  }
-
-  const payload = getPayloadFacturacion();
-  payload.id_venta = idVenta;
-
-  return $.ajax({
-    url: VENTAS_URL + '?accion=facturacion-guardar-receptor',
-    method: 'POST',
-    data: JSON.stringify(payload),
-    contentType: 'application/json; charset=UTF-8',
-    dataType: 'json'
-  }).done(function(resp){
-    if (!resp?.ok) {
-      $('#fac-error').removeClass('d-none').text(resp?.msg || 'No fue posible guardar los datos fiscales.');
-      return;
-    }
-    renderFacturacionPreview(resp, idVenta);
-    if (!settings.silent) $('#fac-success').removeClass('d-none').text(resp?.msg || 'Datos fiscales actualizados.');
-  }).fail(function(xhr){
-    $('#fac-error').removeClass('d-none').text(xhr?.responseJSON?.msg || 'Error al guardar los datos fiscales.');
-  });
 }
 
 function abrirModalFacturacion(idVenta, folio){
@@ -3146,8 +3105,10 @@ $(document).on('click', '.accion-facturar', function(e){
 $(document).off('select2:select', '#fac-select-cliente').on('select2:select', '#fac-select-cliente', function(e){
   const cliente = e?.params?.data || {};
   if (!cliente?.id && !cliente?.id_cliente_sat && !cliente?.id_cliente) return;
+  const idClienteSat = Number(cliente.id || cliente.id_cliente_sat || cliente.id_cliente || 0);
   $('#fac-error, #fac-success').addClass('d-none').empty();
-  updateFacturaDraft('receptor.id_cliente_fiscal', Number(cliente.id || cliente.id_cliente_sat || cliente.id_cliente || 0), { skipRender: true });
+  $('#fac-id-cliente-sat').val(idClienteSat > 0 ? String(idClienteSat) : '');
+  updateFacturaDraft('receptor.id_cliente_fiscal', idClienteSat, { skipRender: true });
   updateFacturaDraft('receptor.rfc', cliente.rfc || '', { skipRender: true });
   updateFacturaDraft('receptor.nombre', cliente.nombre || cliente.razon_social || '', { skipRender: true });
   updateFacturaDraft('receptor.nombre_comercial', cliente.nombre_comercial || '', { skipRender: true });
@@ -3160,6 +3121,7 @@ $(document).off('select2:select', '#fac-select-cliente').on('select2:select', '#
 });
 
 $(document).off('select2:clear', '#fac-select-cliente').on('select2:clear', '#fac-select-cliente', function(){
+  $('#fac-id-cliente-sat').val('');
   updateFacturaDraft('receptor.id_cliente_fiscal', 0, { skipRender: true });
   updateFacturaDraft('receptor.rfc', '', { skipRender: true });
   updateFacturaDraft('receptor.nombre', '', { skipRender: true });
@@ -3174,35 +3136,13 @@ $(document).off('select2:clear', '#fac-select-cliente').on('select2:clear', '#fa
 
 $(document).off('change', '#fac-select-cliente').on('change', '#fac-select-cliente', function(e){
   if ($(this).val() || e?.params?.data) return;
-  $('#fac-input-rfc').trigger('input');
+  $('#fac-id-cliente-sat').val('');
 });
 
 $(document)
-  .off('input', '#fac-input-rfc, #fac-input-razon-social, #fac-input-nombre-comercial, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib')
-  .on('input', '#fac-input-rfc, #fac-input-razon-social, #fac-input-nombre-comercial, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib', function(){
+  .off('change', '#fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion')
+  .on('change', '#fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion', function(){
     const map = {
-      'fac-input-rfc': 'receptor.rfc',
-      'fac-input-razon-social': 'receptor.nombre',
-      'fac-input-nombre-comercial': 'receptor.nombre_comercial',
-      'fac-input-correo': 'receptor.correo',
-      'fac-input-cp': 'receptor.codigo_postal',
-      'fac-input-residencia-fiscal': 'receptor.residencia_fiscal',
-      'fac-input-num-reg-id-trib': 'receptor.numero_registro_tributario'
-    };
-    const path = map[this.id];
-    if (!path) return;
-    const value = this.id === 'fac-input-rfc'
-      ? String($(this).val() || '').trim().toUpperCase()
-      : String($(this).val() || '');
-    updateFacturaDraft(path, value);
-  });
-
-$(document)
-  .off('change', '#fac-select-regimen, #fac-select-uso-cfdi, #fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion')
-  .on('change', '#fac-select-regimen, #fac-select-uso-cfdi, #fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion', function(){
-    const map = {
-      'fac-select-regimen': 'receptor.regimen_fiscal',
-      'fac-select-uso-cfdi': 'receptor.uso_cfdi',
       'fac-select-moneda': 'comprobante.moneda',
       'fac-select-metodo-pago': 'comprobante.metodo_pago',
       'fac-select-forma-pago': 'comprobante.forma_pago',
@@ -3241,20 +3181,31 @@ $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta
   e.preventDefault();
   const idVenta = Number($('#fac-id-venta').val() || $('#btnConfirmarFacturar').data('idVenta') || 0);
   if (!idVenta) return;
+  const payload = getPayloadFacturacion();
+  payload.id_venta = idVenta;
 
   const $btn = $('#btnConfirmarFacturar');
   const original = $btn.html();
   $('#fac-error, #fac-success').addClass('d-none').empty();
 
+  if (!payload.id_cliente_sat) {
+    $('#fac-error').removeClass('d-none').text('Debe seleccionar un receptor existente.');
+    return;
+  }
+
+  const draft = getFacturaDraft();
+  draft.validaciones = validateFacturaDraft(draft);
+  draft.listoParaTimbrar = !!draft.validaciones.listoParaTimbrar;
+  renderFacturaDraftUI();
+  if (!draft.listoParaTimbrar) {
+    const validationMessage = draft.validaciones.listaErrores[0] || 'El draft de factura aún no está completo.';
+    $('#fac-error').removeClass('d-none').text(validationMessage);
+    return;
+  }
+
   $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Facturando...');
 
-  guardarDatosFiscalesFacturacion(idVenta, { silent: true }).then(function(saveResp){
-    if (!saveResp?.ok) {
-      $btn.prop('disabled', false).html(original);
-      return;
-    }
-
-    $.post(VENTAS_URL, { accion:'facturar', id_venta:idVenta }, function(resp){
+  $.post(VENTAS_URL, Object.assign({ accion:'facturar' }, payload), function(resp){
       $('#fac-loader').show();
       $('#fac-contenido').addClass('d-none');
       if (resp?.ok) {
@@ -3280,9 +3231,6 @@ $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta
     }).always(function(){
       $btn.prop('disabled', false).html(original);
     });
-  }).fail(function(){
-    $btn.prop('disabled', false).html(original);
-  });
 });
 
 $(function(){

@@ -150,6 +150,58 @@ class FacturacionModel
         }
     }
 
+    public function aplicarDatosFacturacionExistente(array $ctx, int $idClienteSat, array $data = []): array
+    {
+        if ($idClienteSat <= 0) {
+            throw new RuntimeException('Debe seleccionar un receptor existente.');
+        }
+
+        $cliente = $this->obtenerClienteFacturacion($idClienteSat);
+        if (!$cliente) {
+            throw new RuntimeException('El receptor seleccionado no existe en clientes_sat.');
+        }
+
+        $ctx['cliente_seleccionado'] = $cliente;
+        $ctx['receptor'] = $this->buildReceptorFromClienteSat($cliente);
+        $ctx['informacion_global'] = $this->buildInformacionGlobal($ctx['receptor']);
+
+        $venta = is_array($ctx['venta'] ?? null) ? $ctx['venta'] : [];
+        $ctx['forma_pago'] = array_merge(
+            is_array($ctx['forma_pago'] ?? null) ? $ctx['forma_pago'] : [],
+            $this->normalizarDatosComprobante($data, $venta)
+        );
+
+        if (is_array($ctx['factura_draft'] ?? null)) {
+            $ctx['factura_draft']['receptor'] = [
+                'id_cliente_fiscal' => (int)($ctx['receptor']['cliente_sat_id'] ?? 0),
+                'rfc' => $ctx['receptor']['rfc'] ?? '',
+                'nombre' => $ctx['receptor']['nombre'] ?? '',
+                'nombre_comercial' => $ctx['receptor']['nombre_comercial'] ?? '',
+                'correo' => $ctx['receptor']['correo'] ?? '',
+                'codigo_postal' => $ctx['receptor']['domicilio_fiscal_receptor'] ?? '',
+                'regimen_fiscal' => $ctx['receptor']['regimen_fiscal_receptor'] ?? '',
+                'uso_cfdi' => $ctx['receptor']['uso_cfdi'] ?? '',
+                'residencia_fiscal' => $ctx['receptor']['residencia_fiscal'] ?? '',
+                'numero_registro_tributario' => $ctx['receptor']['num_reg_id_trib'] ?? '',
+                'es_publico_general' => !empty($ctx['receptor']['es_publico_general']),
+            ];
+            $ctx['factura_draft']['comprobante'] = array_merge(
+                is_array($ctx['factura_draft']['comprobante'] ?? null) ? $ctx['factura_draft']['comprobante'] : [],
+                [
+                    'moneda' => $ctx['forma_pago']['moneda'] ?? 'MXN',
+                    'metodo_pago' => $ctx['forma_pago']['metodo_pago'] ?? '',
+                    'forma_pago' => $ctx['forma_pago']['forma_pago'] ?? '',
+                    'tipo_cambio' => $ctx['forma_pago']['tipo_cambio'] ?? '',
+                    'exportacion' => $ctx['forma_pago']['exportacion'] ?? '01',
+                    'tipo_comprobante' => $ctx['forma_pago']['tipo_comprobante'] ?? 'I',
+                    'condiciones_pago' => $ctx['forma_pago']['condiciones_pago'] ?? '',
+                ]
+            );
+        }
+
+        return $ctx;
+    }
+
     private function getVenta(int $idVenta): ?array
     {
         $sql = "SELECT
@@ -804,6 +856,31 @@ class FacturacionModel
         $payload['es_publico_general'] = $this->esPublicoGeneralReceptor($payload);
 
         return $payload;
+    }
+
+    private function buildReceptorFromClienteSat(array $cliente): array
+    {
+        $idClienteSat = (int)($cliente['id'] ?? $cliente['id_cliente_sat'] ?? $cliente['id_cliente'] ?? 0);
+        $nombre = trim((string)($cliente['nombre'] ?? $cliente['razon_social'] ?? ''));
+
+        $receptor = [
+            'nombre' => $nombre,
+            'nombre_comercial' => trim((string)($cliente['nombre_comercial'] ?? '')),
+            'rfc' => strtoupper(trim((string)($cliente['rfc'] ?? ''))),
+            'correo' => trim((string)($cliente['correo'] ?? $cliente['email'] ?? '')),
+            'domicilio_fiscal_receptor' => trim((string)($cliente['domicilio_fiscal_receptor'] ?? $cliente['dom_fiscal_cp'] ?? '')),
+            'regimen_fiscal_receptor' => trim((string)($cliente['regimen_fiscal_receptor'] ?? $cliente['regimen_fiscal'] ?? '')),
+            'uso_cfdi' => trim((string)($cliente['uso_cfdi'] ?? $cliente['uso_cdfi'] ?? '')),
+            'num_reg_id_trib' => trim((string)($cliente['num_reg_id_trib'] ?? $cliente['numero_registro_tributario'] ?? '')),
+            'residencia_fiscal' => strtoupper(trim((string)($cliente['residencia_fiscal'] ?? ''))),
+            'cliente_id' => 0,
+            'cliente_sat_id' => $idClienteSat,
+            'direccion' => null,
+            'telefono' => null,
+        ];
+        $receptor['es_publico_general'] = $this->esPublicoGeneralReceptor($receptor);
+
+        return $receptor;
     }
 
     private function getDraftFacturacion(array $cfdiActual): array

@@ -438,10 +438,22 @@ class VentasController
         case 'facturar': {
             $idVenta = self::asInt($_POST['id_venta'] ?? $_GET['id_venta'] ?? $raw['id_venta'] ?? 0);
             if ($idVenta <= 0) self::jsonError('id_venta requerido.');
+            $idClienteSat = self::asInt($_POST['id_cliente_sat'] ?? $_GET['id_cliente_sat'] ?? $raw['id_cliente_sat'] ?? 0);
+            if ($idClienteSat <= 0) self::jsonError('Debe seleccionar un receptor existente.', 422);
 
             global $pdo;
             $service = new FacturacionService($pdo);
-            $resp = $service->facturarVenta($idVenta);
+            $facturacionInput = [
+                'id_cliente_sat' => $idClienteSat,
+                'moneda' => trim((string)($_POST['moneda'] ?? $_GET['moneda'] ?? $raw['moneda'] ?? '')),
+                'metodo_pago' => trim((string)($_POST['metodo_pago'] ?? $_GET['metodo_pago'] ?? $raw['metodo_pago'] ?? '')),
+                'forma_pago' => trim((string)($_POST['forma_pago'] ?? $_GET['forma_pago'] ?? $raw['forma_pago'] ?? '')),
+                'tipo_cambio' => trim((string)($_POST['tipo_cambio'] ?? $_GET['tipo_cambio'] ?? $raw['tipo_cambio'] ?? '')),
+                'condiciones_pago' => trim((string)($_POST['condiciones_pago'] ?? $_GET['condiciones_pago'] ?? $raw['condiciones_pago'] ?? '')),
+                'tipo_comprobante' => trim((string)($_POST['tipo_comprobante'] ?? $_GET['tipo_comprobante'] ?? $raw['tipo_comprobante'] ?? '')),
+                'exportacion' => trim((string)($_POST['exportacion'] ?? $_GET['exportacion'] ?? $raw['exportacion'] ?? '')),
+            ];
+            $resp = $service->facturarVenta($idVenta, $facturacionInput);
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }
