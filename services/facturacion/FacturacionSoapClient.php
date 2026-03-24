@@ -205,6 +205,7 @@ class FacturacionSoapClient
     {
         $credenciales = $payload['Credenciales'] ?? $payload['credenciales'] ?? [];
         $comprobante = $payload['Comprobante40R'] ?? $payload['comprobante'] ?? [];
+        $comprobante = $this->unwrapNestedComprobanteWrapper($comprobante, $wsdlMeta);
 
         $nestedCandidates = [
             'Emisor',
@@ -230,6 +231,35 @@ class FacturacionSoapClient
         }
 
         return $normalized;
+    }
+
+    private function unwrapNestedComprobanteWrapper($comprobante, array $wsdlMeta)
+    {
+        if (!is_array($comprobante) && !is_object($comprobante)) {
+            return $comprobante;
+        }
+
+        $paramTypes = $wsdlMeta['param_types'] ?? [];
+        $secondParamType = strtoupper((string)($paramTypes[1] ?? ''));
+        $raw = is_object($comprobante) ? get_object_vars($comprobante) : $comprobante;
+
+        if (!array_key_exists('Comprobante40R', $raw)) {
+            return $comprobante;
+        }
+
+        $nested = $raw['Comprobante40R'];
+        if (!is_array($nested) && !is_object($nested)) {
+            return $comprobante;
+        }
+
+        $expectsTypeComprobante = $secondParamType === '' || str_contains($secondParamType, 'COMPROBANTE40R');
+        if (!$expectsTypeComprobante) {
+            return $comprobante;
+        }
+
+        error_log('[CFDI40][GenerarCFDI40] normalize_warning=Se detectó wrapper anidado Comprobante40R dentro del segundo parámetro. Se desempaqueta para cumplir contrato WSDL.');
+
+        return $nested;
     }
 
     private function normalizeComprobanteNode($comprobante)
@@ -330,6 +360,7 @@ class FacturacionSoapClient
         $soapBodyHasPayload = false;
         $bodyContainsCredenciales = false;
         $bodyContainsComprobante = false;
+        $bodyContainsNestedComprobanteWrapper = false;
 
         $doc = new DOMDocument();
         $loaded = @$doc->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
@@ -340,6 +371,7 @@ class FacturacionSoapClient
                 $soapBodyHasPayload = true;
                 $bodyContainsCredenciales = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]//*[local-name()="Credenciales" or local-name()="credenciales"]')->length > 0;
                 $bodyContainsComprobante = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]//*[local-name()="Comprobante40R" or local-name()="comprobante"]')->length > 0;
+                $bodyContainsNestedComprobanteWrapper = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]//*[local-name()="comprobante"]/*[local-name()="Comprobante40R"]')->length > 0;
 
                 $methodNode = $payloadNodes->item(0);
                 if ($methodNode instanceof DOMNode && !$methodNode->hasChildNodes()) {
@@ -350,15 +382,17 @@ class FacturacionSoapClient
             $soapBodyHasPayload = strpos($xml, '<GenerarCFDI40/>') === false;
             $bodyContainsCredenciales = stripos($xml, 'Credenciales') !== false;
             $bodyContainsComprobante = stripos($xml, 'Comprobante40R') !== false;
+            $bodyContainsNestedComprobanteWrapper = stripos($xml, '<comprobante><Comprobante40R>') !== false;
         }
 
         error_log('[CFDI40][GenerarCFDI40] soap_body_has_payload=' . ($soapBodyHasPayload ? 'true' : 'false'));
         error_log('[CFDI40][GenerarCFDI40] body_contains_credenciales=' . ($bodyContainsCredenciales ? 'true' : 'false'));
         error_log('[CFDI40][GenerarCFDI40] body_contains_comprobante=' . ($bodyContainsComprobante ? 'true' : 'false'));
+        error_log('[CFDI40][GenerarCFDI40] body_contains_nested_comprobante_wrapper=' . ($bodyContainsNestedComprobanteWrapper ? 'true' : 'false'));
 
-        if (!$soapBodyHasPayload || !$bodyContainsCredenciales || !$bodyContainsComprobante) {
+        if (!$soapBodyHasPayload || !$bodyContainsCredenciales || !$bodyContainsComprobante || $bodyContainsNestedComprobanteWrapper) {
             if ($strict) {
-                throw new RuntimeException('El XML SOAP de GenerarCFDI40 no contiene payload serializado válido (Credenciales/Comprobante40R).');
+                throw new RuntimeException('El XML SOAP de GenerarCFDI40 no contiene payload serializado válido (Credenciales/comprobante) o contiene anidación inválida de Comprobante40R.');
             }
         }
     }
