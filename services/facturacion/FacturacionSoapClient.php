@@ -37,20 +37,27 @@ class FacturacionSoapClient
         $usedPlan = null;
 
         foreach ($callPlans as $plan) {
-            $usedPlan = $plan;
             $finalArgsDebug = $this->normalizeForDebug($plan['arguments'] ?? []);
+            $finalArgNames = $this->extractArgumentNames($plan['arguments'] ?? []);
+            $finalShape = $this->describeArgumentShape($plan['arguments'] ?? []);
+            $finalUsesSoapParam = $this->containsSoapParam($plan['arguments'] ?? []);
+
             error_log('[CFDI40][GenerarCFDI40] soap_final_function_name=' . ($plan['function_name'] ?? 'GenerarCFDI40'));
             error_log('[CFDI40][GenerarCFDI40] soap_final_call_mode=' . ($plan['mode'] ?? 'unknown'));
-            error_log('[CFDI40][GenerarCFDI40] soap_final_param_names=' . json_encode($plan['param_names'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-            error_log('[CFDI40][GenerarCFDI40] soap_final_argument_shape=' . json_encode($this->describeArgumentShape($plan['arguments'] ?? []), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-            error_log('[CFDI40][GenerarCFDI40] soap_final_wrapper_child_names=' . json_encode($plan['wrapper_child_names'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             error_log('[CFDI40][GenerarCFDI40] soap_final_args_raw=' . print_r($plan['arguments'] ?? [], true));
             error_log('[CFDI40][GenerarCFDI40] soap_final_args_json=' . json_encode($finalArgsDebug, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            error_log('[CFDI40][GenerarCFDI40] soap_final_args_count=' . (string)count($plan['arguments'] ?? []));
+            error_log('[CFDI40][GenerarCFDI40] soap_final_param_names=' . json_encode($finalArgNames, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            error_log('[CFDI40][GenerarCFDI40] soap_final_argument_shape=' . json_encode($finalShape, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            error_log('[CFDI40][GenerarCFDI40] soap_final_uses_soapparam=' . ($finalUsesSoapParam ? 'true' : 'false'));
+            error_log('[CFDI40][GenerarCFDI40] soap_final_wrapper_name=' . (($plan['wrapper_name'] ?? null) ?: ''));
+            error_log('[CFDI40][GenerarCFDI40] soap_final_wrapper_child_names=' . json_encode($plan['wrapper_child_names'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
             try {
                 $response = $client->__soapCall('GenerarCFDI40', $plan['arguments']);
                 $this->captureLastSoapExchange($client);
                 $validation = $this->validateSerializedRequest($this->lastRequest, false);
+
                 if (!$validation['is_valid']) {
                     error_log('[CFDI40][GenerarCFDI40] plan_discarded=' . ($plan['mode'] ?? 'unknown'));
                     error_log('[CFDI40][GenerarCFDI40] plan_discard_reason=' . $validation['reason']);
@@ -58,18 +65,25 @@ class FacturacionSoapClient
                     continue;
                 }
 
+                $usedPlan = $plan;
                 error_log('[CFDI40][GenerarCFDI40] response_json=' . json_encode($this->normalizeForDebug($response), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 break;
             } catch (SoapFault $fault) {
                 $lastFault = $fault;
                 $this->captureLastSoapExchange($client);
                 $validation = $this->validateSerializedRequest($this->lastRequest, false);
+
                 error_log('[CFDI40][GenerarCFDI40] soap_fault_attempt_mode=' . ($plan['mode'] ?? 'unknown'));
                 error_log('[CFDI40][GenerarCFDI40] soap_fault=' . print_r($fault, true));
+
                 if (!$validation['is_valid']) {
                     error_log('[CFDI40][GenerarCFDI40] plan_discarded=' . ($plan['mode'] ?? 'unknown'));
                     error_log('[CFDI40][GenerarCFDI40] plan_discard_reason=' . $validation['reason']);
+                    continue;
                 }
+
+                $usedPlan = $plan;
+                break;
             }
         }
 
@@ -312,149 +326,65 @@ class FacturacionSoapClient
 
     private function buildCallPlans(array $payload, array $wsdlMeta): array
     {
-        $paramNames = array_values(array_filter((array)($wsdlMeta['param_names'] ?? []), static fn($n) => is_string($n) && $n !== ''));
-        $paramCount = count($paramNames);
-
         $credenciales = $payload['Credenciales'] ?? new stdClass();
         $comprobante = $payload['Comprobante40R'] ?? new stdClass();
 
-        $plans = [];
-
-        if ($paramCount >= 2) {
-            $plans[] = [
-                'mode' => 'multiparam_named_soapparam',
-                'function_name' => 'GenerarCFDI40',
-                'param_names' => $paramNames,
-                'wrapper_child_names' => [],
-                'arguments' => [
-                    new SoapParam($credenciales, $paramNames[0]),
-                    new SoapParam($comprobante, $paramNames[1]),
-                ],
-            ];
-
-            $plans[] = [
-                'mode' => 'multiparam_positional',
-                'function_name' => 'GenerarCFDI40',
-                'param_names' => $paramNames,
-                'wrapper_child_names' => [],
-                'arguments' => [$credenciales, $comprobante],
-            ];
-        }
-
-        $wrapperParamName = $paramNames[0] ?? 'request';
-        $wrapperChildren = $this->resolveWrapperChildNames($wsdlMeta, $wrapperParamName);
-        $wrapperCredName = $wrapperChildren['credenciales'];
-        $wrapperComprobanteName = $wrapperChildren['comprobante'];
-
-        $wrapperObj = new stdClass();
-        $wrapperObj->{$wrapperCredName} = $credenciales;
-        $wrapperObj->{$wrapperComprobanteName} = $comprobante;
-
-        $plans[] = [
-            'mode' => 'document_literal_single_wrapper_named_soapparam',
-            'function_name' => 'GenerarCFDI40',
-            'param_names' => [$wrapperParamName],
-            'wrapper_child_names' => [$wrapperCredName, $wrapperComprobanteName],
-            'arguments' => [new SoapParam($wrapperObj, $wrapperParamName)],
-        ];
-
-        $plans[] = [
-            'mode' => 'document_literal_single_wrapper_positional',
-            'function_name' => 'GenerarCFDI40',
-            'param_names' => [$wrapperParamName],
-            'wrapper_child_names' => [$wrapperCredName, $wrapperComprobanteName],
-            'arguments' => [$wrapperObj],
-        ];
-
-        $legacyWrapper = new stdClass();
-        $legacyWrapper->Credenciales = $credenciales;
-        $legacyWrapper->Comprobante40R = $comprobante;
-
-        $plans[] = [
-            'mode' => 'document_literal_single_wrapper_legacy_pascalcase',
-            'function_name' => 'GenerarCFDI40',
-            'param_names' => [$wrapperParamName],
-            'wrapper_child_names' => ['Credenciales', 'Comprobante40R'],
-            'arguments' => [new SoapParam($legacyWrapper, $wrapperParamName)],
-        ];
-
-        return $plans;
-    }
-
-    private function resolveWrapperChildNames(array $wsdlMeta, string $wrapperParamName): array
-    {
-        $credNames = ['Credenciales', 'credenciales', 'Credencial', 'credencial'];
-        $compNames = ['Comprobante40R', 'comprobante', 'Comprobante', 'comprobante40R'];
-
-        foreach ((array)($wsdlMeta['types'] ?? []) as $typeDef) {
-            if (!is_string($typeDef)) {
-                continue;
-            }
-
-            if (!preg_match('/^struct\s+([^\s\{]+)\s*\{(.*)\}$/is', trim($typeDef), $m)) {
-                continue;
-            }
-
-            $structName = trim((string)$m[1]);
-            if ($this->normalizeToken($structName) !== $this->normalizeToken($wrapperParamName)) {
-                continue;
-            }
-
-            $body = (string)$m[2];
-            $detectedCred = null;
-            $detectedComp = null;
-
-            foreach (preg_split('/\n+/', $body) as $line) {
-                $line = trim($line, " \t\r\n;");
-                if ($line === '') {
-                    continue;
-                }
-
-                $parts = preg_split('/\s+/', $line);
-                if (!is_array($parts) || count($parts) < 2) {
-                    continue;
-                }
-                $fieldName = trim((string)$parts[count($parts) - 1], '$');
-                if ($fieldName === '') {
-                    continue;
-                }
-
-                if ($detectedCred === null && $this->matchesAnyName($fieldName, $credNames)) {
-                    $detectedCred = $fieldName;
-                    continue;
-                }
-                if ($detectedComp === null && $this->matchesAnyName($fieldName, $compNames)) {
-                    $detectedComp = $fieldName;
-                }
-            }
-
-            return [
-                'credenciales' => $detectedCred ?? 'Credenciales',
-                'comprobante' => $detectedComp ?? 'Comprobante40R',
-            ];
-        }
+        $signatureParamNames = array_values(array_filter((array)($wsdlMeta['param_names'] ?? []), static fn($n) => is_string($n) && $n !== ''));
+        $firstParamName = $signatureParamNames[0] ?? 'credenciales';
+        $secondParamName = $signatureParamNames[1] ?? 'comprobante';
 
         return [
-            'credenciales' => 'Credenciales',
-            'comprobante' => 'Comprobante40R',
+            [
+                'mode' => 'multiparam_named_signature',
+                'function_name' => 'GenerarCFDI40',
+                'wrapper_name' => null,
+                'wrapper_child_names' => [],
+                'arguments' => [
+                    new SoapParam($credenciales, $firstParamName),
+                    new SoapParam($comprobante, $secondParamName),
+                ],
+            ],
+            [
+                'mode' => 'multiparam_named_contract',
+                'function_name' => 'GenerarCFDI40',
+                'wrapper_name' => null,
+                'wrapper_child_names' => [],
+                'arguments' => [
+                    new SoapParam($credenciales, 'credenciales'),
+                    new SoapParam($comprobante, 'comprobante'),
+                ],
+            ],
+            [
+                'mode' => 'multiparam_positional',
+                'function_name' => 'GenerarCFDI40',
+                'wrapper_name' => null,
+                'wrapper_child_names' => [],
+                'arguments' => [$credenciales, $comprobante],
+            ],
         ];
     }
 
-    private function matchesAnyName(string $candidate, array $expectedNames): bool
+    private function extractArgumentNames(array $arguments): array
     {
-        $normalized = $this->normalizeToken($candidate);
-        foreach ($expectedNames as $expected) {
-            if ($normalized === $this->normalizeToken($expected)) {
+        $names = [];
+        foreach ($arguments as $index => $argument) {
+            if ($argument instanceof SoapParam) {
+                $names[] = (string)($argument->param_name ?? '');
+                continue;
+            }
+            $names[] = (string)$index;
+        }
+        return $names;
+    }
+
+    private function containsSoapParam(array $arguments): bool
+    {
+        foreach ($arguments as $argument) {
+            if ($argument instanceof SoapParam) {
                 return true;
             }
         }
         return false;
-    }
-
-    private function normalizeToken(string $value): string
-    {
-        $value = strtolower(trim($value));
-        return preg_replace('/[^a-z0-9]/', '', $value) ?? '';
     }
 
     private function describeArgumentShape(array $arguments): array
