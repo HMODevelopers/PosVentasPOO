@@ -126,6 +126,26 @@ class FacturacionService
             error_log('[CFDI40][GenerarCFDI40] last_response=' . ($soapResult['last_response'] ?? ''));
             $mapped = $this->responseMapper->map($soapResult['response'], $soapResult);
             error_log('[CFDI40][GenerarCFDI40] response_node_path=' . ($mapped['response_node_path'] ?? 'unknown'));
+            $responsePayloadJson = $mapped['raw_response_json'] ?? json_encode($soapResult['response'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            $this->guardarDebugSoap([
+                'id_venta' => $idVenta,
+                'id_cfdi' => $cfdi['id_cfdi'] ?? null,
+                'metodo_servicio' => 'GenerarCFDI40',
+                'request_payload' => $payloadJson,
+                'response_payload' => $responsePayloadJson,
+                'last_request' => $soapResult['last_request'] ?? null,
+                'last_response' => $soapResult['last_response'] ?? null,
+                'soap_fault_full' => null,
+                'faultcode' => null,
+                'faultstring' => null,
+                'response_object' => print_r($soapResult['response'], true),
+                'response_json' => json_encode($soapResult['response'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'response_node_path' => $mapped['response_node_path'] ?? null,
+                'operacion_exitosa' => $mapped['operacion_exitosa'] ? 1 : 0,
+                'error_general' => $mapped['operacion_exitosa'] ? null : ($mapped['mensaje_respuesta'] ?? null),
+                'error_detallado' => $mapped['operacion_exitosa'] ? null : ($mapped['mensaje_detallado'] ?? null),
+            ]);
 
             $estatus = $mapped['operacion_exitosa'] ? 'TIMBRADO' : 'ERROR';
             $this->model->updateCfdiRecord((int)$cfdi['id_cfdi'], [
@@ -174,6 +194,26 @@ class FacturacionService
             error_log('[CFDI40][GenerarCFDI40] soap_fault=' . json_encode($soapFaultDebug, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             error_log('[CFDI40][GenerarCFDI40] last_request=' . ($lastRequest ?? ''));
             error_log('[CFDI40][GenerarCFDI40] last_response=' . ($lastResponse ?? ''));
+
+            $this->guardarDebugSoap([
+                'id_venta' => $idVenta,
+                'id_cfdi' => $cfdi['id_cfdi'] ?? null,
+                'metodo_servicio' => 'GenerarCFDI40',
+                'request_payload' => $payloadJson,
+                'response_payload' => null,
+                'last_request' => $lastRequest,
+                'last_response' => $lastResponse,
+                'soap_fault_full' => print_r($e, true),
+                'faultcode' => $e->faultcode ?? null,
+                'faultstring' => $e->faultstring ?? null,
+                'response_object' => null,
+                'response_json' => null,
+                'response_node_path' => null,
+                'operacion_exitosa' => 0,
+                'error_general' => 'SOAP Fault al consumir GenerarCFDI40.',
+                'error_detallado' => $e->getMessage(),
+            ]);
+
             return $this->handleException($cfdi, $idVenta, $payloadJson, $e, 'SOAP', 'SOAP_ERROR');
         } catch (Throwable $e) {
             return $this->handleException($cfdi, $idVenta, $payloadJson, $e, 'SISTEMA', 'ERROR_DESCONOCIDO');
@@ -230,5 +270,68 @@ class FacturacionService
             return 'VALIDACION_EMISOR';
         }
         return 'VALIDACION_VENTA';
+    }
+
+    private function guardarDebugSoap(array $debug): void
+    {
+        $sql = 'INSERT INTO ventas_cfdi_debug_soap (
+            id_venta,
+            id_cfdi,
+            metodo_servicio,
+            request_payload,
+            response_payload,
+            last_request,
+            last_response,
+            soap_fault_full,
+            faultcode,
+            faultstring,
+            response_object,
+            response_json,
+            response_node_path,
+            operacion_exitosa,
+            error_general,
+            error_detallado
+        ) VALUES (
+            :id_venta,
+            :id_cfdi,
+            :metodo_servicio,
+            :request_payload,
+            :response_payload,
+            :last_request,
+            :last_response,
+            :soap_fault_full,
+            :faultcode,
+            :faultstring,
+            :response_object,
+            :response_json,
+            :response_node_path,
+            :operacion_exitosa,
+            :error_general,
+            :error_detallado
+        )';
+
+        try {
+            $st = $this->conn->prepare($sql);
+            $st->execute([
+                ':id_venta' => $debug['id_venta'] ?? null,
+                ':id_cfdi' => $debug['id_cfdi'] ?? null,
+                ':metodo_servicio' => $debug['metodo_servicio'] ?? null,
+                ':request_payload' => $debug['request_payload'] ?? null,
+                ':response_payload' => $debug['response_payload'] ?? null,
+                ':last_request' => $debug['last_request'] ?? null,
+                ':last_response' => $debug['last_response'] ?? null,
+                ':soap_fault_full' => $debug['soap_fault_full'] ?? null,
+                ':faultcode' => $debug['faultcode'] ?? null,
+                ':faultstring' => $debug['faultstring'] ?? null,
+                ':response_object' => $debug['response_object'] ?? null,
+                ':response_json' => $debug['response_json'] ?? null,
+                ':response_node_path' => $debug['response_node_path'] ?? null,
+                ':operacion_exitosa' => $debug['operacion_exitosa'] ?? null,
+                ':error_general' => $debug['error_general'] ?? null,
+                ':error_detallado' => $debug['error_detallado'] ?? null,
+            ]);
+        } catch (Throwable $e) {
+            error_log('[CFDI40][GenerarCFDI40] no se pudo guardar debug SOAP: ' . $e->getMessage());
+        }
     }
 }
