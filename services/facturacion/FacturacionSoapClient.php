@@ -21,8 +21,13 @@ class FacturacionSoapClient
     {
         $client = $this->client();
         error_log('[CFDI40][GenerarCFDI40] payload_pre_soapcall=' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $signature = $this->describeMethodSignature($client, 'GenerarCFDI40');
+        $callContext = $this->buildGenerarCfdi40CallContext($payload, $signature);
+        error_log('[CFDI40][GenerarCFDI40] wsdl_signature=' . ($signature['signature'] ?? 'not_available'));
+        error_log('[CFDI40][GenerarCFDI40] wsdl_param=' . ($callContext['param_name'] ?? 'none'));
+
         try {
-            $response = $client->__soapCall('GenerarCFDI40', [$payload]);
+            $response = $client->__soapCall('GenerarCFDI40', $callContext['arguments']);
             $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
             $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
             error_log('[CFDI40][GenerarCFDI40] response_object=' . print_r($response, true));
@@ -91,6 +96,84 @@ class FacturacionSoapClient
         }
 
         return $config;
+    }
+
+
+    private function describeMethodSignature(SoapClient $client, string $method): array
+    {
+        $result = [
+            'signature' => null,
+            'param_name' => null,
+        ];
+
+        if (!method_exists($client, '__getFunctions')) {
+            return $result;
+        }
+
+        try {
+            $functions = $client->__getFunctions();
+        } catch (Throwable $e) {
+            return $result;
+        }
+
+        if (!is_array($functions)) {
+            return $result;
+        }
+
+        foreach ($functions as $signature) {
+            if (!is_string($signature) || stripos($signature, $method . '(') === false) {
+                continue;
+            }
+
+            $result['signature'] = $signature;
+            if (preg_match('/\((.*)\)/', $signature, $matches)) {
+                $params = trim($matches[1]);
+                if ($params !== '' && stripos($params, 'void') !== 0) {
+                    if (preg_match('/(?:^|,\s*)(?:[\w\\]+\s+)?(\w+)\s*$/', $params, $paramMatch)) {
+                        $result['param_name'] = $paramMatch[1];
+                    }
+                }
+            }
+
+            return $result;
+        }
+
+        return $result;
+    }
+
+    private function buildGenerarCfdi40CallContext(array $payload, array $signature): array
+    {
+        $paramName = $signature['param_name'] ?? null;
+
+        if ($paramName === null || $paramName === '') {
+            $paramName = 'request';
+        }
+
+        $argument = new SoapParam($this->arrayToObject($payload), $paramName);
+
+        return [
+            'param_name' => $paramName,
+            'arguments' => [[$paramName => $argument]],
+        ];
+    }
+
+    private function arrayToObject($value)
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $isAssoc = array_keys($value) !== range(0, count($value) - 1);
+        if (!$isAssoc) {
+            return array_map([$this, 'arrayToObject'], $value);
+        }
+
+        $obj = new stdClass();
+        foreach ($value as $key => $item) {
+            $obj->{$key} = $this->arrayToObject($item);
+        }
+
+        return $obj;
     }
 
     private function validateSerializedRequest(?string $xml): void
