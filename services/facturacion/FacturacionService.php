@@ -125,10 +125,12 @@ class FacturacionService
             error_log('[CFDI40][GenerarCFDI40] soap_call_mode=' . ($soapResult['soap_call_mode'] ?? 'unknown'));
             error_log('[CFDI40][GenerarCFDI40] wsdl_signature_generar_cfdi40=' . ($soapResult['wsdl_signature_generar_cfdi40'] ?? ''));
             error_log('[CFDI40][GenerarCFDI40] wsdl_param_names_generar_cfdi40=' . json_encode($soapResult['wsdl_param_names_generar_cfdi40'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            error_log('[CFDI40][GenerarCFDI40] wsdl_functions=' . json_encode($soapResult['wsdl_functions'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            error_log('[CFDI40][GenerarCFDI40] wsdl_types=' . json_encode($soapResult['wsdl_types'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             error_log('[CFDI40][GenerarCFDI40] last_request_headers=' . ($soapResult['last_request_headers'] ?? ''));
-            error_log('[CFDI40][GenerarCFDI40] last_request=' . ($soapResult['last_request'] ?? ''));
+            error_log('[CFDI40][GenerarCFDI40] last_request_xml=' . ($soapResult['last_request_xml'] ?? $soapResult['last_request'] ?? ''));
             error_log('[CFDI40][GenerarCFDI40] last_response_headers=' . ($soapResult['last_response_headers'] ?? ''));
-            error_log('[CFDI40][GenerarCFDI40] last_response=' . ($soapResult['last_response'] ?? ''));
+            error_log('[CFDI40][GenerarCFDI40] last_response_xml=' . ($soapResult['last_response_xml'] ?? $soapResult['last_response'] ?? ''));
             $mapped = $this->responseMapper->map($soapResult['response'], $soapResult);
             error_log('[CFDI40][GenerarCFDI40] response_node_path=' . ($mapped['response_node_path'] ?? 'unknown'));
             $responsePayloadJson = $mapped['raw_response_json'] ?? json_encode($soapResult['response'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

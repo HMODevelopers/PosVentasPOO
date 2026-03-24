@@ -62,11 +62,15 @@ class FacturacionSoapClient
             'response' => $response,
             'last_request' => $this->lastRequest,
             'last_response' => $this->lastResponse,
+            'last_request_xml' => $this->lastRequest,
+            'last_response_xml' => $this->lastResponse,
             'last_request_headers' => $this->lastRequestHeaders,
             'last_response_headers' => $this->lastResponseHeaders,
             'soap_call_mode' => $usedPlan['mode'] ?? null,
             'wsdl_signature_generar_cfdi40' => $wsdlMeta['signature'] ?? null,
             'wsdl_param_names_generar_cfdi40' => $wsdlMeta['param_names'] ?? [],
+            'wsdl_functions' => $wsdlMeta['functions'] ?? [],
+            'wsdl_types' => $wsdlMeta['types'] ?? [],
         ];
     }
 
@@ -203,34 +207,26 @@ class FacturacionSoapClient
 
     private function normalizePayloadForGenerarCfdi40(array $payload, array $wsdlMeta): array
     {
-        $credenciales = $payload['Credenciales'] ?? $payload['credenciales'] ?? [];
-        $comprobante = $payload['Comprobante40R'] ?? $payload['comprobante'] ?? [];
-        $comprobante = $this->unwrapNestedComprobanteWrapper($comprobante, $wsdlMeta);
+        $root = $this->toAssocArray($payload);
 
-        $nestedCandidates = [
-            'Emisor',
-            'Receptor',
-            'Conceptos',
-            'InformacionGlobal',
-            'CfdiRelacionados40R',
-        ];
+        $credenciales = $this->toAssocArray($root['Credenciales'] ?? $root['credenciales'] ?? []);
+        $comprobante = $this->toAssocArray($root['Comprobante40R'] ?? $root['comprobante'] ?? []);
+        $comprobante = $this->toAssocArray($this->unwrapNestedComprobanteWrapper($comprobante, $wsdlMeta));
 
-        foreach ($nestedCandidates as $node) {
-            if (array_key_exists($node, $payload) && !array_key_exists($node, $comprobante)) {
-                $comprobante[$node] = $payload[$node];
+        foreach (['Emisor', 'Receptor', 'Conceptos', 'InformacionGlobal', 'CfdiRelacionados40R'] as $node) {
+            if (array_key_exists($node, $root) && !array_key_exists($node, $comprobante)) {
+                $comprobante[$node] = $root[$node];
             }
         }
 
-        $normalized = [
+        if ($this->isTypeInWsdl($wsdlMeta['types'] ?? [], 'Comprobante40R')) {
+            $comprobante = $this->normalizeComprobanteNode($comprobante);
+        }
+
+        return [
             'Credenciales' => $this->normalizeComplexNode($credenciales),
             'Comprobante40R' => $this->normalizeComplexNode($comprobante),
         ];
-
-        if ($this->isTypeInWsdl($wsdlMeta['types'] ?? [], 'Comprobante40R')) {
-            $normalized['Comprobante40R'] = $this->normalizeComprobanteNode($normalized['Comprobante40R']);
-        }
-
-        return $normalized;
     }
 
     private function unwrapNestedComprobanteWrapper($comprobante, array $wsdlMeta)
@@ -241,7 +237,7 @@ class FacturacionSoapClient
 
         $paramTypes = $wsdlMeta['param_types'] ?? [];
         $secondParamType = strtoupper((string)($paramTypes[1] ?? ''));
-        $raw = is_object($comprobante) ? get_object_vars($comprobante) : $comprobante;
+        $raw = $this->toAssocArray($comprobante);
 
         if (!array_key_exists('Comprobante40R', $raw)) {
             return $comprobante;
@@ -262,75 +258,78 @@ class FacturacionSoapClient
         return $nested;
     }
 
-    private function normalizeComprobanteNode($comprobante)
+    private function normalizeComprobanteNode($comprobante): array
     {
-        if (!is_object($comprobante) && !is_array($comprobante)) {
-            return $comprobante;
-        }
+        $array = $this->toAssocArray($comprobante);
 
-        $array = is_object($comprobante) ? get_object_vars($comprobante) : $comprobante;
-
-        if (isset($array['Conceptos']) && is_array($array['Conceptos']) && isset($array['Conceptos']['Concepto40R'])) {
-            $conceptos = $array['Conceptos']['Concepto40R'];
-            if (is_array($conceptos) && $this->isAssoc($conceptos)) {
-                $array['Conceptos']['Concepto40R'] = [$conceptos];
-            }
-        }
-
-        if (isset($array['Conceptos']['Concepto40R']) && is_array($array['Conceptos']['Concepto40R'])) {
-            foreach ($array['Conceptos']['Concepto40R'] as $i => $concepto) {
-                if (!is_array($concepto) && !is_object($concepto)) {
-                    continue;
-                }
-
-                $c = is_object($concepto) ? get_object_vars($concepto) : $concepto;
-                foreach (['TrasladoConcepto40R', 'RetencionConcepto40R', 'RetencionLocal40R', 'TrasladoLocal40R'] as $taxNode) {
-                    if (!isset($c[$taxNode]) || !is_array($c[$taxNode])) {
-                        continue;
+        if (isset($array['Conceptos'])) {
+            $conceptosNode = $this->toAssocArray($array['Conceptos']);
+            if (isset($conceptosNode['Concepto40R'])) {
+                $conceptosNode['Concepto40R'] = $this->normalizeListNode($conceptosNode['Concepto40R']);
+                foreach ($conceptosNode['Concepto40R'] as $index => $concepto) {
+                    $conceptoArray = $this->toAssocArray($concepto);
+                    foreach (['TrasladoConcepto40R', 'RetencionConcepto40R', 'RetencionLocal40R', 'TrasladoLocal40R'] as $taxNode) {
+                        if (!array_key_exists($taxNode, $conceptoArray)) {
+                            continue;
+                        }
+                        $conceptoArray[$taxNode] = $this->normalizeListNode($conceptoArray[$taxNode]);
                     }
-                    if ($this->isAssoc($c[$taxNode])) {
-                        $c[$taxNode] = [$c[$taxNode]];
-                    }
+                    $conceptosNode['Concepto40R'][$index] = $conceptoArray;
                 }
-                $array['Conceptos']['Concepto40R'][$i] = $c;
             }
+            $array['Conceptos'] = $conceptosNode;
         }
 
-        return $this->normalizeComplexNode($array);
+        if (isset($array['CfdiRelacionados40R'])) {
+            $relNode = $this->toAssocArray($array['CfdiRelacionados40R']);
+            if (isset($relNode['CfdiRelacionado40R'])) {
+                $relNode['CfdiRelacionado40R'] = $this->normalizeListNode($relNode['CfdiRelacionado40R']);
+            }
+            $array['CfdiRelacionados40R'] = $relNode;
+        }
+
+        return $array;
     }
 
     private function buildCallPlans(array $payload, array $wsdlMeta): array
     {
         $paramNames = $wsdlMeta['param_names'] ?? [];
-        $credName = $paramNames[0] ?? 'credenciales';
-        $compName = $paramNames[1] ?? 'comprobante';
-
-        $credenciales = $payload['Credenciales'] ?? [];
-        $comprobante = $payload['Comprobante40R'] ?? [];
+        $credenciales = $payload['Credenciales'] ?? new stdClass();
+        $comprobante = $payload['Comprobante40R'] ?? new stdClass();
 
         $plans = [];
 
-        $plans[] = [
-            'mode' => 'multiparam',
-            'arguments' => [[
-                new SoapParam($credenciales, $credName),
-                new SoapParam($comprobante, $compName),
-            ]],
-        ];
-
-        if (!empty($paramNames)) {
-            $wrappedPayload = new stdClass();
-            $wrappedPayload->{$credName} = $credenciales;
-            $wrappedPayload->{$compName} = $comprobante;
+        if (count($paramNames) >= 2) {
             $plans[] = [
-                'mode' => 'wrapped_document_literal',
-                'arguments' => [[$wrappedPayload]],
+                'mode' => 'multiparam_named_soapparam',
+                'arguments' => [
+                    new SoapParam($credenciales, $paramNames[0]),
+                    new SoapParam($comprobante, $paramNames[1]),
+                ],
             ];
+            $plans[] = [
+                'mode' => 'multiparam_positional',
+                'arguments' => [$credenciales, $comprobante],
+            ];
+            return $plans;
         }
+
+        $wrapperParamName = $paramNames[0] ?? 'request';
+        $wrapper = new stdClass();
+        $wrapper->Credenciales = $credenciales;
+        $wrapper->Comprobante40R = $comprobante;
+
+        $plans[] = [
+            'mode' => 'document_literal_single_wrapper',
+            'arguments' => [new SoapParam($wrapper, $wrapperParamName)],
+        ];
+        $plans[] = [
+            'mode' => 'document_literal_single_wrapper_positional',
+            'arguments' => [$wrapper],
+        ];
 
         return $plans;
     }
-
 
     private function captureLastSoapExchange(SoapClient $client): void
     {
@@ -371,7 +370,7 @@ class FacturacionSoapClient
                 $soapBodyHasPayload = true;
                 $bodyContainsCredenciales = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]//*[local-name()="Credenciales" or local-name()="credenciales"]')->length > 0;
                 $bodyContainsComprobante = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]//*[local-name()="Comprobante40R" or local-name()="comprobante"]')->length > 0;
-                $bodyContainsNestedComprobanteWrapper = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]//*[local-name()="comprobante"]/*[local-name()="Comprobante40R"]')->length > 0;
+                $bodyContainsNestedComprobanteWrapper = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]//*[local-name()="Comprobante40R"]/*[local-name()="Comprobante40R"]')->length > 0;
 
                 $methodNode = $payloadNodes->item(0);
                 if ($methodNode instanceof DOMNode && !$methodNode->hasChildNodes()) {
@@ -382,7 +381,7 @@ class FacturacionSoapClient
             $soapBodyHasPayload = strpos($xml, '<GenerarCFDI40/>') === false;
             $bodyContainsCredenciales = stripos($xml, 'Credenciales') !== false;
             $bodyContainsComprobante = stripos($xml, 'Comprobante40R') !== false;
-            $bodyContainsNestedComprobanteWrapper = stripos($xml, '<comprobante><Comprobante40R>') !== false;
+            $bodyContainsNestedComprobanteWrapper = stripos($xml, '<Comprobante40R><Comprobante40R>') !== false;
         }
 
         error_log('[CFDI40][GenerarCFDI40] soap_body_has_payload=' . ($soapBodyHasPayload ? 'true' : 'false'));
@@ -421,6 +420,43 @@ class FacturacionSoapClient
                 $obj->{$k} = $this->normalizeComplexNode($v);
             }
             return $obj;
+        }
+
+        return $value;
+    }
+
+    private function normalizeListNode($value): array
+    {
+        if (is_object($value)) {
+            $value = get_object_vars($value);
+        }
+
+        if (!is_array($value)) {
+            return [];
+        }
+
+        if ($this->isAssoc($value)) {
+            return [$this->toAssocArray($value)];
+        }
+
+        $list = [];
+        foreach ($value as $item) {
+            if (!is_array($item) && !is_object($item)) {
+                continue;
+            }
+            $list[] = $this->toAssocArray($item);
+        }
+
+        return $list;
+    }
+
+    private function toAssocArray($value): array
+    {
+        if (is_object($value)) {
+            return get_object_vars($value);
+        }
+        if (!is_array($value)) {
+            return [];
         }
 
         return $value;
