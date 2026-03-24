@@ -25,10 +25,13 @@ class FacturacionSoapClient
             $response = $client->__soapCall('GenerarCFDI40', [$payload]);
             $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
             $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
+            error_log('[CFDI40][GenerarCFDI40] response_object=' . print_r($response, true));
+            error_log('[CFDI40][GenerarCFDI40] response_json=' . json_encode($this->normalizeForDebug($response), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $this->validateSerializedRequest($this->lastRequest);
         } catch (SoapFault $fault) {
             $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
             $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
+            error_log('[CFDI40][GenerarCFDI40] soap_fault_object=' . print_r($fault, true));
             $this->validateSerializedRequest($this->lastRequest);
             throw $fault;
         }
@@ -149,6 +152,23 @@ class FacturacionSoapClient
         }
 
         return (bool)preg_match('/<([a-zA-Z0-9_]+:)?' . preg_quote($node, '/') . '(\\s|>|\\/)/u', $xml);
+    }
+
+    private function normalizeForDebug($value)
+    {
+        if (is_object($value)) {
+            return $this->normalizeForDebug(get_object_vars($value));
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $normalized = [];
+        foreach ($value as $key => $item) {
+            $normalized[$key] = $this->normalizeForDebug($item);
+        }
+
+        return $normalized;
     }
 
     private function env(string $key, $default = null)

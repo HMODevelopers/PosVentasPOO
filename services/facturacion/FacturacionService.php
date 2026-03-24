@@ -125,6 +125,7 @@ class FacturacionService
             error_log('[CFDI40][GenerarCFDI40] last_request=' . ($soapResult['last_request'] ?? ''));
             error_log('[CFDI40][GenerarCFDI40] last_response=' . ($soapResult['last_response'] ?? ''));
             $mapped = $this->responseMapper->map($soapResult['response'], $soapResult);
+            error_log('[CFDI40][GenerarCFDI40] response_node_path=' . ($mapped['response_node_path'] ?? 'unknown'));
 
             $estatus = $mapped['operacion_exitosa'] ? 'TIMBRADO' : 'ERROR';
             $this->model->updateCfdiRecord((int)$cfdi['id_cfdi'], [
@@ -169,6 +170,7 @@ class FacturacionService
                 'detail' => $e->detail ?? null,
                 'message' => $e->getMessage(),
             ];
+            error_log('[CFDI40][GenerarCFDI40] soap_fault_full=' . print_r($e, true));
             error_log('[CFDI40][GenerarCFDI40] soap_fault=' . json_encode($soapFaultDebug, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             error_log('[CFDI40][GenerarCFDI40] last_request=' . ($lastRequest ?? ''));
             error_log('[CFDI40][GenerarCFDI40] last_response=' . ($lastResponse ?? ''));

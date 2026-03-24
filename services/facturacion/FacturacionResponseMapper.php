@@ -5,25 +5,36 @@ class FacturacionResponseMapper
     public function map($response, array $soapMeta = []): array
     {
         $array = $this->toArray($response);
+        $resultNode = $this->extractResultNode($array);
 
-        $operacionExitosa = $this->find($array, ['OperacionExitosa', 'operacionExitosa'], false);
-        $codigoRespuesta = $this->find($array, ['CodigoRespuesta', 'codigoRespuesta', 'Codigo', 'codigo']);
+        $operacionExitosa = $this->find($resultNode, ['OperacionExitosa', 'operacionExitosa'], false);
+        $codigoRespuesta = $this->find($resultNode, ['CodigoConfirmacion', 'codigoConfirmacion', 'CodigoRespuesta', 'codigoRespuesta', 'Codigo', 'codigo']);
         $mensaje = $this->firstNonEmpty([
-            $this->find($array, ['MensajeError', 'mensajeError']),
-            $this->find($array, ['MensajeResultado', 'mensajeResultado']),
-            $this->find($array, ['Mensaje', 'mensaje']),
+            $this->find($resultNode, ['ErrorGeneral', 'errorGeneral']),
+            $this->find($resultNode, ['MensajeError', 'mensajeError']),
+            $this->find($resultNode, ['MensajeResultado', 'mensajeResultado']),
+            $this->find($resultNode, ['Mensaje', 'mensaje']),
         ]);
         $mensajeDetallado = $this->firstNonEmpty([
-            $this->find($array, ['MensajeErrorDetallado', 'mensajeErrorDetallado']),
-            $this->find($array, ['Detalle', 'detalle']),
+            $this->find($resultNode, ['ErrorDetallado', 'errorDetallado']),
+            $this->find($resultNode, ['MensajeErrorDetallado', 'mensajeErrorDetallado']),
+            $this->find($resultNode, ['Detalle', 'detalle']),
         ]);
 
-        $timbre = $this->findNode($array, ['Timbre', 'timbre']) ?: [];
-        $uuid = $this->find($timbre, ['UUID', 'Uuid', 'uuid']) ?: $this->find($array, ['UUID', 'Uuid', 'uuid']);
-        $fechaTimbrado = $this->find($timbre, ['FechaTimbrado', 'fechaTimbrado']) ?: $this->find($array, ['FechaTimbrado']);
-        $xml = $this->find($array, ['XMLResultado', 'xmlResultado', 'XML', 'xml']);
-        $pdf = $this->find($array, ['PDFResultado', 'pdfResultado', 'PDF', 'pdf']);
-        $referencia = $this->find($array, ['Referencia', 'referencia']);
+        $timbre = $this->findNode($resultNode, ['Timbre', 'timbre']) ?: [];
+        $uuid = $this->find($timbre, ['UUID', 'Uuid', 'uuid']) ?: $this->find($resultNode, ['UUID', 'Uuid', 'uuid']);
+        $fechaTimbrado = $this->firstNonEmpty([
+            $this->find($timbre, ['FechaTimbrado', 'fechaTimbrado']),
+            $this->find($resultNode, ['FechaGenerada', 'fechaGenerada']),
+            $this->find($resultNode, ['FechaTimbrado']),
+        ]);
+        $xml = $this->find($resultNode, ['XMLResultado', 'xmlResultado', 'XML', 'xml']);
+        $pdf = $this->find($resultNode, ['PDFResultado', 'pdfResultado', 'PDF', 'pdf']);
+        $referencia = $this->firstNonEmpty([
+            $this->find($resultNode, ['FolioGenerado', 'folioGenerado']),
+            $this->find($resultNode, ['Referencia', 'referencia']),
+        ]);
+        $cbb = $this->find($resultNode, ['CBB', 'cbb']);
 
         return [
             'operacion_exitosa' => filter_var($operacionExitosa, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool)$operacionExitosa,
@@ -35,11 +46,51 @@ class FacturacionResponseMapper
             'xml_timbrado' => is_string($xml) ? $xml : null,
             'pdf_base64' => is_string($pdf) ? $pdf : null,
             'referencia' => $referencia !== null ? (string)$referencia : null,
+            'cbb' => is_string($cbb) ? $cbb : null,
             'raw_response_array' => $array,
             'raw_response_json' => json_encode($array, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'soap_last_request' => $soapMeta['last_request'] ?? null,
             'soap_last_response' => $soapMeta['last_response'] ?? null,
+            'response_node_path' => $this->detectResultNodePath($array),
         ];
+    }
+
+    private function extractResultNode($array)
+    {
+        if (!is_array($array)) {
+            return $array;
+        }
+
+        foreach (['GenerarCFDI40Result', 'generarCFDI40Result', 'GenerarCFDI40Response', 'generarCFDI40Response'] as $wrapper) {
+            if (isset($array[$wrapper])) {
+                $value = $array[$wrapper];
+                if (is_array($value) && isset($value['GenerarCFDI40Result'])) {
+                    return $value['GenerarCFDI40Result'];
+                }
+                return $value;
+            }
+        }
+
+        return $array;
+    }
+
+    private function detectResultNodePath($array): ?string
+    {
+        if (!is_array($array)) {
+            return null;
+        }
+
+        if (isset($array['GenerarCFDI40Result'])) {
+            return 'GenerarCFDI40Result';
+        }
+        if (isset($array['GenerarCFDI40Response']) && is_array($array['GenerarCFDI40Response']) && isset($array['GenerarCFDI40Response']['GenerarCFDI40Result'])) {
+            return 'GenerarCFDI40Response.GenerarCFDI40Result';
+        }
+        if (isset($array['GenerarCFDI40Response'])) {
+            return 'GenerarCFDI40Response';
+        }
+
+        return 'root';
     }
 
     private function toArray($value)
