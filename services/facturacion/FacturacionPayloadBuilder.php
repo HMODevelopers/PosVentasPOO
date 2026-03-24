@@ -7,8 +7,10 @@ class FacturacionPayloadBuilder
         $venta = $ctx['venta'];
         $emisor = $ctx['emisor'];
         $receptor = $ctx['receptor'];
-        $conceptos = $ctx['conceptos'];
+        $conceptos = $this->normalizeConceptos($ctx['conceptos'] ?? []);
         $formaPago = $ctx['forma_pago'] ?? [];
+        $informacionGlobal = $this->normalizeInformacionGlobal($ctx['informacion_global'] ?? []);
+        $cfdiRelacionados = $this->normalizeCfdiRelacionados($ctx['cfdi_relacionados'] ?? []);
 
         $subTotal = $this->n($ctx['totales']['subtotal'] ?? 0);
         $descuento = $this->nullableAmount($ctx['totales']['descuento'] ?? 0);
@@ -22,7 +24,7 @@ class FacturacionPayloadBuilder
             $tipoCambio = null;
         }
 
-        return [
+        $payload = [
             'Credenciales' => [
                 'Usuario' => $soapConfig['usuario'],
                 'Cuenta' => $soapConfig['cuenta'],
@@ -61,6 +63,15 @@ class FacturacionPayloadBuilder
                 'Descuento' => $descuento,
             ], fn($v) => $v !== null && $v !== ''),
         ];
+
+        if (!empty($informacionGlobal)) {
+            $payload['InformacionGlobal'] = $informacionGlobal;
+        }
+        if (!empty($cfdiRelacionados)) {
+            $payload['CfdiRelacionados40R'] = $cfdiRelacionados;
+        }
+
+        return $payload;
     }
 
     private function n($value): string
@@ -71,5 +82,69 @@ class FacturacionPayloadBuilder
     private function nullableAmount($value): ?string
     {
         return ((float)$value > 0) ? $this->n($value) : null;
+    }
+
+    private function normalizeConceptos(array $conceptos): array
+    {
+        $normalized = [];
+        foreach ($conceptos as $concepto) {
+            if (!is_array($concepto)) {
+                continue;
+            }
+
+            if (isset($concepto['Traslados']) && !isset($concepto['TrasladoConcepto40R'])) {
+                $concepto['TrasladoConcepto40R'] = $concepto['Traslados'];
+            }
+            if (isset($concepto['Retenciones']) && !isset($concepto['RetencionConcepto40R'])) {
+                $concepto['RetencionConcepto40R'] = $concepto['Retenciones'];
+            }
+            unset($concepto['Traslados'], $concepto['Retenciones']);
+
+            $normalized[] = $concepto;
+        }
+        return $normalized;
+    }
+
+    private function normalizeInformacionGlobal(array $info): array
+    {
+        $aplica = !empty($info['aplica']);
+        if (!$aplica) {
+            return [];
+        }
+
+        return array_filter([
+            'Año' => $info['Año'] ?? $info['Anio'] ?? $info['anio'] ?? null,
+            'Meses' => $info['Meses'] ?? $info['meses'] ?? null,
+            'Periodicidad' => $info['Periodicidad'] ?? $info['periodicidad'] ?? null,
+        ], fn($v) => $v !== null && $v !== '');
+    }
+
+    private function normalizeCfdiRelacionados(array $rel): array
+    {
+        if (!$rel) {
+            return [];
+        }
+
+        $tipoRelacion = $rel['TipoRelacion'] ?? $rel['tipo_relacion'] ?? null;
+        $relacionados = $rel['CfdiRelacionado40R'] ?? $rel['cfdi_relacionados'] ?? [];
+        $cfdis = [];
+        foreach ((array)$relacionados as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $cfdis[] = array_filter([
+                'UUID' => $item['UUID'] ?? $item['uuid'] ?? null,
+            ], fn($v) => $v !== null && $v !== '');
+        }
+
+        return array_filter([
+            'TipoRelacion' => $tipoRelacion,
+            'CfdiRelacionado40R' => $cfdis,
+        ], function ($v) {
+            if (is_array($v)) {
+                return !empty($v);
+            }
+            return $v !== null && $v !== '';
+        });
     }
 }

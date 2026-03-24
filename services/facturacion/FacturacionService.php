@@ -4,6 +4,7 @@ require_once __DIR__ . '/FacturacionSchemaHelper.php';
 require_once __DIR__ . '/FacturacionLogger.php';
 require_once __DIR__ . '/FacturacionSoapClient.php';
 require_once __DIR__ . '/FacturacionPayloadBuilder.php';
+require_once __DIR__ . '/FacturacionPayloadAudit.php';
 require_once __DIR__ . '/FacturacionResponseMapper.php';
 require_once __DIR__ . '/FacturacionValidator.php';
 require_once __DIR__ . '/../../models/FacturacionModel.php';
@@ -16,6 +17,7 @@ class FacturacionService
     private FacturacionLogger $logger;
     private FacturacionValidator $validator;
     private FacturacionPayloadBuilder $payloadBuilder;
+    private FacturacionPayloadAudit $payloadAudit;
     private ?FacturacionSoapClient $soapClient = null;
     private FacturacionResponseMapper $responseMapper;
 
@@ -27,6 +29,7 @@ class FacturacionService
         $this->logger = new FacturacionLogger($conn, $this->schema);
         $this->validator = new FacturacionValidator();
         $this->payloadBuilder = new FacturacionPayloadBuilder();
+        $this->payloadAudit = new FacturacionPayloadAudit();
         $this->responseMapper = new FacturacionResponseMapper();
     }
 
@@ -76,7 +79,9 @@ class FacturacionService
 
         try {
             $payload = $this->payloadBuilder->build($ctx, $this->soapClient()->getConfig());
+            $auditReport = $this->payloadAudit->validate($payload);
             $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $auditJson = json_encode($auditReport, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
             $this->model->updateCfdiRecord((int)$cfdi['id_cfdi'], [
                 'estatus' => 'BORRADOR',
@@ -93,6 +98,28 @@ class FacturacionService
                 'mensaje_general' => 'Solicitud enviada a Folios Digitales.',
                 'request_payload' => $payloadJson,
             ]);
+
+            $this->logger->log([
+                'id_cfdi' => $cfdi['id_cfdi'] ?? null,
+                'id_venta' => $idVenta,
+                'tipo_evento' => $auditReport['has_errors'] ? 'ERROR' : 'DEBUG',
+                'operacion_exitosa' => $auditReport['has_errors'] ? 0 : 1,
+                'codigo_interno' => $auditReport['has_errors'] ? 'REQUEST_AUDIT_FAIL' : 'REQUEST_AUDIT_OK',
+                'metodo_servicio' => 'GenerarCFDI40',
+                'mensaje_general' => 'Auditoría temporal de payload previa al __soapCall.',
+                'mensaje_detallado' => $auditReport['has_errors']
+                    ? implode(' ', $auditReport['errors'])
+                    : 'Payload sin faltantes obligatorios, nulos o vacíos.',
+                'request_payload' => $payloadJson,
+                'response_payload' => $auditJson,
+            ]);
+
+            if ($auditReport['has_errors']) {
+                throw new RuntimeException('Payload inválido para GenerarCFDI40. ' . implode(' ', $auditReport['errors']));
+            }
+
+            error_log('[CFDI40][GenerarCFDI40] payload=' . $payloadJson);
+            error_log('[CFDI40][GenerarCFDI40] auditoria=' . $auditJson);
 
             $soapResult = $this->soapClient()->timbrar($payload);
             $mapped = $this->responseMapper->map($soapResult['response'], $soapResult);
