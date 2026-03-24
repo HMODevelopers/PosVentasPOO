@@ -65,7 +65,7 @@ class FacturacionService
 
         $referencia = $this->model->buildReferencia($ctx['venta']);
         $cfdi = $this->model->createOrGetCfdiRecord($idVenta, [
-            'estatus' => 'PENDIENTE',
+            'estatus' => 'BORRADOR',
             'referencia' => $referencia,
             'mensaje_respuesta' => 'Factura en proceso.',
         ]);
@@ -79,7 +79,7 @@ class FacturacionService
             $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
             $this->model->updateCfdiRecord((int)$cfdi['id_cfdi'], [
-                'estatus' => 'PENDIENTE',
+                'estatus' => 'BORRADOR',
                 'request_payload' => $payloadJson,
                 'referencia' => $ctx['referencia'],
             ]);

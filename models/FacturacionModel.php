@@ -78,7 +78,7 @@ class FacturacionModel
 
         $payload = $this->schema->filterData('ventas_cfdi', array_merge([
             'id_venta' => $idVenta,
-            'estatus' => 'PENDIENTE',
+            'estatus' => 'BORRADOR',
             'updated_at' => date('Y-m-d H:i:s'),
         ], $data));
 
