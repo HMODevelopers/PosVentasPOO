@@ -6,6 +6,9 @@ class FacturacionSoapClient
     private ?SoapClient $client = null;
     private ?string $lastRequest = null;
     private ?string $lastResponse = null;
+    private ?string $lastRequestHeaders = null;
+    private ?string $lastResponseHeaders = null;
+    private ?array $wsdlMetadata = null;
 
     public function __construct()
     {
@@ -20,31 +23,50 @@ class FacturacionSoapClient
     public function timbrar(array $payload): array
     {
         $client = $this->client();
-        error_log('[CFDI40][GenerarCFDI40] payload_pre_soapcall=' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        $signature = $this->describeMethodSignature($client, 'GenerarCFDI40');
-        $callContext = $this->buildGenerarCfdi40CallContext($payload, $signature);
-        error_log('[CFDI40][GenerarCFDI40] wsdl_signature=' . ($signature['signature'] ?? 'not_available'));
-        error_log('[CFDI40][GenerarCFDI40] wsdl_param=' . ($callContext['param_name'] ?? 'none'));
+        $wsdlMeta = $this->getWsdlMetadata($client);
 
-        try {
-            $response = $client->__soapCall('GenerarCFDI40', $callContext['arguments']);
-            $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
-            $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
-            error_log('[CFDI40][GenerarCFDI40] response_object=' . print_r($response, true));
-            error_log('[CFDI40][GenerarCFDI40] response_json=' . json_encode($this->normalizeForDebug($response), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-            $this->validateSerializedRequest($this->lastRequest);
-        } catch (SoapFault $fault) {
-            $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
-            $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
-            error_log('[CFDI40][GenerarCFDI40] soap_fault_object=' . print_r($fault, true));
-            $this->validateSerializedRequest($this->lastRequest);
-            throw $fault;
+        $payloadOriginal = $this->normalizeForDebug($payload);
+        $payloadNormalized = $this->normalizePayloadForGenerarCfdi40($payload, $wsdlMeta);
+
+        error_log('[CFDI40][GenerarCFDI40] payload_original=' . json_encode($payloadOriginal, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] payload_normalized=' . json_encode($this->normalizeForDebug($payloadNormalized), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        $callPlans = $this->buildCallPlans($payloadNormalized, $wsdlMeta);
+        $lastFault = null;
+        $response = null;
+        $usedPlan = null;
+
+        foreach ($callPlans as $plan) {
+            $usedPlan = $plan;
+            error_log('[CFDI40][GenerarCFDI40] soap_call_mode=' . ($plan['mode'] ?? 'unknown'));
+            try {
+                $response = $client->__soapCall('GenerarCFDI40', $plan['arguments']);
+                $this->captureLastSoapExchange($client);
+                $this->validateSerializedRequest($this->lastRequest);
+                error_log('[CFDI40][GenerarCFDI40] response_json=' . json_encode($this->normalizeForDebug($response), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                break;
+            } catch (SoapFault $fault) {
+                $lastFault = $fault;
+                $this->captureLastSoapExchange($client);
+                $this->validateSerializedRequest($this->lastRequest, false);
+                error_log('[CFDI40][GenerarCFDI40] soap_fault_attempt_mode=' . ($plan['mode'] ?? 'unknown'));
+                error_log('[CFDI40][GenerarCFDI40] soap_fault=' . print_r($fault, true));
+            }
+        }
+
+        if ($response === null && $lastFault instanceof SoapFault) {
+            throw $lastFault;
         }
 
         return [
             'response' => $response,
             'last_request' => $this->lastRequest,
             'last_response' => $this->lastResponse,
+            'last_request_headers' => $this->lastRequestHeaders,
+            'last_response_headers' => $this->lastResponseHeaders,
+            'soap_call_mode' => $usedPlan['mode'] ?? null,
+            'wsdl_signature_generar_cfdi40' => $wsdlMeta['signature'] ?? null,
+            'wsdl_param_names_generar_cfdi40' => $wsdlMeta['param_names'] ?? [],
         ];
     }
 
@@ -98,156 +120,299 @@ class FacturacionSoapClient
         return $config;
     }
 
-
-    private function describeMethodSignature(SoapClient $client, string $method): array
+    private function getWsdlMetadata(SoapClient $client): array
     {
-        $result = [
-            'signature' => null,
-            'param_name' => null,
-        ];
-
-        if (!method_exists($client, '__getFunctions')) {
-            return $result;
+        if ($this->wsdlMetadata !== null) {
+            return $this->wsdlMetadata;
         }
+
+        $functions = [];
+        $types = [];
 
         try {
             $functions = $client->__getFunctions();
         } catch (Throwable $e) {
-            return $result;
+            error_log('[CFDI40][GenerarCFDI40] wsdl_functions_error=' . $e->getMessage());
         }
 
-        if (!is_array($functions)) {
-            return $result;
+        try {
+            $types = $client->__getTypes();
+        } catch (Throwable $e) {
+            error_log('[CFDI40][GenerarCFDI40] wsdl_types_error=' . $e->getMessage());
         }
 
-        foreach ($functions as $signature) {
-            if (!is_string($signature) || stripos($signature, $method . '(') === false) {
+        $signature = null;
+        $paramNames = [];
+        $paramTypes = [];
+
+        foreach ((array)$functions as $fn) {
+            if (!is_string($fn) || stripos($fn, 'GenerarCFDI40(') === false) {
                 continue;
             }
 
-            $result['signature'] = $signature;
-
-            $openParen = strpos($signature, '(');
-            $closeParen = strrpos($signature, ')');
-            if ($openParen !== false && $closeParen !== false && $closeParen > $openParen) {
-                $params = trim(substr($signature, $openParen + 1, $closeParen - $openParen - 1));
-                if ($params !== '' && stripos($params, 'void') !== 0) {
-                    $parts = array_filter(array_map('trim', explode(',', $params)), static function ($part) {
-                        return $part !== '';
-                    });
-                    $lastPart = end($parts);
-                    if (is_string($lastPart) && $lastPart !== '') {
-                        $tokens = preg_split('/\s+/', $lastPart);
-                        if (is_array($tokens) && !empty($tokens)) {
-                            $candidate = ltrim((string) end($tokens), '$');
-                            if ($candidate !== '' && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $candidate)) {
-                                $result['param_name'] = $candidate;
-                            }
-                        }
-                    }
-                }
-            }
-
-            return $result;
+            $signature = $fn;
+            [$paramNames, $paramTypes] = $this->parseFunctionSignatureParams($fn);
+            break;
         }
 
-        return $result;
-    }
-
-    private function buildGenerarCfdi40CallContext(array $payload, array $signature): array
-    {
-        $paramName = $signature['param_name'] ?? null;
-
-        if ($paramName === null || $paramName === '') {
-            $paramName = 'request';
-        }
-
-        $argument = new SoapParam($this->arrayToObject($payload), $paramName);
-
-        return [
-            'param_name' => $paramName,
-            'arguments' => [[$paramName => $argument]],
+        $this->wsdlMetadata = [
+            'functions' => is_array($functions) ? $functions : [],
+            'types' => is_array($types) ? $types : [],
+            'signature' => $signature,
+            'param_names' => $paramNames,
+            'param_types' => $paramTypes,
         ];
+
+        error_log('[CFDI40][GenerarCFDI40] wsdl_functions=' . json_encode($this->wsdlMetadata['functions'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] wsdl_types=' . json_encode($this->wsdlMetadata['types'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] wsdl_signature_generar_cfdi40=' . ($signature ?? 'not_found'));
+        error_log('[CFDI40][GenerarCFDI40] wsdl_param_names_generar_cfdi40=' . json_encode($paramNames, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        return $this->wsdlMetadata;
     }
 
-    private function arrayToObject($value)
+    private function parseFunctionSignatureParams(string $signature): array
     {
-        if (!is_array($value)) {
-            return $value;
+        $paramNames = [];
+        $paramTypes = [];
+        if (!preg_match('/\((.*)\)/', $signature, $m)) {
+            return [$paramNames, $paramTypes];
         }
 
-        $isAssoc = array_keys($value) !== range(0, count($value) - 1);
-        if (!$isAssoc) {
-            return array_map([$this, 'arrayToObject'], $value);
+        $paramsRaw = trim((string)$m[1]);
+        if ($paramsRaw === '' || stripos($paramsRaw, 'void') === 0) {
+            return [$paramNames, $paramTypes];
         }
 
-        $obj = new stdClass();
-        foreach ($value as $key => $item) {
-            $obj->{$key} = $this->arrayToObject($item);
+        foreach (array_filter(array_map('trim', explode(',', $paramsRaw))) as $part) {
+            $tokens = preg_split('/\s+/', $part);
+            if (!is_array($tokens) || count($tokens) < 2) {
+                continue;
+            }
+            $type = trim((string)$tokens[count($tokens) - 2]);
+            $name = ltrim(trim((string)$tokens[count($tokens) - 1]), '$');
+            if ($name === '') {
+                continue;
+            }
+            $paramNames[] = $name;
+            $paramTypes[] = $type;
         }
 
-        return $obj;
+        return [$paramNames, $paramTypes];
     }
 
-    private function validateSerializedRequest(?string $xml): void
+    private function normalizePayloadForGenerarCfdi40(array $payload, array $wsdlMeta): array
     {
-        if ($xml === null || trim($xml) === '') {
-            error_log('[CFDI40][GenerarCFDI40] soap_request_validation=No hay XML en __getLastRequest().');
-            return;
-        }
+        $credenciales = $payload['Credenciales'] ?? $payload['credenciales'] ?? [];
+        $comprobante = $payload['Comprobante40R'] ?? $payload['comprobante'] ?? [];
 
-        $requiredNodes = [
-            'Credenciales',
-            'Usuario',
-            'Cuenta',
-            'Password',
+        $nestedCandidates = [
             'Emisor',
             'Receptor',
             'Conceptos',
-            'Concepto40R',
-            'Comprobante40R',
+            'InformacionGlobal',
+            'CfdiRelacionados40R',
         ];
-        $missing = [];
-        foreach ($requiredNodes as $node) {
-            if (!$this->containsXmlNode($xml, $node)) {
-                $missing[] = $node;
+
+        foreach ($nestedCandidates as $node) {
+            if (array_key_exists($node, $payload) && !array_key_exists($node, $comprobante)) {
+                $comprobante[$node] = $payload[$node];
             }
         }
 
-        $badCredentialCasing = [];
-        foreach (['usuario', 'cuenta', 'password', 'UsuarioRemoto', 'user', 'pass'] as $badNode) {
-            if ($this->containsXmlNode($xml, $badNode)) {
-                $badCredentialCasing[] = $badNode;
+        $normalized = [
+            'Credenciales' => $this->normalizeComplexNode($credenciales),
+            'Comprobante40R' => $this->normalizeComplexNode($comprobante),
+        ];
+
+        if ($this->isTypeInWsdl($wsdlMeta['types'] ?? [], 'Comprobante40R')) {
+            $normalized['Comprobante40R'] = $this->normalizeComprobanteNode($normalized['Comprobante40R']);
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeComprobanteNode($comprobante)
+    {
+        if (!is_object($comprobante) && !is_array($comprobante)) {
+            return $comprobante;
+        }
+
+        $array = is_object($comprobante) ? get_object_vars($comprobante) : $comprobante;
+
+        if (isset($array['Conceptos']) && is_array($array['Conceptos']) && isset($array['Conceptos']['Concepto40R'])) {
+            $conceptos = $array['Conceptos']['Concepto40R'];
+            if (is_array($conceptos) && $this->isAssoc($conceptos)) {
+                $array['Conceptos']['Concepto40R'] = [$conceptos];
             }
         }
 
-        if ($missing || $badCredentialCasing) {
-            $errors = [];
-            if ($missing) {
-                $errors[] = 'nodos faltantes en XML: ' . implode(', ', $missing);
+        if (isset($array['Conceptos']['Concepto40R']) && is_array($array['Conceptos']['Concepto40R'])) {
+            foreach ($array['Conceptos']['Concepto40R'] as $i => $concepto) {
+                if (!is_array($concepto) && !is_object($concepto)) {
+                    continue;
+                }
+
+                $c = is_object($concepto) ? get_object_vars($concepto) : $concepto;
+                foreach (['TrasladoConcepto40R', 'RetencionConcepto40R', 'RetencionLocal40R', 'TrasladoLocal40R'] as $taxNode) {
+                    if (!isset($c[$taxNode]) || !is_array($c[$taxNode])) {
+                        continue;
+                    }
+                    if ($this->isAssoc($c[$taxNode])) {
+                        $c[$taxNode] = [$c[$taxNode]];
+                    }
+                }
+                $array['Conceptos']['Concepto40R'][$i] = $c;
             }
-            if ($badCredentialCasing) {
-                $errors[] = 'nodos de credenciales inválidos detectados: ' . implode(', ', $badCredentialCasing);
+        }
+
+        return $this->normalizeComplexNode($array);
+    }
+
+    private function buildCallPlans(array $payload, array $wsdlMeta): array
+    {
+        $paramNames = $wsdlMeta['param_names'] ?? [];
+        $credName = $paramNames[0] ?? 'credenciales';
+        $compName = $paramNames[1] ?? 'comprobante';
+
+        $credenciales = $payload['Credenciales'] ?? [];
+        $comprobante = $payload['Comprobante40R'] ?? [];
+
+        $plans = [];
+
+        $plans[] = [
+            'mode' => 'multiparam',
+            'arguments' => [[
+                new SoapParam($credenciales, $credName),
+                new SoapParam($comprobante, $compName),
+            ]],
+        ];
+
+        if (!empty($paramNames)) {
+            $wrappedPayload = new stdClass();
+            $wrappedPayload->{$credName} = $credenciales;
+            $wrappedPayload->{$compName} = $comprobante;
+            $plans[] = [
+                'mode' => 'wrapped_document_literal',
+                'arguments' => [[$wrappedPayload]],
+            ];
+        }
+
+        return $plans;
+    }
+
+
+    private function captureLastSoapExchange(SoapClient $client): void
+    {
+        $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
+        $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
+        $this->lastRequestHeaders = method_exists($client, '__getLastRequestHeaders') ? $client->__getLastRequestHeaders() : null;
+        $this->lastResponseHeaders = method_exists($client, '__getLastResponseHeaders') ? $client->__getLastResponseHeaders() : null;
+
+        error_log('[CFDI40][GenerarCFDI40] last_request_headers=' . ($this->lastRequestHeaders ?? ''));
+        error_log('[CFDI40][GenerarCFDI40] last_request_xml=' . ($this->lastRequest ?? ''));
+        error_log('[CFDI40][GenerarCFDI40] last_response_headers=' . ($this->lastResponseHeaders ?? ''));
+        error_log('[CFDI40][GenerarCFDI40] last_response_xml=' . ($this->lastResponse ?? ''));
+    }
+
+    private function validateSerializedRequest(?string $xml, bool $strict = true): void
+    {
+        if ($xml === null || trim($xml) === '') {
+            error_log('[CFDI40][GenerarCFDI40] soap_body_has_payload=false');
+            error_log('[CFDI40][GenerarCFDI40] body_contains_credenciales=false');
+            error_log('[CFDI40][GenerarCFDI40] body_contains_comprobante=false');
+            if ($strict) {
+                throw new RuntimeException('No hay XML SOAP serializado en __getLastRequest().');
             }
-            error_log('[CFDI40][GenerarCFDI40] soap_request_validation=WARNING ' . implode('. ', $errors) . '.');
             return;
         }
 
-        error_log('[CFDI40][GenerarCFDI40] soap_request_validation=OK nodos y casing preservados.');
-    }
+        $soapBodyHasPayload = false;
+        $bodyContainsCredenciales = false;
+        $bodyContainsComprobante = false;
 
-    private function containsXmlNode(string $xml, string $node): bool
-    {
         $doc = new DOMDocument();
-        $loaded = @$doc->loadXML($xml, LIBXML_NONET | LIBXML_NOBLANKS | LIBXML_NOERROR | LIBXML_NOWARNING);
+        $loaded = @$doc->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
         if ($loaded) {
             $xpath = new DOMXPath($doc);
-            $query = "//*[local-name()='{$node}']";
-            $nodes = $xpath->query($query);
-            return $nodes instanceof DOMNodeList && $nodes->length > 0;
+            $payloadNodes = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]/*');
+            if ($payloadNodes instanceof DOMNodeList && $payloadNodes->length > 0) {
+                $soapBodyHasPayload = true;
+                $bodyContainsCredenciales = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]//*[local-name()="Credenciales" or local-name()="credenciales"]')->length > 0;
+                $bodyContainsComprobante = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]//*[local-name()="Comprobante40R" or local-name()="comprobante"]')->length > 0;
+
+                $methodNode = $payloadNodes->item(0);
+                if ($methodNode instanceof DOMNode && !$methodNode->hasChildNodes()) {
+                    $soapBodyHasPayload = false;
+                }
+            }
+        } else {
+            $soapBodyHasPayload = strpos($xml, '<GenerarCFDI40/>') === false;
+            $bodyContainsCredenciales = stripos($xml, 'Credenciales') !== false;
+            $bodyContainsComprobante = stripos($xml, 'Comprobante40R') !== false;
         }
 
-        return (bool)preg_match('/<([a-zA-Z0-9_]+:)?' . preg_quote($node, '/') . '(\\s|>|\\/)/u', $xml);
+        error_log('[CFDI40][GenerarCFDI40] soap_body_has_payload=' . ($soapBodyHasPayload ? 'true' : 'false'));
+        error_log('[CFDI40][GenerarCFDI40] body_contains_credenciales=' . ($bodyContainsCredenciales ? 'true' : 'false'));
+        error_log('[CFDI40][GenerarCFDI40] body_contains_comprobante=' . ($bodyContainsComprobante ? 'true' : 'false'));
+
+        if (!$soapBodyHasPayload || !$bodyContainsCredenciales || !$bodyContainsComprobante) {
+            if ($strict) {
+                throw new RuntimeException('El XML SOAP de GenerarCFDI40 no contiene payload serializado válido (Credenciales/Comprobante40R).');
+            }
+        }
+    }
+
+    private function normalizeComplexNode($value)
+    {
+        if (is_array($value)) {
+            if ($this->isAssoc($value)) {
+                $obj = new stdClass();
+                foreach ($value as $k => $v) {
+                    $obj->{$k} = $this->normalizeComplexNode($v);
+                }
+                return $obj;
+            }
+
+            $list = [];
+            foreach ($value as $item) {
+                $list[] = $this->normalizeComplexNode($item);
+            }
+            return $list;
+        }
+
+        if (is_object($value)) {
+            $obj = new stdClass();
+            foreach (get_object_vars($value) as $k => $v) {
+                $obj->{$k} = $this->normalizeComplexNode($v);
+            }
+            return $obj;
+        }
+
+        return $value;
+    }
+
+    private function isAssoc(array $arr): bool
+    {
+        if ($arr === []) {
+            return false;
+        }
+
+        return array_keys($arr) !== range(0, count($arr) - 1);
+    }
+
+    private function isTypeInWsdl(array $types, string $typeName): bool
+    {
+        foreach ($types as $typeDef) {
+            if (!is_string($typeDef)) {
+                continue;
+            }
+            if (stripos($typeDef, "struct {$typeName}") !== false || stripos($typeDef, " {$typeName} ") !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function normalizeForDebug($value)
