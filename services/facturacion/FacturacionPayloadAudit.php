@@ -34,12 +34,12 @@ class FacturacionPayloadAudit
                     'Cantidad',
                     'ClaveProdServ',
                     'ClaveUnidad',
-                    'Descripcion',
                     'Importe',
                     'ObjetoImp',
                     'Unidad',
                     'ValorUnitario',
                 ], $report);
+                $this->validateAlternativeField($concepto, $path, ['Descripcion', 'Descripción'], 'Descripción/Descripcion', $report);
 
                 $objetoImp = trim((string)($concepto['ObjetoImp'] ?? ''));
                 if ($objetoImp === '02') {
@@ -162,6 +162,28 @@ class FacturacionPayloadAudit
                 $report['empty_arrays'][] = $fullPath;
             }
         }
+    }
+
+    private function validateAlternativeField(array $node, string $path, array $fields, string $label, array &$report): void
+    {
+        foreach ($fields as $field) {
+            if (!array_key_exists($field, $node)) {
+                continue;
+            }
+
+            $value = $node[$field];
+            if ($value === null) {
+                $report['null'][] = "{$path}.{$label}";
+                return;
+            }
+            if (is_string($value) && trim($value) === '') {
+                $report['empty'][] = "{$path}.{$label}";
+                return;
+            }
+            return;
+        }
+
+        $report['missing'][] = "{$path}.{$label}";
     }
 
     private function buildFinalReport(array $report): array

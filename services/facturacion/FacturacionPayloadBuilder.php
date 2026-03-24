@@ -50,6 +50,7 @@ class FacturacionPayloadBuilder
                 'CondicionesDePago' => $formaPago['condiciones_pago'] ?? ($venta['condiciones_pago'] ?? null),
                 'Exportacion' => $formaPago['exportacion'] ?? '01',
                 'Fecha' => $fecha,
+                'Folio' => $venta['folio'] ?? null,
                 'FormaDePago' => (string)($formaPago['forma_pago'] ?? $venta['forma_pago_sat']),
                 'LugarExpedicion' => (string)$emisor['lugar_expedicion'],
                 'MetodoDePago' => (string)($formaPago['metodo_pago'] ?? 'PUE'),
@@ -57,7 +58,6 @@ class FacturacionPayloadBuilder
                 'Referencia' => $ctx['referencia'],
                 'SubTotal' => $subTotal,
                 'TipoCambio' => $tipoCambio,
-                'TipoDeComprobante' => (string)($formaPago['tipo_comprobante'] ?? 'I'),
                 'Total' => $total,
                 'Confirmacion' => null,
                 'Descuento' => $descuento,
@@ -97,6 +97,24 @@ class FacturacionPayloadBuilder
             }
             if (isset($concepto['Retenciones']) && !isset($concepto['RetencionConcepto40R'])) {
                 $concepto['RetencionConcepto40R'] = $concepto['Retenciones'];
+            }
+            if (isset($concepto['Descripción']) && !isset($concepto['Descripcion'])) {
+                $concepto['Descripcion'] = $concepto['Descripción'];
+            }
+            if (isset($concepto['NoIdentificación']) && !isset($concepto['NoIdentificacion'])) {
+                $concepto['NoIdentificacion'] = $concepto['NoIdentificación'];
+            }
+            if (isset($concepto['TrasladoConcepto']) && !isset($concepto['TrasladoConcepto40R'])) {
+                $concepto['TrasladoConcepto40R'] = $concepto['TrasladoConcepto'];
+            }
+            if (isset($concepto['RetencionConcepto']) && !isset($concepto['RetencionConcepto40R'])) {
+                $concepto['RetencionConcepto40R'] = $concepto['RetencionConcepto'];
+            }
+            if (isset($concepto['RetencionLocal']) && !isset($concepto['RetencionLocal40R'])) {
+                $concepto['RetencionLocal40R'] = $concepto['RetencionLocal'];
+            }
+            if (isset($concepto['TrasladoLocal']) && !isset($concepto['TrasladoLocal40R'])) {
+                $concepto['TrasladoLocal40R'] = $concepto['TrasladoLocal'];
             }
             unset($concepto['Traslados'], $concepto['Retenciones']);
 

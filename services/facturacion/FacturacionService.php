@@ -122,6 +122,8 @@ class FacturacionService
             error_log('[CFDI40][GenerarCFDI40] auditoria=' . $auditJson);
 
             $soapResult = $this->soapClient()->timbrar($payload);
+            error_log('[CFDI40][GenerarCFDI40] last_request=' . ($soapResult['last_request'] ?? ''));
+            error_log('[CFDI40][GenerarCFDI40] last_response=' . ($soapResult['last_response'] ?? ''));
             $mapped = $this->responseMapper->map($soapResult['response'], $soapResult);
 
             $estatus = $mapped['operacion_exitosa'] ? 'TIMBRADO' : 'ERROR';
@@ -158,6 +160,18 @@ class FacturacionService
                 'response' => $mapped['raw_response_array'],
             ];
         } catch (SoapFault $e) {
+            $lastRequest = $this->soapClient()->getLastRequest();
+            $lastResponse = $this->soapClient()->getLastResponse();
+            $soapFaultDebug = [
+                'faultcode' => $e->faultcode ?? null,
+                'faultcodens' => $e->faultcodens ?? null,
+                'faultstring' => $e->faultstring ?? null,
+                'detail' => $e->detail ?? null,
+                'message' => $e->getMessage(),
+            ];
+            error_log('[CFDI40][GenerarCFDI40] soap_fault=' . json_encode($soapFaultDebug, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            error_log('[CFDI40][GenerarCFDI40] last_request=' . ($lastRequest ?? ''));
+            error_log('[CFDI40][GenerarCFDI40] last_response=' . ($lastResponse ?? ''));
             return $this->handleException($cfdi, $idVenta, $payloadJson, $e, 'SOAP', 'SOAP_ERROR');
         } catch (Throwable $e) {
             return $this->handleException($cfdi, $idVenta, $payloadJson, $e, 'SISTEMA', 'ERROR_DESCONOCIDO');
@@ -173,7 +187,7 @@ class FacturacionService
         return $this->soapClient;
     }
 
-    private function handleException(array $cfdi, int $idVenta, string $payloadJson, Throwable $e, string $origen, string $codigo): array
+    private function handleException(array $cfdi, int $idVenta, ?string $payloadJson, Throwable $e, string $origen, string $codigo): array
     {
         $this->model->updateCfdiRecord((int)$cfdi['id_cfdi'], [
             'estatus' => 'ERROR',

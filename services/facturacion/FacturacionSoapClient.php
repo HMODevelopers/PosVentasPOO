@@ -4,6 +4,8 @@ class FacturacionSoapClient
 {
     private array $config;
     private ?SoapClient $client = null;
+    private ?string $lastRequest = null;
+    private ?string $lastResponse = null;
 
     public function __construct()
     {
@@ -18,13 +20,32 @@ class FacturacionSoapClient
     public function timbrar(array $payload): array
     {
         $client = $this->client();
-        $response = $client->__soapCall('GenerarCFDI40', [$payload]);
+        error_log('[CFDI40][GenerarCFDI40] payload_pre_soapcall=' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        try {
+            $response = $client->__soapCall('GenerarCFDI40', [$payload]);
+            $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
+            $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
+        } catch (SoapFault $fault) {
+            $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
+            $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
+            throw $fault;
+        }
 
         return [
             'response' => $response,
-            'last_request' => method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null,
-            'last_response' => method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null,
+            'last_request' => $this->lastRequest,
+            'last_response' => $this->lastResponse,
         ];
+    }
+
+    public function getLastRequest(): ?string
+    {
+        return $this->lastRequest;
+    }
+
+    public function getLastResponse(): ?string
+    {
+        return $this->lastResponse;
     }
 
     private function client(): SoapClient
