@@ -2868,9 +2868,9 @@ function resetModalFacturacion(){
   $('#fac-validacion-bloques').html('<div class="cfdi-block-status__item is-incomplete"><div class="cfdi-block-status__title"><span>Sin estado</span><span class="badge badge-secondary">Pendiente</span></div><p class="cfdi-block-status__desc mb-0">Abre una venta para calcular el draft de facturación.</p></div>');
   $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
   $('#fac-folio, #fac-fecha, #fac-cliente, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion').text('—');
-  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial').val('').prop('readonly', true).prop('disabled', false);
+  $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial').val('').prop('readonly', false).prop('disabled', false);
   $('#fac-input-condiciones-pago, #fac-input-tipo-cambio').val('').prop('readonly', false).prop('disabled', false);
-  $('#fac-select-regimen, #fac-select-uso-cfdi').html('<option value="">Seleccione…</option>').prop('disabled', true);
+  $('#fac-select-regimen, #fac-select-uso-cfdi').html('<option value="">Seleccione…</option>').prop('disabled', false);
   $('#fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion').html('<option value="">Seleccione…</option>').prop('disabled', false);
   $('#fac-select-cliente').empty().val(null).trigger('change');
   $('#fac-publico-note').addClass('d-none').empty();
@@ -3074,6 +3074,15 @@ function getPayloadFacturacion(){
   return {
     id_venta: Number(draft.venta.id_venta || $('#fac-id-venta').val() || 0),
     id_cliente_sat: Number(draft.receptor.id_cliente_fiscal || $('#fac-id-cliente-sat').val() || 0),
+    rfc: String(draft.receptor.rfc || '').trim().toUpperCase(),
+    nombre: String(draft.receptor.nombre || '').trim(),
+    nombre_comercial: String(draft.receptor.nombre_comercial || '').trim(),
+    correo: String(draft.receptor.correo || '').trim(),
+    codigo_postal: String(draft.receptor.codigo_postal || '').trim(),
+    regimen_fiscal: String(draft.receptor.regimen_fiscal || '').trim(),
+    uso_cfdi: String(draft.receptor.uso_cfdi || '').trim(),
+    residencia_fiscal: String(draft.receptor.residencia_fiscal || '').trim().toUpperCase(),
+    numero_registro_tributario: String(draft.receptor.numero_registro_tributario || '').trim(),
     moneda: String(draft.comprobante.moneda || '').trim().toUpperCase(),
     metodo_pago: String(draft.comprobante.metodo_pago || '').trim().toUpperCase(),
     forma_pago: String(draft.comprobante.forma_pago || '').trim().toUpperCase(),
@@ -3138,6 +3147,32 @@ $(document).off('change', '#fac-select-cliente').on('change', '#fac-select-clien
   if ($(this).val() || e?.params?.data) return;
   $('#fac-id-cliente-sat').val('');
 });
+
+$(document)
+  .off('input', '#fac-input-rfc, #fac-input-razon-social, #fac-input-nombre-comercial, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib')
+  .on('input', '#fac-input-rfc, #fac-input-razon-social, #fac-input-nombre-comercial, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib', function(){
+    const map = {
+      'fac-input-rfc': 'receptor.rfc',
+      'fac-input-razon-social': 'receptor.nombre',
+      'fac-input-nombre-comercial': 'receptor.nombre_comercial',
+      'fac-input-correo': 'receptor.correo',
+      'fac-input-cp': 'receptor.codigo_postal',
+      'fac-input-residencia-fiscal': 'receptor.residencia_fiscal',
+      'fac-input-num-reg-id-trib': 'receptor.numero_registro_tributario'
+    };
+    const path = map[this.id];
+    if (!path) return;
+    const raw = String($(this).val() || '').trim();
+    const value = (this.id === 'fac-input-rfc' || this.id === 'fac-input-residencia-fiscal') ? raw.toUpperCase() : raw;
+    updateFacturaDraft(path, value);
+  });
+
+$(document)
+  .off('change', '#fac-select-regimen, #fac-select-uso-cfdi')
+  .on('change', '#fac-select-regimen, #fac-select-uso-cfdi', function(){
+    const path = this.id === 'fac-select-regimen' ? 'receptor.regimen_fiscal' : 'receptor.uso_cfdi';
+    updateFacturaDraft(path, String($(this).val() || '').trim());
+  });
 
 $(document)
   .off('change', '#fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion')

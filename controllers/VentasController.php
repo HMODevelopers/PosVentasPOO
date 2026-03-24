@@ -445,6 +445,15 @@ class VentasController
             $service = new FacturacionService($pdo);
             $facturacionInput = [
                 'id_cliente_sat' => $idClienteSat,
+                'rfc' => trim((string)($_POST['rfc'] ?? $_GET['rfc'] ?? $raw['rfc'] ?? '')),
+                'nombre' => trim((string)($_POST['nombre'] ?? $_GET['nombre'] ?? $raw['nombre'] ?? '')),
+                'nombre_comercial' => trim((string)($_POST['nombre_comercial'] ?? $_GET['nombre_comercial'] ?? $raw['nombre_comercial'] ?? '')),
+                'correo' => trim((string)($_POST['correo'] ?? $_GET['correo'] ?? $raw['correo'] ?? '')),
+                'codigo_postal' => trim((string)($_POST['codigo_postal'] ?? $_GET['codigo_postal'] ?? $raw['codigo_postal'] ?? '')),
+                'regimen_fiscal' => trim((string)($_POST['regimen_fiscal'] ?? $_GET['regimen_fiscal'] ?? $raw['regimen_fiscal'] ?? '')),
+                'uso_cfdi' => trim((string)($_POST['uso_cfdi'] ?? $_GET['uso_cfdi'] ?? $raw['uso_cfdi'] ?? '')),
+                'residencia_fiscal' => trim((string)($_POST['residencia_fiscal'] ?? $_GET['residencia_fiscal'] ?? $raw['residencia_fiscal'] ?? '')),
+                'numero_registro_tributario' => trim((string)($_POST['numero_registro_tributario'] ?? $_GET['numero_registro_tributario'] ?? $raw['numero_registro_tributario'] ?? '')),
                 'moneda' => trim((string)($_POST['moneda'] ?? $_GET['moneda'] ?? $raw['moneda'] ?? '')),
                 'metodo_pago' => trim((string)($_POST['metodo_pago'] ?? $_GET['metodo_pago'] ?? $raw['metodo_pago'] ?? '')),
                 'forma_pago' => trim((string)($_POST['forma_pago'] ?? $_GET['forma_pago'] ?? $raw['forma_pago'] ?? '')),

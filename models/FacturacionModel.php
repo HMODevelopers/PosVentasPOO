@@ -162,7 +162,14 @@ class FacturacionModel
         }
 
         $ctx['cliente_seleccionado'] = $cliente;
-        $ctx['receptor'] = $this->buildReceptorFromClienteSat($cliente);
+        $receptorBase = $this->buildReceptorFromClienteSat($cliente);
+        $receptorEditado = $this->normalizarDatosFiscales($data);
+        $receptorEditado['cliente_sat_id'] = $idClienteSat;
+        $ctx['receptor'] = array_merge($receptorBase, array_filter($receptorEditado, static function ($value) {
+            return $value !== null && $value !== '';
+        }));
+        $ctx['receptor']['cliente_sat_id'] = $idClienteSat;
+        $ctx['receptor']['es_publico_general'] = $this->esPublicoGeneralReceptor($ctx['receptor']);
         $ctx['informacion_global'] = $this->buildInformacionGlobal($ctx['receptor']);
 
         $venta = is_array($ctx['venta'] ?? null) ? $ctx['venta'] : [];

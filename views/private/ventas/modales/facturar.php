@@ -343,7 +343,7 @@
                   </div>
                   <div class="col-md-4 mt-2">
                     <label for="fac-input-nombre-comercial">Nombre comercial</label>
-                    <input type="text" class="form-control" id="fac-input-nombre-comercial" maxlength="255" autocomplete="off" readonly>
+                    <input type="text" class="form-control" id="fac-input-nombre-comercial" maxlength="255" autocomplete="off">
                   </div>
                   <div class="col-md-4 mt-2">
                     <label for="fac-input-correo">Correo</label>
