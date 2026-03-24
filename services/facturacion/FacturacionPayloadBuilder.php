@@ -43,12 +43,11 @@ class FacturacionPayloadBuilder
                 'UsoCFDI' => $receptor['uso_cfdi'],
             ], fn($v) => $v !== null && $v !== ''),
             'Conceptos' => $conceptos,
-            'Comprobante40R' => [
+            'Comprobante40R' => array_filter([
                 'ClaveCFDI' => 'FAC',
                 'CondicionesDePago' => $formaPago['condiciones_pago'] ?? ($venta['condiciones_pago'] ?? null),
                 'Exportacion' => $formaPago['exportacion'] ?? '01',
                 'Fecha' => $fecha,
-                'Folio' => (string)$venta['folio'],
                 'FormaDePago' => (string)($formaPago['forma_pago'] ?? $venta['forma_pago_sat']),
                 'LugarExpedicion' => (string)$emisor['lugar_expedicion'],
                 'MetodoDePago' => (string)($formaPago['metodo_pago'] ?? 'PUE'),
@@ -60,7 +59,7 @@ class FacturacionPayloadBuilder
                 'Total' => $total,
                 'Confirmacion' => null,
                 'Descuento' => $descuento,
-            ],
+            ], fn($v) => $v !== null && $v !== ''),
         ];
     }
 

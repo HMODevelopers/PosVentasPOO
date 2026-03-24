@@ -10,7 +10,6 @@ try {
         'id_sucursal' => (int)($_POST['id_sucursal'] ?? $_GET['id_sucursal'] ?? 0),
         'rfc_emisor' => trim($_POST['rfc_emisor'] ?? $_GET['rfc_emisor'] ?? ''),
         'razon_social_emisor' => trim($_POST['razon_social_emisor'] ?? $_GET['razon_social_emisor'] ?? ''),
-        'fd_ambiente' => trim($_POST['fd_ambiente'] ?? $_GET['fd_ambiente'] ?? ''),
         'activo' => $_POST['activo'] ?? $_GET['activo'] ?? '',
     ];
 

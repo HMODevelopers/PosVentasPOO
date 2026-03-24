@@ -7,8 +7,7 @@ class ConfigEmisoresModel {
     private array $fillable = [
         'id_sucursal','rfc_emisor','razon_social_emisor','regimen_fiscal_emisor','cp_expedicion',
         'tipo_comprobante','exportacion_default','moneda_default','objeto_imp_default',
-        'serie','folio_actual','fd_ambiente','fd_usuario','fd_password','fd_url_demo','fd_url_prod',
-        'csd_cer_path','csd_key_path','csd_key_password','pfx_path','pfx_password','logo_base64','activo'
+        'serie','folio_actual','activo','es_default'
     ];
 
     public function __construct() {
@@ -31,8 +30,8 @@ class ConfigEmisoresModel {
                     cfe.objeto_imp_default,
                     cfe.serie,
                     cfe.folio_actual,
-                    cfe.fd_ambiente,
                     cfe.activo,
+                    cfe.es_default,
                     cfe.created_at,
                     cfe.updated_at,
                     COALESCE(s.nombre, CAST(cfe.id_sucursal AS CHAR)) AS sucursal_nombre
@@ -52,10 +51,6 @@ class ConfigEmisoresModel {
         if (($razon = trim($filtros['razon_social_emisor'] ?? '')) !== '') {
             $sql .= " AND cfe.razon_social_emisor LIKE :razon";
             $p[':razon'] = '%' . $razon . '%';
-        }
-        if (($amb = trim($filtros['fd_ambiente'] ?? '')) !== '') {
-            $sql .= " AND cfe.fd_ambiente = :amb";
-            $p[':amb'] = strtoupper($amb);
         }
         if (($activo = $filtros['activo'] ?? '') !== '' && $activo !== null) {
             $sql .= " AND cfe.activo = :activo";
@@ -89,10 +84,6 @@ class ConfigEmisoresModel {
         if (($razon = trim($filtros['razon_social_emisor'] ?? '')) !== '') {
             $sql .= " AND cfe.razon_social_emisor LIKE :razon";
             $p[':razon'] = '%' . $razon . '%';
-        }
-        if (($amb = trim($filtros['fd_ambiente'] ?? '')) !== '') {
-            $sql .= " AND cfe.fd_ambiente = :amb";
-            $p[':amb'] = strtoupper($amb);
         }
         if (($activo = $filtros['activo'] ?? '') !== '' && $activo !== null) {
             $sql .= " AND cfe.activo = :activo";
@@ -138,7 +129,9 @@ class ConfigEmisoresModel {
             $st->bindValue(':' . $field, $d[$field]);
         }
         $st->execute();
-        return (int)$this->conn->lastInsertId();
+        $id = (int)$this->conn->lastInsertId();
+        $this->syncDefaultEmitter((int)$d['id_sucursal'], (int)$d['es_default'], $id);
+        return $id;
     }
 
     public function actualizar(int $id, array $data): bool {
@@ -158,12 +151,71 @@ class ConfigEmisoresModel {
             $st->bindValue(':' . $field, $d[$field]);
         }
         $st->bindValue(':id', $id, PDO::PARAM_INT);
-        return $st->execute();
+        $ok = $st->execute();
+        if ($ok) {
+            $this->syncDefaultEmitter((int)$d['id_sucursal'], (int)$d['es_default'], $id);
+        }
+        return $ok;
     }
 
     public function toggle(int $id, int $activo): bool {
-        $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET activo=:a WHERE id_config=:id");
-        return $st->execute([':a' => $activo ? 1 : 0, ':id' => $id]);
+        $row = $this->obtenerPorId($id);
+        if (!$row) {
+            return false;
+        }
+
+        if ($activo) {
+            $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET activo = 1 WHERE id_config = :id");
+            return $st->execute([':id' => $id]);
+        }
+
+        $this->conn->beginTransaction();
+        try {
+            $this->conn->prepare("UPDATE config_fiscal_emisor SET activo = 0, es_default = 0 WHERE id_config = :id")
+                ->execute([':id' => $id]);
+
+            $candidato = $this->conn->prepare("SELECT id_config FROM config_fiscal_emisor WHERE id_sucursal = :id_sucursal AND id_config <> :id_config AND activo = 1 ORDER BY es_default DESC, id_config DESC LIMIT 1");
+            $candidato->execute([
+                ':id_sucursal' => (int)$row['id_sucursal'],
+                ':id_config' => $id,
+            ]);
+            $nuevoDefault = (int)($candidato->fetch(PDO::FETCH_ASSOC)['id_config'] ?? 0);
+            if ($nuevoDefault > 0) {
+                $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default = CASE WHEN id_config = :id_default THEN 1 ELSE 0 END WHERE id_sucursal = :id_sucursal")
+                    ->execute([':id_default' => $nuevoDefault, ':id_sucursal' => (int)$row['id_sucursal']]);
+            }
+
+            $this->conn->commit();
+            return true;
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+
+    public function setDefault(int $id): bool {
+        $row = $this->obtenerPorId($id);
+        if (!$row) {
+            return false;
+        }
+
+        $this->conn->beginTransaction();
+        try {
+            $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default = 0 WHERE id_sucursal = :id_sucursal")
+                ->execute([':id_sucursal' => (int)$row['id_sucursal']]);
+            $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default = 1, activo = 1 WHERE id_config = :id_config")
+                ->execute([':id_config' => $id]);
+            $this->conn->commit();
+            return true;
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            throw $e;
+        }
     }
 
     public function getByVenta(int $idVenta): array {
@@ -178,11 +230,11 @@ class ConfigEmisoresModel {
             throw new RuntimeException('Venta no encontrada');
         }
 
-        $stCfg = $this->conn->prepare("SELECT * FROM config_fiscal_emisor WHERE id_sucursal=:s AND activo=1 LIMIT 1");
+        $stCfg = $this->conn->prepare("SELECT * FROM config_fiscal_emisor WHERE id_sucursal=:s AND activo=1 AND es_default=1 LIMIT 1");
         $stCfg->execute([':s' => (int)$row['id_sucursal']]);
         $cfg = $stCfg->fetch(PDO::FETCH_ASSOC) ?: null;
         if (!$cfg) {
-            throw new RuntimeException('No existe emisor activo para la sucursal de la venta');
+            throw new RuntimeException('No existe emisor activo y default para la sucursal de la venta');
         }
         return $cfg;
     }
@@ -196,7 +248,7 @@ class ConfigEmisoresModel {
         $clean = [];
         foreach ($this->fillable as $f) {
             $v = $data[$f] ?? null;
-            if (in_array($f, ['id_sucursal','folio_actual','activo'], true)) {
+            if (in_array($f, ['id_sucursal','folio_actual','activo','es_default'], true)) {
                 $clean[$f] = (int)$v;
             } elseif ($f === 'rfc_emisor') {
                 $clean[$f] = strtoupper(substr(trim((string)$v), 0, 13));
@@ -205,10 +257,34 @@ class ConfigEmisoresModel {
             }
         }
 
-        $clean['fd_ambiente'] = in_array(strtoupper($clean['fd_ambiente']), ['DEMO', 'PROD'], true)
-            ? strtoupper($clean['fd_ambiente'])
-            : 'DEMO';
+        $clean['tipo_comprobante'] = strtoupper(substr($clean['tipo_comprobante'] ?: 'I', 0, 1));
+        $clean['exportacion_default'] = substr($clean['exportacion_default'] ?: '01', 0, 2);
+        $clean['moneda_default'] = strtoupper(substr($clean['moneda_default'] ?: 'MXN', 0, 3));
+        $clean['objeto_imp_default'] = substr($clean['objeto_imp_default'] ?: '02', 0, 2);
         $clean['activo'] = $clean['activo'] ? 1 : 0;
+        $clean['es_default'] = $clean['es_default'] ? 1 : 0;
+        if ($clean['es_default'] === 1) {
+            $clean['activo'] = 1;
+        }
         return $clean;
+    }
+
+    private function syncDefaultEmitter(int $idSucursal, int $esDefault, int $idActual): void {
+        if ($idSucursal <= 0 || $idActual <= 0) {
+            return;
+        }
+
+        if ($esDefault === 1) {
+            $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default = CASE WHEN id_config = :id_config THEN 1 ELSE 0 END WHERE id_sucursal = :id_sucursal");
+            $st->execute([':id_config' => $idActual, ':id_sucursal' => $idSucursal]);
+            return;
+        }
+
+        $st = $this->conn->prepare("SELECT COUNT(*) AS total FROM config_fiscal_emisor WHERE id_sucursal = :id_sucursal AND activo = 1 AND es_default = 1");
+        $st->execute([':id_sucursal' => $idSucursal]);
+        if ((int)($st->fetch(PDO::FETCH_ASSOC)['total'] ?? 0) === 0) {
+            $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default = 1 WHERE id_config = :id_config");
+            $st->execute([':id_config' => $idActual]);
+        }
     }
 }

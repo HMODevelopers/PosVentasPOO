@@ -99,20 +99,7 @@ require_once __DIR__ . '/../../../includes/auth.php';
               </div>
             </div>
 
-            <div class="col-md-1">
-              <div class="form-group">
-                <label for="fAmbiente" class="control-label">Ambiente</label>
-                <div class="input-group">
-                  <select id="fAmbiente" class="form-control filtrar">
-                    <option value="">Todos</option>
-                    <option value="DEMO">DEMO</option>
-                    <option value="PROD">PROD</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div class="col-md-2">
+            <div class="col-md-3">
               <div class="form-group">
                 <label for="fActivo" class="control-label">Estatus</label>
                 <div class="input-group">
@@ -148,7 +135,7 @@ require_once __DIR__ . '/../../../includes/auth.php';
                   <th style="width:180px;">Sucursal</th>
                   <th class="text-center" style="width:140px;">RFC</th>
                   <th>Razón social</th>
-                  <th class="text-center" style="width:90px;">Ambiente</th>
+                  <th class="text-center" style="width:120px;">Default</th>
                   <th class="text-center" style="width:100px;">Estatus</th>
                   <th class="text-center" style="width:130px;">Acciones</th>
                 </tr>
@@ -188,7 +175,7 @@ require_once __DIR__ . '/../../../includes/auth.php';
         <div class="modal-body">
           <div class="alert alert-info py-2 px-3 mb-3">
             <i class="mdi mdi-information-outline"></i>
-            Los campos marcados con <span class="text-danger">*</span> son obligatorios.
+            Los campos marcados con <span class="text-danger">*</span> son obligatorios. La configuración técnica de Folios Digitales se toma desde <code>.env</code>.
           </div>
 
           <fieldset class="border rounded p-3">
@@ -230,65 +217,6 @@ require_once __DIR__ . '/../../../includes/auth.php';
           </fieldset>
 
           <fieldset class="border rounded p-3 mt-3">
-            <legend class="w-auto px-2 mb-0 small text-muted text-uppercase">Facturación Digital (FD)</legend>
-            <div class="form-row mt-2">
-              <div class="form-group col-md-3">
-                <label for="fd_ambiente">Ambiente</label>
-                <select class="form-control" name="fd_ambiente" id="fd_ambiente">
-                  <option value="DEMO">DEMO</option>
-                  <option value="PROD">PROD</option>
-                </select>
-              </div>
-              <div class="form-group col-md-3"><label for="fd_usuario">Usuario</label><input class="form-control" id="fd_usuario" name="fd_usuario"></div>
-              <div class="form-group col-md-6">
-                <label for="fd_password">Password</label>
-                <div class="input-group">
-                  <input class="form-control" id="fd_password" type="password" name="fd_password">
-                  <div class="input-group-append">
-                    <button class="btn btn-outline-secondary btnTogglePwd" type="button"><i class="mdi mdi-eye"></i></button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group col-md-6"><label for="fd_url_demo">URL Demo</label><input class="form-control" id="fd_url_demo" name="fd_url_demo"></div>
-              <div class="form-group col-md-6"><label for="fd_url_prod">URL Prod</label><input class="form-control" id="fd_url_prod" name="fd_url_prod"></div>
-            </div>
-          </fieldset>
-
-          <fieldset class="border rounded p-3 mt-3">
-            <legend class="w-auto px-2 mb-0 small text-muted text-uppercase">Certificados y logo</legend>
-            <div class="form-row mt-2">
-              <div class="form-group col-md-6"><label for="csd_cer_path">CSD CER path</label><input class="form-control" id="csd_cer_path" name="csd_cer_path"></div>
-              <div class="form-group col-md-6"><label for="csd_key_path">CSD KEY path</label><input class="form-control" id="csd_key_path" name="csd_key_path"></div>
-            </div>
-            <div class="form-row">
-              <div class="form-group col-md-6">
-                <label for="csd_key_password">CSD KEY password</label>
-                <div class="input-group">
-                  <input class="form-control" id="csd_key_password" type="password" name="csd_key_password">
-                  <div class="input-group-append">
-                    <button class="btn btn-outline-secondary btnTogglePwd" type="button"><i class="mdi mdi-eye"></i></button>
-                  </div>
-                </div>
-              </div>
-              <div class="form-group col-md-6"><label for="pfx_path">PFX path</label><input class="form-control" id="pfx_path" name="pfx_path"></div>
-            </div>
-            <div class="form-row">
-              <div class="form-group col-md-6">
-                <label for="pfx_password">PFX password</label>
-                <div class="input-group">
-                  <input class="form-control" id="pfx_password" type="password" name="pfx_password">
-                  <div class="input-group-append">
-                    <button class="btn btn-outline-secondary btnTogglePwd" type="button"><i class="mdi mdi-eye"></i></button>
-                  </div>
-                </div>
-              </div>
-              <div class="form-group col-md-6"><label for="logo_base64">Logo base64</label><textarea class="form-control" id="logo_base64" name="logo_base64" rows="3"></textarea></div>
-            </div>
-          </fieldset>
-
-          <fieldset class="border rounded p-3 mt-3">
             <legend class="w-auto px-2 mb-0 small text-muted text-uppercase">Estado</legend>
             <div class="form-row mt-2">
               <div class="form-group col-md-3 d-flex align-items-center">
@@ -296,6 +224,15 @@ require_once __DIR__ . '/../../../includes/auth.php';
                   <input type="checkbox" class="custom-control-input" id="activo" name="activo" checked>
                   <label class="custom-control-label" for="activo">Activo</label>
                 </div>
+              </div>
+              <div class="form-group col-md-4 d-flex align-items-center">
+                <div class="custom-control custom-switch mt-2">
+                  <input type="checkbox" class="custom-control-input" id="es_default" name="es_default">
+                  <label class="custom-control-label" for="es_default">Emisor default de la sucursal</label>
+                </div>
+              </div>
+              <div class="form-group col-md-5 mb-0">
+                <small class="text-muted d-block mt-2">El emisor default activo será el que precargue la facturación CFDI para la sucursal.</small>
               </div>
             </div>
           </fieldset>
@@ -358,7 +295,6 @@ $(function(){
       id_sucursal: $('#fSucursal').val(),
       rfc_emisor: $('#fRFC').val(),
       razon_social_emisor: $('#fRazon').val(),
-      fd_ambiente: $('#fAmbiente').val(),
       activo: $('#fActivo').val()
     })
     .done(function(resp){
@@ -376,7 +312,7 @@ $(function(){
           <td>${r.sucursal_nombre || ''}</td>
           <td class="text-center mono">${r.rfc_emisor || ''}</td>
           <td>${r.razon_social_emisor || ''}</td>
-          <td class="text-center"><span class="badge badge-${(r.fd_ambiente||'DEMO') === 'PROD' ? 'success' : 'secondary'} badge-pill">${r.fd_ambiente || 'DEMO'}</span></td>
+          <td class="text-center"><span class="badge badge-${parseInt(r.es_default || 0, 10) === 1 ? 'success' : 'secondary'} badge-pill">${parseInt(r.es_default || 0, 10) === 1 ? 'Sí' : 'No'}</span></td>
           <td class="text-center"><span class="badge badge-${activo ? 'success' : 'danger'} badge-pill">${activo ? 'Activo' : 'Inactivo'}</span></td>
           <td class="text-center">
             <div class="btn-group dropdown">
@@ -386,6 +322,9 @@ $(function(){
               <div class="dropdown-menu dropdown-menu-right">
                 <a class="dropdown-item btnEdit" href="#" data-id="${id}">
                   <i class="mdi mdi-square-edit-outline mr-2 text-muted font-18 vertical-middle"></i>Editar
+                </a>
+                <a class="dropdown-item btnSetDefault ${parseInt(r.es_default || 0, 10) === 1 ? 'disabled' : ''}" href="#" data-id="${id}">
+                  <i class="mdi mdi-star mr-2 text-muted font-18 vertical-middle"></i>${parseInt(r.es_default || 0, 10) === 1 ? 'Default actual' : 'Marcar default'}
                 </a>
                 <a class="dropdown-item btnToggle" href="#" data-id="${id}" data-act="${activo ? 0 : 1}">
                   <i class="mdi mdi-power mr-2 text-muted font-18 vertical-middle"></i>${activo ? 'Desactivar' : 'Activar'}
@@ -455,6 +394,7 @@ $(function(){
     $('#id_config').val('');
     $('#modalEmisorLabel').html('<i class="mdi mdi-plus"></i> Nuevo emisor');
     $('#activo').prop('checked', true);
+    $('#es_default').prop('checked', false);
     $('#modalEmisor').modal('show');
   });
 
@@ -485,6 +425,8 @@ $(function(){
     const payload = {};
     $(this).serializeArray().forEach(({name, value}) => payload[name] = value);
     payload.activo = $('#activo').is(':checked') ? 1 : 0;
+    payload.es_default = $('#es_default').is(':checked') ? 1 : 0;
+    if (payload.es_default) payload.activo = 1;
     payload.rfc_emisor = String(payload.rfc_emisor || '').toUpperCase().trim();
 
     const endpoint = payload.id_config ? '/update.php' : '/create.php';
@@ -503,6 +445,27 @@ $(function(){
       loadList(1);
     })
     .fail(function(){ toastr.error('Error al guardar el registro.'); })
+    .always(hideLoading);
+  });
+
+  $(document).on('click', '.btnSetDefault', function(e){
+    e.preventDefault();
+    if ($(this).hasClass('disabled')) return;
+    const id = $(this).data('id');
+    showLoading();
+    $.ajax({
+      url: URL_AJAX + '/set_default.php',
+      method: 'POST',
+      contentType: 'application/json',
+      dataType: 'json',
+      data: JSON.stringify({ id_config: id })
+    })
+    .done(function(resp){
+      if (!resp.ok) { toastr.error(resp.message || 'No se pudo establecer el emisor default.'); return; }
+      toastr.success('Emisor default actualizado.');
+      loadList(1);
+    })
+    .fail(function(){ toastr.error('No se pudo actualizar el emisor default.'); })
     .always(hideLoading);
   });
 
@@ -527,11 +490,6 @@ $(function(){
     .always(hideLoading);
   });
 
-  $(document).on('click', '.btnTogglePwd', function(){
-    const $input = $(this).closest('.input-group').find('input');
-    const currentType = $input.attr('type');
-    $input.attr('type', currentType === 'password' ? 'text' : 'password');
-  });
 });
 </script>
 </body>

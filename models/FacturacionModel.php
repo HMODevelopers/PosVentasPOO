@@ -291,7 +291,7 @@ class FacturacionModel
                 FROM ventas v
                 INNER JOIN cajas c ON c.id_caja = v.id_caja
                 LEFT JOIN sucursales s ON s.id_sucursal = c.id_sucursal
-                INNER JOIN config_fiscal_emisor cfe ON cfe.id_sucursal = c.id_sucursal AND cfe.activo = 1
+                INNER JOIN config_fiscal_emisor cfe ON cfe.id_sucursal = c.id_sucursal AND cfe.activo = 1 AND cfe.es_default = 1
                 WHERE v.id_venta = :id
                 ORDER BY cfe.id_config DESC
                 LIMIT 1";

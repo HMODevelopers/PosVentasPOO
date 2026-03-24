@@ -262,7 +262,6 @@
           <div id="fac-error" class="alert alert-danger d-none mb-3"></div>
           <div id="fac-warning" class="alert alert-warning d-none mb-3"></div>
           <div id="fac-success" class="alert alert-success d-none mb-3"></div>
-          <input type="hidden" id="fac-draft-json" value="">
 
           <div id="fac-contenido" class="d-none">
             <div class="cfdi-section">

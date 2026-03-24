@@ -2700,7 +2700,6 @@ function renderFacturaDraftUI(){
   }
 
   $('#btnConfirmarFacturar').prop('disabled', !draft.listoParaTimbrar || String(draft?.cfdi?.estatus || '').toUpperCase() === 'TIMBRADO');
-  $('#fac-draft-json').val(JSON.stringify(draft));
 
   $('#fac-publico-note')
     .toggleClass('d-none', !draft?.receptor?.es_publico_general)
@@ -2866,7 +2865,6 @@ function resetModalFacturacion(){
       Sin validaciones disponibles.
     </li>`);
   $('#fac-validacion-bloques').html('<div class="cfdi-block-status__item is-incomplete"><div class="cfdi-block-status__title"><span>Sin estado</span><span class="badge badge-secondary">Pendiente</span></div><p class="cfdi-block-status__desc mb-0">Abre una venta para calcular el draft de facturación.</p></div>');
-  $('#fac-draft-json').val('');
   $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
   $('#fac-folio, #fac-fecha, #fac-cliente, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion').text('—');
   $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial, #fac-input-condiciones-pago, #fac-input-tipo-cambio').val('').prop('readonly', false).prop('disabled', false);
