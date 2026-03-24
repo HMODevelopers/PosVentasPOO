@@ -236,7 +236,7 @@ class FacturacionSoapClient
                 }
                 $conceptoItem[$taxNode] = array_values(array_filter($taxList, static fn($item) => is_array($item) || is_object($item)));
             }
-            $normalizedConceptos[] = array_filter($conceptoItem, static fn($v) => !$this->isEmptyNodeValue($v));
+            $normalizedConceptos[] = array_filter($conceptoItem, fn($v) => !$this->isEmptyNodeValue($v));
         }
 
         return ['Concepto40R' => $normalizedConceptos];
