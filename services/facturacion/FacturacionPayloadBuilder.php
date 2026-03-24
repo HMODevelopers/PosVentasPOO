@@ -131,7 +131,6 @@ class FacturacionPayloadBuilder
             'Cantidad',
             'ClaveProdServ',
             'ClaveUnidad',
-            'Descripción',
             'Descripcion',
             'Descuento',
             'Importe',
@@ -192,7 +191,7 @@ class FacturacionPayloadBuilder
         }
 
         return array_filter([
-            'Año' => $info['Año'] ?? $info['Anio'] ?? $info['anio'] ?? null,
+            'Anio' => $info['Anio'] ?? $info['anio'] ?? $info['Año'] ?? null,
             'Meses' => $info['Meses'] ?? $info['meses'] ?? null,
             'Periodicidad' => $info['Periodicidad'] ?? $info['periodicidad'] ?? null,
         ], fn($v) => $v !== null && $v !== '');
