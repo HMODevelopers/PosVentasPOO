@@ -126,11 +126,24 @@ class FacturacionSoapClient
             }
 
             $result['signature'] = $signature;
-            if (preg_match('/\((.*)\)/', $signature, $matches)) {
-                $params = trim($matches[1]);
+
+            $openParen = strpos($signature, '(');
+            $closeParen = strrpos($signature, ')');
+            if ($openParen !== false && $closeParen !== false && $closeParen > $openParen) {
+                $params = trim(substr($signature, $openParen + 1, $closeParen - $openParen - 1));
                 if ($params !== '' && stripos($params, 'void') !== 0) {
-                    if (preg_match('/(?:^|,\s*)(?:[\w\\]+\s+)?(\w+)\s*$/', $params, $paramMatch)) {
-                        $result['param_name'] = $paramMatch[1];
+                    $parts = array_filter(array_map('trim', explode(',', $params)), static function ($part) {
+                        return $part !== '';
+                    });
+                    $lastPart = end($parts);
+                    if (is_string($lastPart) && $lastPart !== '') {
+                        $tokens = preg_split('/\s+/', $lastPart);
+                        if (is_array($tokens) && !empty($tokens)) {
+                            $candidate = ltrim((string) end($tokens), '$');
+                            if ($candidate !== '' && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $candidate)) {
+                                $result['param_name'] = $candidate;
+                            }
+                        }
                     }
                 }
             }
