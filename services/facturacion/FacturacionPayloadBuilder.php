@@ -44,7 +44,9 @@ class FacturacionPayloadBuilder
                 'Rfc' => $receptor['rfc'],
                 'UsoCFDI' => $receptor['uso_cfdi'],
             ], fn($v) => $v !== null && $v !== ''),
-            'Conceptos' => $conceptos,
+            'Conceptos' => [
+                'Concepto40R' => $conceptos,
+            ],
             'Comprobante40R' => array_filter([
                 'ClaveCFDI' => 'FAC',
                 'CondicionesDePago' => $formaPago['condiciones_pago'] ?? ($venta['condiciones_pago'] ?? null),
@@ -118,9 +120,68 @@ class FacturacionPayloadBuilder
             }
             unset($concepto['Traslados'], $concepto['Retenciones']);
 
-            $normalized[] = $concepto;
+            $normalized[] = $this->toOfficialConceptoKeys($concepto);
         }
         return $normalized;
+    }
+
+    private function toOfficialConceptoKeys(array $concepto): array
+    {
+        $oficial = [
+            'Cantidad',
+            'ClaveProdServ',
+            'ClaveUnidad',
+            'Descripción',
+            'Descripcion',
+            'Descuento',
+            'Importe',
+            'NoIdentificacion',
+            'ObjetoImp',
+            'Unidad',
+            'ValorUnitario',
+            'TrasladoConcepto40R',
+            'RetencionConcepto40R',
+            'RetencionLocal40R',
+            'TrasladoLocal40R',
+        ];
+
+        $out = [];
+        foreach ($oficial as $key) {
+            if (!array_key_exists($key, $concepto)) {
+                continue;
+            }
+
+            if (in_array($key, ['TrasladoConcepto40R', 'RetencionConcepto40R', 'RetencionLocal40R', 'TrasladoLocal40R'], true)) {
+                $out[$key] = $this->normalizeImpuestoList($concepto[$key]);
+                continue;
+            }
+
+            $out[$key] = $concepto[$key];
+        }
+
+        return array_filter($out, static fn($v) => $v !== null && $v !== '');
+    }
+
+    private function normalizeImpuestoList($value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        if ($this->isAssoc($value)) {
+            return [$value];
+        }
+
+        return array_values(array_filter($value, 'is_array'));
+    }
+
+    private function isAssoc(array $arr): bool
+    {
+        if ($arr === []) {
+            return false;
+        }
+
+        return array_keys($arr) !== range(0, count($arr) - 1);
     }
 
     private function normalizeInformacionGlobal(array $info): array

@@ -25,9 +25,11 @@ class FacturacionSoapClient
             $response = $client->__soapCall('GenerarCFDI40', [$payload]);
             $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
             $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
+            $this->validateSerializedRequest($this->lastRequest);
         } catch (SoapFault $fault) {
             $this->lastRequest = method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null;
             $this->lastResponse = method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null;
+            $this->validateSerializedRequest($this->lastRequest);
             throw $fault;
         }
 
@@ -86,6 +88,67 @@ class FacturacionSoapClient
         }
 
         return $config;
+    }
+
+    private function validateSerializedRequest(?string $xml): void
+    {
+        if ($xml === null || trim($xml) === '') {
+            error_log('[CFDI40][GenerarCFDI40] soap_request_validation=No hay XML en __getLastRequest().');
+            return;
+        }
+
+        $requiredNodes = [
+            'Credenciales',
+            'Usuario',
+            'Cuenta',
+            'Password',
+            'Emisor',
+            'Receptor',
+            'Conceptos',
+            'Concepto40R',
+            'Comprobante40R',
+        ];
+        $missing = [];
+        foreach ($requiredNodes as $node) {
+            if (!$this->containsXmlNode($xml, $node)) {
+                $missing[] = $node;
+            }
+        }
+
+        $badCredentialCasing = [];
+        foreach (['usuario', 'cuenta', 'password', 'UsuarioRemoto', 'user', 'pass'] as $badNode) {
+            if ($this->containsXmlNode($xml, $badNode)) {
+                $badCredentialCasing[] = $badNode;
+            }
+        }
+
+        if ($missing || $badCredentialCasing) {
+            $errors = [];
+            if ($missing) {
+                $errors[] = 'nodos faltantes en XML: ' . implode(', ', $missing);
+            }
+            if ($badCredentialCasing) {
+                $errors[] = 'nodos de credenciales inválidos detectados: ' . implode(', ', $badCredentialCasing);
+            }
+            error_log('[CFDI40][GenerarCFDI40] soap_request_validation=WARNING ' . implode('. ', $errors) . '.');
+            return;
+        }
+
+        error_log('[CFDI40][GenerarCFDI40] soap_request_validation=OK nodos y casing preservados.');
+    }
+
+    private function containsXmlNode(string $xml, string $node): bool
+    {
+        $doc = new DOMDocument();
+        $loaded = @$doc->loadXML($xml, LIBXML_NONET | LIBXML_NOBLANKS | LIBXML_NOERROR | LIBXML_NOWARNING);
+        if ($loaded) {
+            $xpath = new DOMXPath($doc);
+            $query = "//*[local-name()='{$node}']";
+            $nodes = $xpath->query($query);
+            return $nodes instanceof DOMNodeList && $nodes->length > 0;
+        }
+
+        return (bool)preg_match('/<([a-zA-Z0-9_]+:)?' . preg_quote($node, '/') . '(\\s|>|\\/)/u', $xml);
     }
 
     private function env(string $key, $default = null)
