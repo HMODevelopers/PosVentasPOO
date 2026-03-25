@@ -3146,24 +3146,55 @@ function getPayloadFacturacion(){
   const payload = {
     id_venta: Number(draft.venta.id_venta || $('#fac-id-venta').val() || 0),
     id_cliente_sat: Number(draft.receptor.id_cliente_fiscal || $('#fac-id-cliente-sat').val() || 0),
-    rfc: String(draft.receptor.rfc || '').trim().toUpperCase(),
-    nombre: String(draft.receptor.nombre || '').trim(),
-    nombre_comercial: String(draft.receptor.nombre_comercial || '').trim(),
-    correo: String(draft.receptor.correo || '').trim(),
-    codigo_postal: String(draft.receptor.codigo_postal || '').trim(),
-    regimen_fiscal: String(draft.receptor.regimen_fiscal || '').trim(),
-    uso_cfdi: String(draft.receptor.uso_cfdi || '').trim(),
-    residencia_fiscal: String(draft.receptor.residencia_fiscal || '').trim().toUpperCase(),
-    numero_registro_tributario: String(draft.receptor.numero_registro_tributario || '').trim(),
-    moneda: String(draft.comprobante.moneda || '').trim().toUpperCase(),
-    metodo_pago: String(draft.comprobante.metodo_pago || '').trim().toUpperCase(),
-    forma_pago: String(draft.comprobante.forma_pago || '').trim().toUpperCase(),
-    tipo_cambio: String(draft.comprobante.tipo_cambio || '').trim(),
-    condiciones_pago: String(draft.comprobante.condiciones_pago || '').trim(),
-    tipo_comprobante: String(draft.comprobante.tipo_comprobante || '').trim().toUpperCase(),
-    exportacion: String(draft.comprobante.exportacion || '').trim()
+    emisor: {
+      rfc: String(draft.emisor.rfc || '').trim().toUpperCase(),
+      nombre: String(draft.emisor.nombre || '').trim(),
+      regimen_fiscal: String(draft.emisor.regimen_fiscal || '').trim(),
+      lugar_expedicion: String(draft.emisor.lugar_expedicion || '').trim(),
+      serie: String(draft.emisor.serie || '').trim()
+    },
+    receptor: {
+      id_cliente_sat: Number(draft.receptor.id_cliente_fiscal || $('#fac-id-cliente-sat').val() || 0),
+      rfc: String(draft.receptor.rfc || '').trim().toUpperCase(),
+      nombre: String(draft.receptor.nombre || '').trim(),
+      nombre_comercial: String(draft.receptor.nombre_comercial || '').trim(),
+      correo: String(draft.receptor.correo || '').trim(),
+      domicilio_fiscal_receptor: String(draft.receptor.codigo_postal || '').trim(),
+      regimen_fiscal: String(draft.receptor.regimen_fiscal || '').trim(),
+      uso_cfdi: String(draft.receptor.uso_cfdi || '').trim(),
+      residencia_fiscal: String(draft.receptor.residencia_fiscal || '').trim().toUpperCase(),
+      numero_registro_tributario: String(draft.receptor.numero_registro_tributario || '').trim()
+    },
+    comprobante: {
+      moneda: String(draft.comprobante.moneda || '').trim().toUpperCase(),
+      metodo_pago: String(draft.comprobante.metodo_pago || '').trim().toUpperCase(),
+      forma_pago: String(draft.comprobante.forma_pago || '').trim().toUpperCase(),
+      tipo_cambio: String(draft.comprobante.tipo_cambio || '').trim(),
+      condiciones_pago: String(draft.comprobante.condiciones_pago || '').trim(),
+      tipo_comprobante: String(draft.comprobante.tipo_comprobante || '').trim().toUpperCase(),
+      exportacion: String(draft.comprobante.exportacion || '').trim()
+    },
+    totales: {
+      subtotal: Number(draft.venta.subtotal || 0),
+      descuento: Number(draft.venta.descuento || 0),
+      impuestos: Number(draft.venta.impuestos || 0),
+      total: Number(draft.venta.total || 0)
+    },
+    conceptos: Array.isArray(draft.venta.conceptos) ? draft.venta.conceptos : [],
+    draft_snapshot: {
+      emisor: draft.emisor || {},
+      receptor: draft.receptor || {},
+      comprobante: draft.comprobante || {}
+    }
   };
   console.debug('[FACTURACION][payload-js-enviado]', payload);
+  console.debug('[FACTURACION][trazabilidad-campos]', {
+    'emisor.rfc <- draft.emisor.rfc': payload?.emisor?.rfc,
+    'receptor.rfc <- draft.receptor.rfc': payload?.receptor?.rfc,
+    'receptor.regimen_fiscal <- draft.receptor.regimen_fiscal': payload?.receptor?.regimen_fiscal,
+    'comprobante.forma_pago <- draft.comprobante.forma_pago': payload?.comprobante?.forma_pago,
+    'comprobante.moneda <- draft.comprobante.moneda': payload?.comprobante?.moneda
+  });
   return payload;
 }
 
@@ -3322,8 +3353,8 @@ $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta
   $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Facturando...');
 
   console.debug('[FACTURACION][tipo_cambio][ajax-send]', {
-    moneda: payload.moneda,
-    tipo_cambio: payload.tipo_cambio
+    moneda: payload?.comprobante?.moneda,
+    tipo_cambio: payload?.comprobante?.tipo_cambio
   });
 
   $.post(VENTAS_URL, Object.assign({ accion:'facturar' }, payload), function(resp){

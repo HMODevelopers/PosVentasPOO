@@ -443,24 +443,16 @@ class VentasController
 
             global $pdo;
             $service = new FacturacionService($pdo);
+            $postBody = is_array($raw) && $raw ? $raw : $_POST;
             $facturacionInput = [
+                'id_venta' => $idVenta,
                 'id_cliente_sat' => $idClienteSat,
-                'rfc' => trim((string)($_POST['rfc'] ?? $_GET['rfc'] ?? $raw['rfc'] ?? '')),
-                'nombre' => trim((string)($_POST['nombre'] ?? $_GET['nombre'] ?? $raw['nombre'] ?? '')),
-                'nombre_comercial' => trim((string)($_POST['nombre_comercial'] ?? $_GET['nombre_comercial'] ?? $raw['nombre_comercial'] ?? '')),
-                'correo' => trim((string)($_POST['correo'] ?? $_GET['correo'] ?? $raw['correo'] ?? '')),
-                'codigo_postal' => trim((string)($_POST['codigo_postal'] ?? $_GET['codigo_postal'] ?? $raw['codigo_postal'] ?? '')),
-                'regimen_fiscal' => trim((string)($_POST['regimen_fiscal'] ?? $_GET['regimen_fiscal'] ?? $raw['regimen_fiscal'] ?? '')),
-                'uso_cfdi' => trim((string)($_POST['uso_cfdi'] ?? $_GET['uso_cfdi'] ?? $raw['uso_cfdi'] ?? '')),
-                'residencia_fiscal' => trim((string)($_POST['residencia_fiscal'] ?? $_GET['residencia_fiscal'] ?? $raw['residencia_fiscal'] ?? '')),
-                'numero_registro_tributario' => trim((string)($_POST['numero_registro_tributario'] ?? $_GET['numero_registro_tributario'] ?? $raw['numero_registro_tributario'] ?? '')),
-                'moneda' => trim((string)($_POST['moneda'] ?? $_GET['moneda'] ?? $raw['moneda'] ?? '')),
-                'metodo_pago' => trim((string)($_POST['metodo_pago'] ?? $_GET['metodo_pago'] ?? $raw['metodo_pago'] ?? '')),
-                'forma_pago' => trim((string)($_POST['forma_pago'] ?? $_GET['forma_pago'] ?? $raw['forma_pago'] ?? '')),
-                'tipo_cambio' => trim((string)($_POST['tipo_cambio'] ?? $_GET['tipo_cambio'] ?? $raw['tipo_cambio'] ?? '')),
-                'condiciones_pago' => trim((string)($_POST['condiciones_pago'] ?? $_GET['condiciones_pago'] ?? $raw['condiciones_pago'] ?? '')),
-                'tipo_comprobante' => trim((string)($_POST['tipo_comprobante'] ?? $_GET['tipo_comprobante'] ?? $raw['tipo_comprobante'] ?? '')),
-                'exportacion' => trim((string)($_POST['exportacion'] ?? $_GET['exportacion'] ?? $raw['exportacion'] ?? '')),
+                'emisor' => is_array($postBody['emisor'] ?? null) ? $postBody['emisor'] : [],
+                'receptor' => is_array($postBody['receptor'] ?? null) ? $postBody['receptor'] : [],
+                'comprobante' => is_array($postBody['comprobante'] ?? null) ? $postBody['comprobante'] : [],
+                'totales' => is_array($postBody['totales'] ?? null) ? $postBody['totales'] : [],
+                'conceptos' => is_array($postBody['conceptos'] ?? null) ? $postBody['conceptos'] : [],
+                'draft_snapshot' => is_array($postBody['draft_snapshot'] ?? null) ? $postBody['draft_snapshot'] : [],
             ];
             error_log('[FACTURACION][payload-php-recibido] ' . json_encode([
                 'id_venta' => $idVenta,
@@ -468,8 +460,8 @@ class VentasController
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             error_log('[FACTURACION][tipo_cambio][php-recibido] ' . json_encode([
                 'id_venta' => $idVenta,
-                'moneda' => $facturacionInput['moneda'] ?? null,
-                'tipo_cambio' => $facturacionInput['tipo_cambio'] ?? null,
+                'moneda' => $facturacionInput['comprobante']['moneda'] ?? null,
+                'tipo_cambio' => $facturacionInput['comprobante']['tipo_cambio'] ?? null,
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $resp = $service->facturarVenta($idVenta, $facturacionInput);
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);

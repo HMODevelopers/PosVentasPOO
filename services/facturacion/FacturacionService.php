@@ -36,6 +36,7 @@ class FacturacionService
     public function facturarVenta(int $idVenta, array $facturacionInput = []): array
     {
         try {
+            $facturacionInput = $this->normalizarFacturacionInput($idVenta, $facturacionInput);
             $ctx = $this->model->loadContext($idVenta);
             if (!empty($facturacionInput)) {
                 $idClienteSat = (int)($facturacionInput['id_cliente_sat'] ?? 0);
@@ -277,6 +278,61 @@ class FacturacionService
             $this->soapClient = new FacturacionSoapClient();
         }
         return $this->soapClient;
+    }
+
+    private function normalizarFacturacionInput(int $idVenta, array $input): array
+    {
+        $ambiguousRootKeys = [
+            'rfc', 'nombre', 'regimen_fiscal', 'codigo_postal', 'uso_cfdi',
+            'moneda', 'metodo_pago', 'forma_pago', 'tipo_cambio', 'condiciones_pago',
+            'tipo_comprobante', 'exportacion',
+        ];
+        $presentAmbiguous = array_values(array_intersect($ambiguousRootKeys, array_keys($input)));
+        if ($presentAmbiguous) {
+            throw new RuntimeException(
+                'facturacion_input inválido: se detectaron llaves ambiguas en raíz [' . implode(', ', $presentAmbiguous) . ']. ' .
+                'Use emisor.*, receptor.*, comprobante.*, totales.* y conceptos[].'
+            );
+        }
+
+        $normalized = [
+            'id_venta' => $idVenta,
+            'id_cliente_sat' => (int)($input['id_cliente_sat'] ?? 0),
+            'emisor' => is_array($input['emisor'] ?? null) ? $input['emisor'] : [],
+            'receptor' => is_array($input['receptor'] ?? null) ? $input['receptor'] : [],
+            'comprobante' => is_array($input['comprobante'] ?? null) ? $input['comprobante'] : [],
+            'totales' => is_array($input['totales'] ?? null) ? $input['totales'] : [],
+            'conceptos' => is_array($input['conceptos'] ?? null) ? $input['conceptos'] : [],
+            'draft_snapshot' => is_array($input['draft_snapshot'] ?? null) ? $input['draft_snapshot'] : [],
+        ];
+
+        $requiredMap = [
+            'emisor.rfc' => trim((string)($normalized['emisor']['rfc'] ?? '')),
+            'receptor.rfc' => trim((string)($normalized['receptor']['rfc'] ?? '')),
+            'receptor.uso_cfdi' => trim((string)($normalized['receptor']['uso_cfdi'] ?? '')),
+            'receptor.regimen_fiscal' => trim((string)($normalized['receptor']['regimen_fiscal'] ?? '')),
+            'receptor.domicilio_fiscal_receptor' => trim((string)($normalized['receptor']['domicilio_fiscal_receptor'] ?? '')),
+            'comprobante.moneda' => trim((string)($normalized['comprobante']['moneda'] ?? '')),
+        ];
+        foreach ($requiredMap as $path => $value) {
+            if ($value === '') {
+                throw new RuntimeException("Falta el campo obligatorio {$path} en facturacion_input.");
+            }
+        }
+
+        error_log('[FACTURACION][normalizarFacturacionInput] ' . json_encode([
+            'id_venta' => $idVenta,
+            'trazabilidad' => [
+                'emisor.rfc <- facturacion_input.emisor.rfc' => $normalized['emisor']['rfc'] ?? null,
+                'receptor.rfc <- facturacion_input.receptor.rfc' => $normalized['receptor']['rfc'] ?? null,
+                'receptor.regimen_fiscal <- facturacion_input.receptor.regimen_fiscal' => $normalized['receptor']['regimen_fiscal'] ?? null,
+                'receptor.uso_cfdi <- facturacion_input.receptor.uso_cfdi' => $normalized['receptor']['uso_cfdi'] ?? null,
+                'comprobante.forma_pago <- facturacion_input.comprobante.forma_pago' => $normalized['comprobante']['forma_pago'] ?? null,
+                'comprobante.moneda <- facturacion_input.comprobante.moneda' => $normalized['comprobante']['moneda'] ?? null,
+            ],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        return $normalized;
     }
 
     private function handleException(array $cfdi, int $idVenta, ?string $payloadJson, Throwable $e, string $origen, string $codigo): array

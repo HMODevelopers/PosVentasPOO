@@ -169,9 +169,13 @@ class FacturacionModel
             throw new RuntimeException('El receptor seleccionado no existe en clientes_sat.');
         }
 
+        $inputReceptor = is_array($data['receptor'] ?? null) ? $data['receptor'] : [];
+        $inputComprobante = is_array($data['comprobante'] ?? null) ? $data['comprobante'] : [];
+        $inputEmisor = is_array($data['emisor'] ?? null) ? $data['emisor'] : [];
+
         $ctx['cliente_seleccionado'] = $cliente;
         $receptorBase = $this->buildReceptorFromClienteSat($cliente);
-        $receptorEditado = $this->normalizarDatosFiscales($data);
+        $receptorEditado = $this->normalizarReceptorInput($inputReceptor);
         $receptorEditado['cliente_sat_id'] = $idClienteSat;
         $ctx['receptor'] = array_merge($receptorBase, array_filter($receptorEditado, static function ($value) {
             return $value !== null && $value !== '';
@@ -183,8 +187,20 @@ class FacturacionModel
         $venta = is_array($ctx['venta'] ?? null) ? $ctx['venta'] : [];
         $ctx['forma_pago'] = array_merge(
             is_array($ctx['forma_pago'] ?? null) ? $ctx['forma_pago'] : [],
-            $this->normalizarDatosComprobante($data, $venta)
+            $this->normalizarComprobanteInput($inputComprobante)
         );
+
+        error_log('[FACTURACION][fuente-datos-fiscales] ' . json_encode([
+            'emisor_fuente' => 'config_emisor_interna',
+            'receptor_fuente' => 'modal_facturacion/clientes_sat',
+            'emisor_input_modal' => $inputEmisor,
+            'receptor_input_modal' => [
+                'rfc' => $inputReceptor['rfc'] ?? null,
+                'nombre' => $inputReceptor['nombre'] ?? null,
+                'regimen_fiscal' => $inputReceptor['regimen_fiscal'] ?? null,
+                'uso_cfdi' => $inputReceptor['uso_cfdi'] ?? null,
+            ],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         if (is_array($ctx['factura_draft'] ?? null)) {
             $ctx['factura_draft']['receptor'] = [
@@ -824,6 +840,19 @@ class FacturacionModel
         ];
     }
 
+    private function normalizarComprobanteInput(array $comprobante): array
+    {
+        return [
+            'moneda' => strtoupper(trim((string)($comprobante['moneda'] ?? ''))),
+            'metodo_pago' => strtoupper(trim((string)($comprobante['metodo_pago'] ?? ''))),
+            'forma_pago' => strtoupper(trim((string)($comprobante['forma_pago'] ?? ''))),
+            'condiciones_pago' => trim((string)($comprobante['condiciones_pago'] ?? '')),
+            'tipo_cambio' => trim((string)($comprobante['tipo_cambio'] ?? '')),
+            'tipo_comprobante' => strtoupper(trim((string)($comprobante['tipo_comprobante'] ?? ''))),
+            'exportacion' => trim((string)($comprobante['exportacion'] ?? '')),
+        ];
+    }
+
     private function guardarComprobanteVenta(int $idVenta, array $data, array $venta, array $receptor): void
     {
         if (!$this->schema->tableExists('ventas_cfdi')) {
@@ -935,6 +964,26 @@ class FacturacionModel
         ];
         $payload['es_publico_general'] = $this->esPublicoGeneralReceptor($payload);
 
+        return $payload;
+    }
+
+    private function normalizarReceptorInput(array $receptor): array
+    {
+        $idClienteSat = (int)($receptor['id_cliente_sat'] ?? $receptor['id_cliente_fiscal'] ?? 0);
+
+        $payload = [
+            'nombre' => trim((string)($receptor['nombre'] ?? '')),
+            'nombre_comercial' => trim((string)($receptor['nombre_comercial'] ?? '')),
+            'rfc' => strtoupper(trim((string)($receptor['rfc'] ?? ''))),
+            'correo' => trim((string)($receptor['correo'] ?? '')),
+            'domicilio_fiscal_receptor' => trim((string)($receptor['domicilio_fiscal_receptor'] ?? '')),
+            'regimen_fiscal_receptor' => trim((string)($receptor['regimen_fiscal'] ?? '')),
+            'uso_cfdi' => trim((string)($receptor['uso_cfdi'] ?? '')),
+            'num_reg_id_trib' => trim((string)($receptor['numero_registro_tributario'] ?? '')),
+            'residencia_fiscal' => strtoupper(trim((string)($receptor['residencia_fiscal'] ?? ''))),
+            'cliente_sat_id' => $idClienteSat > 0 ? $idClienteSat : null,
+        ];
+        $payload['es_publico_general'] = $this->esPublicoGeneralReceptor($payload);
         return $payload;
     }
 
