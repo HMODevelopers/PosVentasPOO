@@ -3002,6 +3002,13 @@ function renderFacturacionPreview(resp, idVenta){
   $('#fac-total-descuento').text(mxn(draft.venta.descuento || 0));
   $('#fac-total-impuestos').text(mxn(draft.venta.impuestos || 0));
   $('#fac-total').text(mxn(draft.venta.total || 0));
+  console.debug('[FACTURACION][modal-resumen]', {
+    id_venta: idVenta,
+    subtotal: Number(draft.venta.subtotal || 0),
+    descuento: Number(draft.venta.descuento || 0),
+    impuestos: Number(draft.venta.impuestos || 0),
+    total: Number(draft.venta.total || 0)
+  });
   $('#fac-importe-letra').text(ctx?.totales?.importe_letra || 'No disponible en el flujo actual.');
   $('#fac-estatus-fiscal').html(getBadgeFiscal(estatusFiscal));
 
@@ -3010,26 +3017,29 @@ function renderFacturacionPreview(resp, idVenta){
   fillFacturacionComprobante(draft);
   setFacturacionClienteSeleccionado(clienteSeleccionado);
 
+  const conceptosPreview = Array.isArray(draft?.venta?.conceptos) ? draft.venta.conceptos : [];
   let detalleHtml = '';
-  if (!detalles.length) {
+  if (!conceptosPreview.length && !detalles.length) {
     detalleHtml = '<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>';
   } else {
-    detalles.forEach(d => {
-      const cantidad = Number(d.cantidad || 0);
-      const pu = Number(d.precio_unitario || 0);
-      const importe = Number(d.subtotal ?? (cantidad * pu));
-      const objetoImp = d.objeto_imp || d.producto_objeto_imp || '—';
-      const tasaIva = Number(d.tasa_iva ?? d.producto_tasa_iva ?? 0);
-      const ivaImporte = Number(d.importe_iva ?? (objetoImp === '02' && tasaIva > 0 ? (importe * tasaIva) : 0));
+    const rows = conceptosPreview.length ? conceptosPreview.map((c, idx) => ({ concepto: c, detalle: detalles[idx] || {} })) : detalles.map((d, idx) => ({ concepto: null, detalle: d, index: idx }));
+    rows.forEach(({ concepto, detalle }) => {
+      const cantidad = Number(concepto?.Cantidad ?? detalle?.cantidad ?? 0);
+      const pu = Number(concepto?.ValorUnitario ?? (detalle?.precio_unitario || 0));
+      const importe = Number(concepto?.Importe ?? detalle?.subtotal ?? (cantidad * pu));
+      const objetoImp = concepto?.ObjetoImp || detalle?.objeto_imp || detalle?.producto_objeto_imp || '—';
+      const traslado = Array.isArray(concepto?.Traslados) ? concepto.Traslados[0] : null;
+      const tasaIva = Number(traslado?.TasaOCuota ?? detalle?.tasa_iva ?? detalle?.producto_tasa_iva ?? 0);
+      const ivaImporte = Number(traslado?.Importe ?? detalle?.importe_iva ?? 0);
       const impuestos = ivaImporte > 0 ? `IVA ${((tasaIva || 0) * 100).toFixed(2)}%: ${mxn(ivaImporte)}` : '—';
       detalleHtml += `
         <tr>
           <td class="text-center">${fix2(cantidad)}</td>
-          <td>${d.clave_prod_serv_sat || '—'}</td>
-          <td>${d.producto_codigo || d.codigo || '—'}</td>
-          <td>${d.clave_unidad_sat || '—'}</td>
-          <td>${d.unidad_sat_descripcion || '—'}</td>
-          <td>${d.descripcion || d.producto_descripcion || d.producto || '—'}</td>
+          <td>${concepto?.ClaveProdServ || detalle?.clave_prod_serv_sat || '—'}</td>
+          <td>${concepto?.NoIdentificacion || detalle?.producto_codigo || detalle?.codigo || '—'}</td>
+          <td>${concepto?.ClaveUnidad || detalle?.clave_unidad_sat || '—'}</td>
+          <td>${concepto?.Unidad || detalle?.unidad_sat_descripcion || '—'}</td>
+          <td>${concepto?.Descripcion || detalle?.descripcion || detalle?.producto_descripcion || detalle?.producto || '—'}</td>
           <td class="text-right">${mxn(pu)}</td>
           <td class="text-right">${mxn(importe)}</td>
           <td class="text-center">${objetoImp}</td>
@@ -3071,7 +3081,7 @@ function cargarPreviewFacturacion(idVenta){
 
 function getPayloadFacturacion(){
   const draft = getFacturaDraft();
-  return {
+  const payload = {
     id_venta: Number(draft.venta.id_venta || $('#fac-id-venta').val() || 0),
     id_cliente_sat: Number(draft.receptor.id_cliente_fiscal || $('#fac-id-cliente-sat').val() || 0),
     rfc: String(draft.receptor.rfc || '').trim().toUpperCase(),
@@ -3091,6 +3101,8 @@ function getPayloadFacturacion(){
     tipo_comprobante: String(draft.comprobante.tipo_comprobante || '').trim().toUpperCase(),
     exportacion: String(draft.comprobante.exportacion || '').trim()
   };
+  console.debug('[FACTURACION][payload-js-enviado]', payload);
+  return payload;
 }
 
 function abrirModalFacturacion(idVenta, folio){

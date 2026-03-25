@@ -462,6 +462,10 @@ class VentasController
                 'tipo_comprobante' => trim((string)($_POST['tipo_comprobante'] ?? $_GET['tipo_comprobante'] ?? $raw['tipo_comprobante'] ?? '')),
                 'exportacion' => trim((string)($_POST['exportacion'] ?? $_GET['exportacion'] ?? $raw['exportacion'] ?? '')),
             ];
+            error_log('[FACTURACION][payload-php-recibido] ' . json_encode([
+                'id_venta' => $idVenta,
+                'facturacion_input' => $facturacionInput,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $resp = $service->facturarVenta($idVenta, $facturacionInput);
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;

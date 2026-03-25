@@ -76,6 +76,14 @@ class FacturacionService
         $ctx['referencia'] = $cfdi['referencia'] ?? $referencia;
         $ctx['fecha_emision'] = date('Y-m-d\TH:i:s');
         $payloadJson = null;
+        error_log('[FACTURACION][ctx-normalizado] ' . json_encode([
+            'id_venta' => $idVenta,
+            'referencia' => $ctx['referencia'],
+            'totales' => $ctx['totales'] ?? [],
+            'forma_pago' => $ctx['forma_pago'] ?? [],
+            'conceptos_count' => count($ctx['conceptos'] ?? []),
+            'primer_concepto' => ($ctx['conceptos'][0] ?? null),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         try {
             $payload = $this->payloadBuilder->build($ctx, $this->soapClient()->getConfig());
