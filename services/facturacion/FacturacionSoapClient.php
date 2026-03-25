@@ -33,27 +33,34 @@ class FacturacionSoapClient
     public function timbrar(array $payload): array
     {
         $normalizedPayload = $this->normalizePayloadForGenerarCfdi40($payload);
-        $operationWrapper = $this->detectInternalWrapperName();
-        $xml = $this->buildSoapEnvelope($normalizedPayload, $operationWrapper);
 
         $headers = [
             'Content-Type: text/xml; charset=utf-8',
             'SOAPAction: "' . self::SOAP_ACTION_GENERAR_CFDI40 . '"',
-            'Content-Length: ' . strlen($xml),
+            'Content-Length: ' . strlen($this->buildSoapEnvelope($normalizedPayload)),
         ];
+
+        $xml = $this->buildSoapEnvelope($normalizedPayload);
+        $headers[2] = 'Content-Length: ' . strlen($xml);
 
         $this->lastRequest = $xml;
         $this->lastRequestHeaders = implode("\r\n", $headers);
 
+        $payloadShape = $this->buildPayloadShapeSummary($normalizedPayload);
+        $payloadValidation = $this->validatePayloadStructure($normalizedPayload);
+
         error_log('[CFDI40][GenerarCFDI40] payload_normalized=' . json_encode($this->normalizeForDebug($normalizedPayload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        error_log('[CFDI40][GenerarCFDI40] payload_shape=' . json_encode($this->buildPayloadShapeSummary($normalizedPayload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        error_log('[CFDI40][GenerarCFDI40] payload_validation=' . json_encode($this->validatePayloadStructure($normalizedPayload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] payload_shape=' . json_encode($payloadShape, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] payload_validation=' . json_encode($payloadValidation, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] hasWrapperParameters=' . ($payloadShape['hasWrapperParameters'] ? 'true' : 'false'));
+        error_log('[CFDI40][GenerarCFDI40] generarCFDI40RootChildren=' . json_encode($payloadShape['generarCFDI40RootChildren'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] comprobanteHasImpuestos=' . ($payloadShape['comprobanteNested']['Impuestos'] ? 'true' : 'false'));
+        error_log('[CFDI40][GenerarCFDI40] impuestosGlobalesResumen=' . json_encode($payloadShape['impuestosGlobalesResumen'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] impuestosConceptosResumen=' . json_encode($payloadShape['impuestosConceptosResumen'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         error_log('[CFDI40][GenerarCFDI40] curl_endpoint=' . $this->config['endpoint']);
         error_log('[CFDI40][GenerarCFDI40] curl_headers=' . json_encode($headers, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        error_log('[CFDI40][GenerarCFDI40] soap_manual_wrapper_name=' . ($operationWrapper ?? 'none'));
-        error_log('[CFDI40][GenerarCFDI40] soap_manual_request_xml=' . $xml);
+        error_log('[CFDI40][GenerarCFDI40] xml_final=' . $xml);
 
-        $rawResponseHeaders = '';
         $curl = curl_init($this->config['endpoint']);
         curl_setopt_array($curl, [
             CURLOPT_POST => true,
@@ -75,14 +82,13 @@ class FacturacionSoapClient
             $this->lastResponseHeaders = '';
             $this->lastResponse = '';
         } else {
-            $rawResponseHeaders = substr($rawResponse, 0, $headerSize);
+            $this->lastResponseHeaders = substr($rawResponse, 0, $headerSize);
             $this->lastResponse = (string)substr($rawResponse, $headerSize);
-            $this->lastResponseHeaders = $rawResponseHeaders;
         }
 
         curl_close($curl);
 
-        error_log('[CFDI40][GenerarCFDI40] curl_http_code=' . (string)$httpCode);
+        error_log('[CFDI40][GenerarCFDI40] http_code=' . (string)$httpCode);
         error_log('[CFDI40][GenerarCFDI40] curl_errno=' . (string)$curlErrno);
         error_log('[CFDI40][GenerarCFDI40] curl_error=' . $curlError);
         error_log('[CFDI40][GenerarCFDI40] soap_manual_response_headers=' . ($this->lastResponseHeaders ?? ''));
@@ -102,8 +108,8 @@ class FacturacionSoapClient
             $fault = $responseArray['Fault'] ?? [];
             $faultCode = is_array($fault) ? (string)($fault['faultcode'] ?? 'Server') : 'Server';
             $faultString = is_array($fault) ? (string)($fault['faultstring'] ?? 'Error SOAP en GenerarCFDI40') : 'Error SOAP en GenerarCFDI40';
-            error_log('[CFDI40][GenerarCFDI40] soap_faultcode=' . $faultCode);
-            error_log('[CFDI40][GenerarCFDI40] soap_faultstring=' . $faultString);
+            error_log('[CFDI40][GenerarCFDI40] faultcode=' . $faultCode);
+            error_log('[CFDI40][GenerarCFDI40] faultstring=' . $faultString);
             throw new SoapFault($faultCode, $faultString);
         }
 
@@ -145,7 +151,6 @@ class FacturacionSoapClient
             'usuario' => $this->env($prefix . 'USUARIO'),
             'cuenta' => $this->env($prefix . 'CUENTA'),
             'password' => $this->env($prefix . 'PASSWORD'),
-            'wrapper' => $this->env($prefix . 'GENERAR_CFDI40_WRAPPER'),
         ];
 
         foreach (['wsdl', 'endpoint', 'usuario', 'cuenta', 'password'] as $key) {
@@ -178,6 +183,10 @@ class FacturacionSoapClient
     {
         $root = $this->toAssocArray($payload);
 
+        if (isset($root['parameters']) && is_array($root['parameters'])) {
+            $root = $this->toAssocArray($root['parameters']);
+        }
+
         $credenciales = $this->normalizeCredencialesNode($root);
 
         $comprobanteRoot = $this->toAssocArray(
@@ -195,6 +204,9 @@ class FacturacionSoapClient
         $conceptos = $this->normalizeConceptosNode($conceptosSource);
 
         $impuestos = $this->normalizeOptionalNode($comprobanteRoot['Impuestos'] ?? $root['Impuestos'] ?? $root['impuestos'] ?? null);
+        $impuestosDesdeConceptos = $this->buildImpuestosFromConceptos($conceptos);
+        $impuestos = $this->mergeImpuestos($impuestos, $impuestosDesdeConceptos);
+
         $cfdisRelacionados = $this->normalizeOptionalNode($comprobanteRoot['CfdisRelacionados'] ?? $root['CfdisRelacionados'] ?? null);
 
         $infoGlobal = $this->normalizeOptionalNode($comprobanteRoot['InformacionGlobal'] ?? $root['InformacionGlobal'] ?? $root['informacion_global'] ?? null);
@@ -350,6 +362,148 @@ class FacturacionSoapClient
         return array_filter($arrayNode, fn($value) => !$this->isEmptyNodeValue($value));
     }
 
+    private function buildImpuestosFromConceptos(array $conceptosNode): array
+    {
+        $conceptos = $conceptosNode['Concepto40R'] ?? [];
+        if (!is_array($conceptos) || $conceptos === []) {
+            return [];
+        }
+
+        $trasladosAgrupados = [];
+        $retencionesAgrupadas = [];
+        $totalTraslados = 0.0;
+        $totalRetenciones = 0.0;
+
+        foreach ($conceptos as $concepto) {
+            if (!is_array($concepto)) {
+                continue;
+            }
+
+            $traslados = $concepto['TrasladoConcepto40R'] ?? [];
+            if ($traslados !== []) {
+                if ($this->isAssoc($traslados)) {
+                    $traslados = [$traslados];
+                }
+                foreach ($traslados as $traslado) {
+                    if (!is_array($traslado)) {
+                        continue;
+                    }
+                    $impuesto = (string)($traslado['Impuesto'] ?? '');
+                    $tipoFactor = (string)($traslado['TipoFactor'] ?? '');
+                    $tasaOCuota = isset($traslado['TasaOCuota']) && $traslado['TasaOCuota'] !== ''
+                        ? $this->formatDecimal($traslado['TasaOCuota'], 6)
+                        : '';
+                    $importe = (float)($traslado['Importe'] ?? 0);
+
+                    $clave = implode('|', [$impuesto, $tipoFactor, $tasaOCuota]);
+                    if (!isset($trasladosAgrupados[$clave])) {
+                        $trasladosAgrupados[$clave] = [
+                            'Impuesto' => $impuesto,
+                            'TipoFactor' => $tipoFactor,
+                            'TasaOCuota' => $tasaOCuota,
+                            'Importe' => 0.0,
+                        ];
+                    }
+                    $trasladosAgrupados[$clave]['Importe'] += $importe;
+                    $totalTraslados += $importe;
+                }
+            }
+
+            $retenciones = $concepto['RetencionConcepto40R'] ?? [];
+            if ($retenciones !== []) {
+                if ($this->isAssoc($retenciones)) {
+                    $retenciones = [$retenciones];
+                }
+                foreach ($retenciones as $retencion) {
+                    if (!is_array($retencion)) {
+                        continue;
+                    }
+                    $impuesto = (string)($retencion['Impuesto'] ?? '');
+                    $tipoFactor = (string)($retencion['TipoFactor'] ?? '');
+                    $tasaOCuota = isset($retencion['TasaOCuota']) && $retencion['TasaOCuota'] !== ''
+                        ? $this->formatDecimal($retencion['TasaOCuota'], 6)
+                        : '';
+                    $importe = (float)($retencion['Importe'] ?? 0);
+
+                    $clave = implode('|', [$impuesto, $tipoFactor, $tasaOCuota]);
+                    if (!isset($retencionesAgrupadas[$clave])) {
+                        $retencionesAgrupadas[$clave] = [
+                            'Impuesto' => $impuesto,
+                            'TipoFactor' => $tipoFactor,
+                            'TasaOCuota' => $tasaOCuota,
+                            'Importe' => 0.0,
+                        ];
+                    }
+                    $retencionesAgrupadas[$clave]['Importe'] += $importe;
+                    $totalRetenciones += $importe;
+                }
+            }
+        }
+
+        $impuestos = [];
+
+        if ($totalTraslados > 0) {
+            $impuestos['TotalImpuestosTrasladados'] = $this->formatDecimal($totalTraslados, 2);
+            $impuestos['Traslados'] = [
+                'Traslado40R' => array_values(array_map(function (array $row): array {
+                    $out = [
+                        'Impuesto' => $row['Impuesto'],
+                        'TipoFactor' => $row['TipoFactor'],
+                        'Importe' => $this->formatDecimal($row['Importe'], 2),
+                    ];
+                    if ($row['TasaOCuota'] !== '') {
+                        $out['TasaOCuota'] = $row['TasaOCuota'];
+                    }
+                    return $out;
+                }, $trasladosAgrupados)),
+            ];
+        }
+
+        if ($totalRetenciones > 0) {
+            $impuestos['TotalImpuestosRetenidos'] = $this->formatDecimal($totalRetenciones, 2);
+            $impuestos['Retenciones'] = [
+                'Retencion40R' => array_values(array_map(function (array $row): array {
+                    $out = [
+                        'Impuesto' => $row['Impuesto'],
+                        'Importe' => $this->formatDecimal($row['Importe'], 2),
+                    ];
+                    if ($row['TipoFactor'] !== '') {
+                        $out['TipoFactor'] = $row['TipoFactor'];
+                    }
+                    if ($row['TasaOCuota'] !== '') {
+                        $out['TasaOCuota'] = $row['TasaOCuota'];
+                    }
+                    return $out;
+                }, $retencionesAgrupadas)),
+            ];
+        }
+
+        return array_filter($impuestos, fn($value) => !$this->isEmptyNodeValue($value));
+    }
+
+    private function mergeImpuestos(array $impuestosActuales, array $impuestosCalculados): array
+    {
+        if ($impuestosActuales === []) {
+            return $impuestosCalculados;
+        }
+
+        $merged = $impuestosActuales;
+
+        foreach (['TotalImpuestosTrasladados', 'TotalImpuestosRetenidos'] as $field) {
+            if ((!isset($merged[$field]) || $this->isEmptyNodeValue($merged[$field])) && isset($impuestosCalculados[$field])) {
+                $merged[$field] = $impuestosCalculados[$field];
+            }
+        }
+
+        foreach (['Traslados', 'Retenciones'] as $field) {
+            if ((!isset($merged[$field]) || $this->isEmptyNodeValue($merged[$field])) && isset($impuestosCalculados[$field])) {
+                $merged[$field] = $impuestosCalculados[$field];
+            }
+        }
+
+        return array_filter($merged, fn($value) => !$this->isEmptyNodeValue($value));
+    }
+
     private function validateTotalsConsistency(array $comprobante): void
     {
         $conceptos = $comprobante['Conceptos']['Concepto40R'] ?? [];
@@ -388,19 +542,17 @@ class FacturacionSoapClient
             $warnings[] = 'Total no coincide con SubTotal-Descuento+Trasladados-Retenidos.';
         }
 
-        if ($warnings !== []) {
-            error_log('[CFDI40][GenerarCFDI40] payload_totals_warnings=' . json_encode([
-                'warnings' => $warnings,
-                'sumImporteConceptos' => $this->formatDecimal($sumImporte, 2),
-                'sumDescuentoConceptos' => $this->formatDecimal($sumDescuento, 2),
-                'subTotal' => $this->formatDecimal($subtotal, 2),
-                'descuento' => $this->formatDecimal($descuento, 2),
-                'total' => $this->formatDecimal($total, 2),
-                'totalImpuestosTrasladados' => $this->formatDecimal($impTras, 2),
-                'totalImpuestosRetenidos' => $this->formatDecimal($impRet, 2),
-                'expectedTotal' => $this->formatDecimal($expectedTotal, 2),
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        }
+        error_log('[CFDI40][GenerarCFDI40] payload_totals=' . json_encode([
+            'sumImporteConceptos' => $this->formatDecimal($sumImporte, 2),
+            'sumDescuentoConceptos' => $this->formatDecimal($sumDescuento, 2),
+            'subTotal' => $this->formatDecimal($subtotal, 2),
+            'descuento' => $this->formatDecimal($descuento, 2),
+            'total' => $this->formatDecimal($total, 2),
+            'sumaImpuestosTrasladados' => $this->formatDecimal($impTras, 2),
+            'sumaImpuestosRetenidos' => $this->formatDecimal($impRet, 2),
+            'expectedTotal' => $this->formatDecimal($expectedTotal, 2),
+            'warnings' => $warnings,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
     private function normalizeComprobanteNode($comprobante): array
@@ -434,7 +586,12 @@ class FacturacionSoapClient
     private function buildPayloadShapeSummary(array $payload): array
     {
         $comprobante = $payload['Comprobante40R'] ?? [];
+        $impuestos = $this->toAssocArray($comprobante['Impuestos'] ?? []);
+        $rootChildren = array_keys($payload);
+
         $shape = [
+            'hasWrapperParameters' => isset($payload['parameters']) || isset($payload['Parameters']),
+            'generarCFDI40RootChildren' => $rootChildren,
             'hasCredenciales' => isset($payload['Credenciales']) && is_array($payload['Credenciales']) && $payload['Credenciales'] !== [],
             'credencialesFields' => array_keys($payload['Credenciales'] ?? []),
             'hasComprobante40R' => isset($payload['Comprobante40R']) && is_array($payload['Comprobante40R']) && $payload['Comprobante40R'] !== [],
@@ -443,23 +600,85 @@ class FacturacionSoapClient
                 'Emisor' => isset($comprobante['Emisor']) && is_array($comprobante['Emisor']) && $comprobante['Emisor'] !== [],
                 'Receptor' => isset($comprobante['Receptor']) && is_array($comprobante['Receptor']) && $comprobante['Receptor'] !== [],
                 'Conceptos' => isset($comprobante['Conceptos']['Concepto40R']) && is_array($comprobante['Conceptos']['Concepto40R']),
-                'Impuestos' => isset($comprobante['Impuestos']) && is_array($comprobante['Impuestos']),
-                'InformacionGlobal' => isset($comprobante['InformacionGlobal']) && is_array($comprobante['InformacionGlobal']),
-                'CfdisRelacionados' => isset($comprobante['CfdisRelacionados']) && is_array($comprobante['CfdisRelacionados']),
+                'Impuestos' => isset($comprobante['Impuestos']) && is_array($comprobante['Impuestos']) && $comprobante['Impuestos'] !== [],
+                'InformacionGlobal' => isset($comprobante['InformacionGlobal']) && is_array($comprobante['InformacionGlobal']) && $comprobante['InformacionGlobal'] !== [],
+                'CfdisRelacionados' => isset($comprobante['CfdisRelacionados']) && is_array($comprobante['CfdisRelacionados']) && $comprobante['CfdisRelacionados'] !== [],
                 'Referencia' => isset($comprobante['Referencia']) && !$this->isEmptyNodeValue($comprobante['Referencia']),
             ],
             'conceptosCount' => count($comprobante['Conceptos']['Concepto40R'] ?? []),
+            'impuestosGlobalesResumen' => [
+                'hasImpuestos' => $impuestos !== [],
+                'totalImpuestosTrasladados' => $impuestos['TotalImpuestosTrasladados'] ?? null,
+                'totalImpuestosRetenidos' => $impuestos['TotalImpuestosRetenidos'] ?? null,
+                'trasladosCount' => count($impuestos['Traslados']['Traslado40R'] ?? []),
+                'retencionesCount' => count($impuestos['Retenciones']['Retencion40R'] ?? []),
+            ],
+            'impuestosConceptosResumen' => $this->buildImpuestosConceptosResumen($comprobante['Conceptos']['Concepto40R'] ?? []),
         ];
 
         return $shape;
+    }
+
+    private function buildImpuestosConceptosResumen(array $conceptos): array
+    {
+        $traslados = 0;
+        $retenciones = 0;
+        $trasladadoImporte = 0.0;
+        $retenidoImporte = 0.0;
+
+        foreach ($conceptos as $concepto) {
+            if (!is_array($concepto)) {
+                continue;
+            }
+
+            $cTraslados = $concepto['TrasladoConcepto40R'] ?? [];
+            if (is_array($cTraslados)) {
+                if ($this->isAssoc($cTraslados)) {
+                    $cTraslados = [$cTraslados];
+                }
+                foreach ($cTraslados as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $traslados++;
+                    $trasladadoImporte += (float)($item['Importe'] ?? 0);
+                }
+            }
+
+            $cRetenciones = $concepto['RetencionConcepto40R'] ?? [];
+            if (is_array($cRetenciones)) {
+                if ($this->isAssoc($cRetenciones)) {
+                    $cRetenciones = [$cRetenciones];
+                }
+                foreach ($cRetenciones as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $retenciones++;
+                    $retenidoImporte += (float)($item['Importe'] ?? 0);
+                }
+            }
+        }
+
+        return [
+            'trasladosCount' => $traslados,
+            'retencionesCount' => $retenciones,
+            'trasladadoImporte' => $this->formatDecimal($trasladadoImporte, 2),
+            'retenidoImporte' => $this->formatDecimal($retenidoImporte, 2),
+        ];
     }
 
     private function validatePayloadStructure(array $payload): array
     {
         $issues = [];
 
-        if (array_keys($payload) !== ['Credenciales', 'Comprobante40R']) {
-            $issues[] = 'El payload raíz de GenerarCFDI40 debe contener solo Credenciales y Comprobante40R.';
+        if (isset($payload['parameters']) || isset($payload['Parameters'])) {
+            $issues[] = 'No debe existir wrapper parameters en GenerarCFDI40.';
+        }
+
+        $rootChildren = array_keys($payload);
+        if ($rootChildren !== ['Credenciales', 'Comprobante40R']) {
+            $issues[] = 'GenerarCFDI40 debe contener exactamente Credenciales y Comprobante40R como hijos raíz.';
         }
 
         $comprobante = $payload['Comprobante40R'] ?? [];
@@ -469,9 +688,21 @@ class FacturacionSoapClient
             }
         }
 
+        $hasImpuestos = isset($comprobante['Impuestos']) && is_array($comprobante['Impuestos']) && $comprobante['Impuestos'] !== [];
+
         return [
             'isValid' => $issues === [],
             'issues' => $issues,
+            'hasWrapperParameters' => isset($payload['parameters']) || isset($payload['Parameters']),
+            'generarCFDI40RootChildren' => $rootChildren,
+            'comprobanteHasImpuestos' => $hasImpuestos,
+            'comprobanteNested' => [
+                'Emisor' => isset($comprobante['Emisor']) && !$this->isEmptyNodeValue($comprobante['Emisor']),
+                'Receptor' => isset($comprobante['Receptor']) && !$this->isEmptyNodeValue($comprobante['Receptor']),
+                'Conceptos' => isset($comprobante['Conceptos']) && !$this->isEmptyNodeValue($comprobante['Conceptos']),
+                'Impuestos' => $hasImpuestos,
+                'Referencia' => isset($comprobante['Referencia']) && !$this->isEmptyNodeValue($comprobante['Referencia']),
+            ],
         ];
     }
 
@@ -480,15 +711,11 @@ class FacturacionSoapClient
         return number_format((float)$value, $precision, '.', '');
     }
 
-    private function buildSoapEnvelope(array $payload, ?string $internalWrapper): string
+    private function buildSoapEnvelope(array $payload): string
     {
         $childrenXml = '';
         $childrenXml .= $this->serializeSimpleObject('Credenciales', $payload['Credenciales'] ?? []);
         $childrenXml .= $this->serializeSimpleObject('Comprobante40R', $payload['Comprobante40R'] ?? []);
-
-        if ($internalWrapper !== null && $internalWrapper !== '') {
-            $childrenXml = '<' . $internalWrapper . '>' . $childrenXml . '</' . $internalWrapper . '>';
-        }
 
         return '<?xml version="1.0" encoding="utf-8"?>'
             . '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">'
@@ -498,54 +725,6 @@ class FacturacionSoapClient
             . '</tem:GenerarCFDI40>'
             . '</soap:Body>'
             . '</soap:Envelope>';
-    }
-
-    private function detectInternalWrapperName(): ?string
-    {
-        $wrapperFromEnv = trim((string)($this->config['wrapper'] ?? ''));
-        if ($wrapperFromEnv !== '') {
-            return $wrapperFromEnv;
-        }
-
-        $wsdl = trim((string)$this->config['wsdl']);
-        if ($wsdl === '') {
-            return null;
-        }
-
-        try {
-            $soapClient = new SoapClient($wsdl, ['cache_wsdl' => WSDL_CACHE_NONE, 'trace' => 0, 'exceptions' => true]);
-            $functions = (array)$soapClient->__getFunctions();
-            foreach ($functions as $signature) {
-                if (!is_string($signature) || stripos($signature, 'GenerarCFDI40(') === false) {
-                    continue;
-                }
-                if (!preg_match('/\((.*)\)/', $signature, $matches)) {
-                    continue;
-                }
-                $paramsRaw = trim((string)$matches[1]);
-                if ($paramsRaw === '' || stripos($paramsRaw, 'void') === 0) {
-                    return null;
-                }
-
-                $params = array_values(array_filter(array_map('trim', explode(',', $paramsRaw))));
-                if (count($params) !== 1) {
-                    return null;
-                }
-
-                $tokens = preg_split('/\s+/', (string)$params[0]);
-                $candidate = ltrim((string)($tokens[count($tokens) - 1] ?? ''), '$');
-                $candidateLower = strtolower($candidate);
-                if ($candidate === '' || in_array($candidateLower, ['credenciales', 'comprobante', 'param1', 'parameters', 'request'], true)) {
-                    return null;
-                }
-
-                return $candidate;
-            }
-        } catch (Throwable $e) {
-            error_log('[CFDI40][GenerarCFDI40] wsdl_wrapper_detect_error=' . $e->getMessage());
-        }
-
-        return null;
     }
 
     private function parseSoapResponse(string $xml): array
