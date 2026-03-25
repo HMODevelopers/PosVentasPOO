@@ -15,18 +15,13 @@ class FacturacionPayloadAudit
         ];
 
         $this->validateAllowedKeys($payload, '', [
-            'Credenciales',
-            'Emisor',
-            'InformacionGlobal',
-            'Receptor',
-            'Conceptos',
-            'Comprobante40R',
-            'CfdiRelacionados40R',
+            'credenciales',
+            'cfdi',
         ], $report);
         $this->validateRequiredObject(
             $payload,
             '',
-            'Credenciales',
+            'credenciales',
             ['Usuario', 'Cuenta', 'Password'],
             ['Usuario', 'Cuenta', 'Password'],
             $report
@@ -34,23 +29,7 @@ class FacturacionPayloadAudit
         $this->validateRequiredObject(
             $payload,
             '',
-            'Emisor',
-            ['Nombre', 'RegimenFiscal'],
-            ['FacAtrAdquirente', 'Nombre', 'RegimenFiscal'],
-            $report
-        );
-        $this->validateRequiredObject(
-            $payload,
-            '',
-            'Receptor',
-            ['DomicilioFiscalReceptor', 'Nombre', 'RegimenFiscalReceptor', 'Rfc', 'UsoCFDI'],
-            ['DomicilioFiscalReceptor', 'Nombre', 'NumRegIDTrib', 'RegimenFiscalReceptor', 'ResidenciaFiscal', 'Rfc', 'UsoCFDI'],
-            $report
-        );
-        $this->validateRequiredObject(
-            $payload,
-            '',
-            'Comprobante40R',
+            'cfdi',
             ['ClaveCFDI', 'Exportacion', 'LugarExpedicion', 'Moneda', 'Referencia', 'SubTotal', 'Total'],
             [
                 'ClaveCFDI',
@@ -58,9 +37,9 @@ class FacturacionPayloadAudit
                 'Exportacion',
                 'Fecha',
                 'Folio',
-                'FormaDePago',
+                'FormaPago',
                 'LugarExpedicion',
-                'MetodoDePago',
+                'MetodoPago',
                 'Moneda',
                 'Referencia',
                 'SubTotal',
@@ -68,31 +47,58 @@ class FacturacionPayloadAudit
                 'Total',
                 'Confirmacion',
                 'Descuento',
+                'Emisor',
+                'Receptor',
+                'Conceptos',
+                'InformacionGlobal',
+                'CfdiRelacionados40R',
             ],
             $report
         );
 
-        if (!array_key_exists('Conceptos', $payload)) {
-            $report['missing'][] = 'Conceptos';
-        } elseif (!is_array($payload['Conceptos'])) {
+        if (!array_key_exists('cfdi', $payload) || !is_array($payload['cfdi'])) {
+            return $this->buildFinalReport($report);
+        }
+
+        $cfdi = $payload['cfdi'];
+        $this->validateRequiredObject(
+            $cfdi,
+            'cfdi',
+            'Emisor',
+            ['Nombre', 'RegimenFiscal'],
+            ['FacAtrAdquirente', 'Nombre', 'RegimenFiscal'],
+            $report
+        );
+        $this->validateRequiredObject(
+            $cfdi,
+            'cfdi',
+            'Receptor',
+            ['DomicilioFiscalReceptor', 'Nombre', 'RegimenFiscalReceptor', 'Rfc', 'UsoCFDI'],
+            ['DomicilioFiscalReceptor', 'Nombre', 'NumRegIDTrib', 'RegimenFiscalReceptor', 'ResidenciaFiscal', 'Rfc', 'UsoCFDI'],
+            $report
+        );
+
+        if (!array_key_exists('Conceptos', $cfdi)) {
+            $report['missing'][] = 'cfdi.Conceptos';
+        } elseif (!is_array($cfdi['Conceptos'])) {
             $report['errors'][] = 'Conceptos debe ser un objeto/arreglo asociativo.';
         } else {
-            $this->validateAllowedKeys($payload['Conceptos'], 'Conceptos', ['Concepto40R'], $report);
-            if (!array_key_exists('Concepto40R', $payload['Conceptos'])) {
-                $report['missing'][] = 'Conceptos.Concepto40R';
-                $altConcepto = $this->findCaseInsensitiveKey($payload['Conceptos'], 'Concepto40R');
+            $this->validateAllowedKeys($cfdi['Conceptos'], 'cfdi.Conceptos', ['Concepto40R'], $report);
+            if (!array_key_exists('Concepto40R', $cfdi['Conceptos'])) {
+                $report['missing'][] = 'cfdi.Conceptos.Concepto40R';
+                $altConcepto = $this->findCaseInsensitiveKey($cfdi['Conceptos'], 'Concepto40R');
                 if ($altConcepto !== null) {
-                    $report['casing'][] = "Conceptos.Concepto40R se encontró como '{$altConcepto}'.";
+                    $report['casing'][] = "cfdi.Conceptos.Concepto40R se encontró como '{$altConcepto}'.";
                 }
                 return $this->buildFinalReport($report);
             }
-            if (!is_array($payload['Conceptos']['Concepto40R']) || count($payload['Conceptos']['Concepto40R']) === 0) {
-                $report['empty_arrays'][] = 'Conceptos.Concepto40R';
+            if (!is_array($cfdi['Conceptos']['Concepto40R']) || count($cfdi['Conceptos']['Concepto40R']) === 0) {
+                $report['empty_arrays'][] = 'cfdi.Conceptos.Concepto40R';
                 return $this->buildFinalReport($report);
             }
 
-            foreach ($payload['Conceptos']['Concepto40R'] as $i => $concepto) {
-                $path = "Conceptos[{$i}]";
+            foreach ($cfdi['Conceptos']['Concepto40R'] as $i => $concepto) {
+                $path = "cfdi.Conceptos[{$i}]";
                 if (!is_array($concepto)) {
                     $report['errors'][] = "{$path} debe ser un objeto/arreglo asociativo.";
                     continue;
@@ -110,10 +116,7 @@ class FacturacionPayloadAudit
                     'ObjetoImp',
                     'Unidad',
                     'ValorUnitario',
-                    'TrasladoConcepto40R',
-                    'RetencionConcepto40R',
-                    'RetencionLocal40R',
-                    'TrasladoLocal40R',
+                    'Impuestos',
                 ], $report);
                 $this->validateFields($concepto, $path, [
                     'Cantidad',
@@ -128,71 +131,35 @@ class FacturacionPayloadAudit
 
                 $objetoImp = trim((string)($concepto['ObjetoImp'] ?? ''));
                 if ($objetoImp === '02') {
-                    $hayImpuestos = false;
-                    foreach (['TrasladoConcepto40R', 'RetencionConcepto40R', 'RetencionLocal40R', 'TrasladoLocal40R'] as $impuestosNodo) {
-                        if (!empty($concepto[$impuestosNodo])) {
-                            $hayImpuestos = true;
-                            break;
-                        }
-                    }
+                    $hayImpuestos = !empty($concepto['Impuestos']);
                     if (!$hayImpuestos) {
                         $report['errors'][] = "{$path}.ObjetoImp=02 requiere al menos un nodo de impuestos de concepto.";
                     }
                 }
 
-                $this->validateOptionalNodeList(
-                    $concepto,
-                    $path,
-                    'TrasladoConcepto40R',
-                    ['Base', 'Impuesto', 'TipoFactor'],
-                    ['Base', 'Importe', 'Impuesto', 'TasaOCuota', 'TipoFactor'],
-                    $report
-                );
-                $this->validateOptionalNodeList(
-                    $concepto,
-                    $path,
-                    'RetencionConcepto40R',
-                    ['Base', 'Importe', 'Impuesto', 'TasaOCuota', 'TipoFactor'],
-                    ['Base', 'Importe', 'Impuesto', 'TasaOCuota', 'TipoFactor'],
-                    $report
-                );
-                $this->validateOptionalNodeList(
-                    $concepto,
-                    $path,
-                    'RetencionLocal40R',
-                    ['ImpLocalRetenido', 'Importe', 'TasaRetencion'],
-                    ['ImpLocalRetenido', 'Importe', 'TasaRetencion'],
-                    $report
-                );
-                $this->validateOptionalNodeList(
-                    $concepto,
-                    $path,
-                    'TrasladoLocal40R',
-                    ['ImpLocalTraslado', 'Importe', 'TasaRetencion'],
-                    ['ImpLocalTraslado', 'Importe', 'TasaRetencion'],
-                    $report
-                );
+                $this->validateConceptoImpuestos($concepto, $path, $report);
             }
         }
 
-        if (!empty($payload['InformacionGlobal'])) {
-            if (!is_array($payload['InformacionGlobal'])) {
+        if (!empty($cfdi['InformacionGlobal'])) {
+            if (!is_array($cfdi['InformacionGlobal'])) {
                 $report['errors'][] = 'InformacionGlobal debe ser un objeto/arreglo asociativo.';
             } else {
-                $this->validateAllowedKeys($payload['InformacionGlobal'], 'InformacionGlobal', ['Año', 'Meses', 'Periodicidad'], $report);
-                $this->validateFields($payload['InformacionGlobal'], 'InformacionGlobal', ['Año', 'Meses', 'Periodicidad'], $report);
+                $this->validateAllowedKeys($cfdi['InformacionGlobal'], 'cfdi.InformacionGlobal', ['Anio', 'Año', 'Meses', 'Periodicidad'], $report);
+                $this->validateAlternativeField($cfdi['InformacionGlobal'], 'cfdi.InformacionGlobal', ['Anio', 'Año'], 'Anio/Año', $report);
+                $this->validateFields($cfdi['InformacionGlobal'], 'cfdi.InformacionGlobal', ['Meses', 'Periodicidad'], $report);
             }
         }
 
-        if (!empty($payload['CfdiRelacionados40R'])) {
-            if (!is_array($payload['CfdiRelacionados40R'])) {
+        if (!empty($cfdi['CfdiRelacionados40R'])) {
+            if (!is_array($cfdi['CfdiRelacionados40R'])) {
                 $report['errors'][] = 'CfdiRelacionados40R debe ser un objeto/arreglo asociativo.';
             } else {
-                $this->validateAllowedKeys($payload['CfdiRelacionados40R'], 'CfdiRelacionados40R', ['TipoRelacion', 'CfdiRelacionado40R'], $report);
-                $this->validateFields($payload['CfdiRelacionados40R'], 'CfdiRelacionados40R', ['TipoRelacion'], $report);
-                if (!empty($payload['CfdiRelacionados40R']['CfdiRelacionado40R'])) {
-                    foreach ((array)$payload['CfdiRelacionados40R']['CfdiRelacionado40R'] as $i => $rel) {
-                        $itemPath = "CfdiRelacionados40R.CfdiRelacionado40R[{$i}]";
+                $this->validateAllowedKeys($cfdi['CfdiRelacionados40R'], 'cfdi.CfdiRelacionados40R', ['TipoRelacion', 'CfdiRelacionado40R'], $report);
+                $this->validateFields($cfdi['CfdiRelacionados40R'], 'cfdi.CfdiRelacionados40R', ['TipoRelacion'], $report);
+                if (!empty($cfdi['CfdiRelacionados40R']['CfdiRelacionado40R'])) {
+                    foreach ((array)$cfdi['CfdiRelacionados40R']['CfdiRelacionado40R'] as $i => $rel) {
+                        $itemPath = "cfdi.CfdiRelacionados40R.CfdiRelacionado40R[{$i}]";
                         if (!is_array($rel)) {
                             $report['errors'][] = "{$itemPath} debe ser un objeto/arreglo asociativo.";
                             continue;
@@ -205,6 +172,31 @@ class FacturacionPayloadAudit
         }
 
         return $this->buildFinalReport($report);
+    }
+
+    private function validateConceptoImpuestos(array $concepto, string $path, array &$report): void
+    {
+        if (empty($concepto['Impuestos'])) {
+            return;
+        }
+
+        if (!is_array($concepto['Impuestos'])) {
+            $report['errors'][] = "{$path}.Impuestos debe ser un objeto/arreglo asociativo.";
+            return;
+        }
+
+        $allowed = ['Traslados', 'Retenciones', 'RetencionesLocales', 'TrasladosLocales'];
+        $this->validateAllowedKeys($concepto['Impuestos'], "{$path}.Impuestos", $allowed, $report);
+
+        $traslados = $concepto['Impuestos']['Traslados'] ?? [];
+        if (is_array($traslados)) {
+            $this->validateOptionalNodeList($traslados, "{$path}.Impuestos", 'TrasladoConcepto40R', ['Base', 'Impuesto', 'TipoFactor'], ['Base', 'Importe', 'Impuesto', 'TasaOCuota', 'TipoFactor'], $report);
+        }
+
+        $retenciones = $concepto['Impuestos']['Retenciones'] ?? [];
+        if (is_array($retenciones)) {
+            $this->validateOptionalNodeList($retenciones, "{$path}.Impuestos", 'RetencionConcepto40R', ['Base', 'Importe', 'Impuesto', 'TasaOCuota', 'TipoFactor'], ['Base', 'Importe', 'Impuesto', 'TasaOCuota', 'TipoFactor'], $report);
+        }
     }
 
     private function validateRequiredObject(array $root, string $path, string $node, array $requiredFields, array $allowedFields, array &$report): void

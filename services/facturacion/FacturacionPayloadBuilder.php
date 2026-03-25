@@ -25,37 +25,20 @@ class FacturacionPayloadBuilder
         }
 
         $payload = [
-            'Credenciales' => [
+            'credenciales' => [
                 'Usuario' => $soapConfig['usuario'],
                 'Cuenta' => $soapConfig['cuenta'],
                 'Password' => $soapConfig['password'],
             ],
-            'Emisor' => array_filter([
-                'Nombre' => $emisor['nombre'],
-                'RegimenFiscal' => $emisor['regimen_fiscal'],
-                'FacAtrAdquirente' => $emisor['fac_atr_adquirente'] ?? null,
-            ], fn($v) => $v !== null && $v !== ''),
-            'Receptor' => array_filter([
-                'DomicilioFiscalReceptor' => $receptor['domicilio_fiscal_receptor'],
-                'Nombre' => $receptor['nombre'],
-                'NumRegIDTrib' => $receptor['num_reg_id_trib'] ?? null,
-                'RegimenFiscalReceptor' => $receptor['regimen_fiscal_receptor'],
-                'ResidenciaFiscal' => $receptor['residencia_fiscal'] ?? null,
-                'Rfc' => $receptor['rfc'],
-                'UsoCFDI' => $receptor['uso_cfdi'],
-            ], fn($v) => $v !== null && $v !== ''),
-            'Conceptos' => [
-                'Concepto40R' => $conceptos,
-            ],
-            'Comprobante40R' => array_filter([
+            'cfdi' => array_filter([
                 'ClaveCFDI' => 'FAC',
                 'CondicionesDePago' => $formaPago['condiciones_pago'] ?? ($venta['condiciones_pago'] ?? null),
                 'Exportacion' => $formaPago['exportacion'] ?? '01',
                 'Fecha' => $fecha,
                 'Folio' => $venta['folio'] ?? null,
-                'FormaDePago' => (string)($formaPago['forma_pago'] ?? $venta['forma_pago_sat']),
+                'FormaPago' => (string)($formaPago['forma_pago'] ?? $venta['forma_pago_sat']),
                 'LugarExpedicion' => (string)$emisor['lugar_expedicion'],
-                'MetodoDePago' => (string)($formaPago['metodo_pago'] ?? 'PUE'),
+                'MetodoPago' => (string)($formaPago['metodo_pago'] ?? 'PUE'),
                 'Moneda' => $moneda,
                 'Referencia' => $ctx['referencia'],
                 'SubTotal' => $subTotal,
@@ -63,14 +46,31 @@ class FacturacionPayloadBuilder
                 'Total' => $total,
                 'Confirmacion' => null,
                 'Descuento' => $descuento,
+                'Emisor' => array_filter([
+                    'Nombre' => $emisor['nombre'],
+                    'RegimenFiscal' => $emisor['regimen_fiscal'],
+                    'FacAtrAdquirente' => $emisor['fac_atr_adquirente'] ?? null,
+                ], fn($v) => $v !== null && $v !== ''),
+                'Receptor' => array_filter([
+                    'DomicilioFiscalReceptor' => $receptor['domicilio_fiscal_receptor'],
+                    'Nombre' => $receptor['nombre'],
+                    'NumRegIDTrib' => $receptor['num_reg_id_trib'] ?? null,
+                    'RegimenFiscalReceptor' => $receptor['regimen_fiscal_receptor'],
+                    'ResidenciaFiscal' => $receptor['residencia_fiscal'] ?? null,
+                    'Rfc' => $receptor['rfc'],
+                    'UsoCFDI' => $receptor['uso_cfdi'],
+                ], fn($v) => $v !== null && $v !== ''),
+                'Conceptos' => [
+                    'Concepto40R' => $conceptos,
+                ],
             ], fn($v) => $v !== null && $v !== ''),
         ];
 
         if (!empty($informacionGlobal)) {
-            $payload['InformacionGlobal'] = $informacionGlobal;
+            $payload['cfdi']['InformacionGlobal'] = $informacionGlobal;
         }
         if (!empty($cfdiRelacionados)) {
-            $payload['CfdiRelacionados40R'] = $cfdiRelacionados;
+            $payload['cfdi']['CfdiRelacionados40R'] = $cfdiRelacionados;
         }
 
         return $payload;
@@ -151,11 +151,32 @@ class FacturacionPayloadBuilder
             }
 
             if (in_array($key, ['TrasladoConcepto40R', 'RetencionConcepto40R', 'RetencionLocal40R', 'TrasladoLocal40R'], true)) {
-                $out[$key] = $this->normalizeImpuestoList($concepto[$key]);
                 continue;
             }
 
             $out[$key] = $concepto[$key];
+        }
+
+        $traslados = $this->normalizeImpuestoList($concepto['TrasladoConcepto40R'] ?? []);
+        $retenciones = $this->normalizeImpuestoList($concepto['RetencionConcepto40R'] ?? []);
+        $retencionesLocales = $this->normalizeImpuestoList($concepto['RetencionLocal40R'] ?? []);
+        $trasladosLocales = $this->normalizeImpuestoList($concepto['TrasladoLocal40R'] ?? []);
+
+        $impuestos = [];
+        if (!empty($traslados)) {
+            $impuestos['Traslados'] = ['TrasladoConcepto40R' => $traslados];
+        }
+        if (!empty($retenciones)) {
+            $impuestos['Retenciones'] = ['RetencionConcepto40R' => $retenciones];
+        }
+        if (!empty($retencionesLocales)) {
+            $impuestos['RetencionesLocales'] = ['RetencionLocal40R' => $retencionesLocales];
+        }
+        if (!empty($trasladosLocales)) {
+            $impuestos['TrasladosLocales'] = ['TrasladoLocal40R' => $trasladosLocales];
+        }
+        if (!empty($impuestos)) {
+            $out['Impuestos'] = $impuestos;
         }
 
         return array_filter($out, static fn($v) => $v !== null && $v !== '');
