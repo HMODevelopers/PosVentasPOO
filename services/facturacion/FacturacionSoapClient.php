@@ -37,6 +37,7 @@ class FacturacionSoapClient
     {
         $normalizedPayload = $this->normalizePayloadForGenerarCfdi40($payload);
         $xml = $this->buildSoapEnvelope($normalizedPayload);
+        $xmlContract = $this->validateXmlContract($xml);
 
         $headers = [
             'Content-Type: text/xml; charset=utf-8',
@@ -55,7 +56,14 @@ class FacturacionSoapClient
         error_log('[CFDI40][GenerarCFDI40] payload_validation=' . json_encode($payloadValidation, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         error_log('[CFDI40][GenerarCFDI40] wsdl_url=' . $this->config['wsdl']);
         error_log('[CFDI40][GenerarCFDI40] soap_post_url=' . $this->config['endpoint']);
+        error_log('[CFDI40][GenerarCFDI40] soap_action=' . $this->config['soap_action']);
         error_log('[CFDI40][GenerarCFDI40] xml_final=' . $xml);
+        error_log('[CFDI40][GenerarCFDI40] root_operation=' . ($xmlContract['root_operation'] ?? ''));
+        error_log('[CFDI40][GenerarCFDI40] root_children=' . json_encode($xmlContract['root_children'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] namespace_tem=' . ($xmlContract['namespace_tem'] ?? ''));
+        error_log('[CFDI40][GenerarCFDI40] namespace_tes=' . ($xmlContract['namespace_tes'] ?? ''));
+        error_log('[CFDI40][GenerarCFDI40] payload_logico_normalizado=' . json_encode($this->normalizeForDebug($normalizedPayload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        error_log('[CFDI40][GenerarCFDI40] resumen_fiscal=' . json_encode($this->buildFiscalSummary($normalizedPayload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         $curl = curl_init($this->config['endpoint']);
         curl_setopt_array($curl, [
@@ -89,6 +97,7 @@ class FacturacionSoapClient
         error_log('[CFDI40][GenerarCFDI40] curl_error=' . $curlError);
         error_log('[CFDI40][GenerarCFDI40] soap_manual_response_headers=' . ($this->lastResponseHeaders ?? ''));
         error_log('[CFDI40][GenerarCFDI40] soap_manual_response_body=' . ($this->lastResponse ?? ''));
+        error_log('[CFDI40][GenerarCFDI40] response_body=' . ($this->lastResponse ?? ''));
 
         if ($curlErrno !== 0) {
             throw new RuntimeException('Error de transporte cURL al consumir GenerarCFDI40. errno=' . $curlErrno . ' error=' . $curlError);
@@ -99,6 +108,7 @@ class FacturacionSoapClient
         }
 
         $responseArray = $this->parseSoapResponse($this->lastResponse);
+        error_log('[CFDI40][GenerarCFDI40] parsed_response=' . json_encode($responseArray, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         if ($httpCode >= 400 || isset($responseArray['Fault'])) {
             $fault = $responseArray['Fault'] ?? [];
@@ -106,6 +116,7 @@ class FacturacionSoapClient
             $faultString = is_array($fault) ? (string)($fault['faultstring'] ?? 'Error SOAP en GenerarCFDI40') : 'Error SOAP en GenerarCFDI40';
             error_log('[CFDI40][GenerarCFDI40] faultcode=' . $faultCode);
             error_log('[CFDI40][GenerarCFDI40] faultstring=' . $faultString);
+            error_log('[CFDI40][GenerarCFDI40] error_detallado=' . $faultString);
             throw new SoapFault($faultCode, $faultString);
         }
 
@@ -147,6 +158,7 @@ class FacturacionSoapClient
             'usuario' => $this->env($prefix . 'USUARIO'),
             'cuenta' => $this->env($prefix . 'CUENTA'),
             'password' => $this->env($prefix . 'PASSWORD'),
+            'soap_action' => self::SOAP_ACTION_GENERAR_CFDI40,
         ];
 
         foreach (['wsdl', 'endpoint', 'usuario', 'cuenta', 'password'] as $key) {
@@ -235,9 +247,8 @@ class FacturacionSoapClient
         $conceptosSource = $rawCfdi['Conceptos'] ?? [];
         $conceptos = $this->normalizeConceptosNode($conceptosSource);
 
-        $cfdi['Emisor'] = $this->normalizeOptionalNode($emisor);
-        $cfdi['Receptor'] = $this->normalizeOptionalNode($receptor);
-        $cfdi['Conceptos'] = $conceptos;
+        $emisorNorm = $this->normalizeOptionalNode($emisor);
+        $receptorNorm = $this->normalizeOptionalNode($receptor);
 
         $infoGlobal = $this->normalizeOptionalNode($rawCfdi['InformacionGlobal'] ?? []);
         if ($this->shouldIncludeInformacionGlobal($receptor, $infoGlobal)) {
@@ -253,7 +264,68 @@ class FacturacionSoapClient
             throw new RuntimeException('cfdi.Referencia es obligatoria para GenerarCFDI40.');
         }
 
-        return $cfdi;
+        return $this->orderCfdiForPac($cfdi, $conceptos, $emisorNorm, $receptorNorm, $infoGlobal, $cfdiRelacionados);
+    }
+
+    private function orderCfdiForPac(
+        array $cfdi,
+        array $conceptos,
+        array $emisor,
+        array $receptor,
+        array $infoGlobal,
+        array $cfdiRelacionados
+    ): array {
+        $ordered = [];
+        $preferredOrder = [
+            'ClaveCFDI',
+            'Conceptos',
+            'Emisor',
+            'Exportacion',
+            'Fecha',
+            'Folio',
+            'FormaPago',
+            'LugarExpedicion',
+            'MetodoPago',
+            'Moneda',
+            'Receptor',
+            'Referencia',
+            'Serie',
+            'SubTotal',
+            'TipoCambio',
+            'TipoDeComprobante',
+            'Total',
+            'CondicionesDePago',
+            'Descuento',
+            'Confirmacion',
+            'InformacionGlobal',
+            'CfdiRelacionados40R',
+        ];
+
+        $cfdi['Conceptos'] = $conceptos;
+        $cfdi['Emisor'] = $emisor;
+        $cfdi['Receptor'] = $receptor;
+        if (!empty($infoGlobal)) {
+            $cfdi['InformacionGlobal'] = $infoGlobal;
+        }
+        if (!empty($cfdiRelacionados)) {
+            $cfdi['CfdiRelacionados40R'] = $cfdiRelacionados;
+        }
+
+        foreach ($preferredOrder as $field) {
+            if (!array_key_exists($field, $cfdi) || $this->isEmptyNodeValue($cfdi[$field])) {
+                continue;
+            }
+            $ordered[$field] = $cfdi[$field];
+        }
+
+        foreach ($cfdi as $field => $value) {
+            if (array_key_exists($field, $ordered) || $this->isEmptyNodeValue($value)) {
+                continue;
+            }
+            $ordered[$field] = $value;
+        }
+
+        return $ordered;
     }
 
     private function mergeComprobanteData(array $rawCfdi, array $root): array
@@ -515,6 +587,40 @@ class FacturacionSoapClient
         ];
     }
 
+    private function buildFiscalSummary(array $payload): array
+    {
+        $cfdi = $payload['cfdi'] ?? [];
+        $conceptos = $cfdi['Conceptos']['Concepto40R'] ?? [];
+        $traslados = 0.0;
+        $retenciones = 0.0;
+
+        foreach ((array)$conceptos as $concepto) {
+            if (!is_array($concepto)) {
+                continue;
+            }
+            $tmpTras = $concepto['Impuestos']['Traslados']['TrasladoConcepto40R'] ?? [];
+            foreach ((array)$tmpTras as $t) {
+                if (is_array($t)) {
+                    $traslados += (float)($t['Importe'] ?? 0);
+                }
+            }
+            $tmpRet = $concepto['Impuestos']['Retenciones']['RetencionConcepto40R'] ?? [];
+            foreach ((array)$tmpRet as $r) {
+                if (is_array($r)) {
+                    $retenciones += (float)($r['Importe'] ?? 0);
+                }
+            }
+        }
+
+        return [
+            'subtotal_fiscal' => $this->formatDecimal((float)($cfdi['SubTotal'] ?? 0), 2),
+            'total' => $this->formatDecimal((float)($cfdi['Total'] ?? 0), 2),
+            'traslados_concepto' => $this->formatDecimal($traslados, 2),
+            'retenciones_concepto' => $this->formatDecimal($retenciones, 2),
+            'conceptos_count' => is_array($conceptos) ? count($conceptos) : 0,
+        ];
+    }
+
     private function buildImpuestosConceptosResumen(array $conceptos): array
     {
         $traslados = 0;
@@ -630,6 +736,46 @@ class FacturacionSoapClient
         $this->appendTesChildren($doc, $cfdiNode, $payload['cfdi'] ?? []);
 
         return $doc->saveXML();
+    }
+
+    private function validateXmlContract(string $xml): array
+    {
+        $doc = new DOMDocument();
+        if (!@$doc->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING)) {
+            throw new RuntimeException('El XML SOAP final no es válido.');
+        }
+
+        $xpath = new DOMXPath($doc);
+        $operation = $xpath->query('/*[local-name()="Envelope"]/*[local-name()="Body"]/*[local-name()="GenerarCFDI40"]')->item(0);
+        if (!$operation instanceof DOMElement) {
+            throw new RuntimeException('No existe la operación raíz tem:GenerarCFDI40 en el XML final.');
+        }
+
+        $rootChildren = [];
+        foreach ($operation->childNodes as $child) {
+            if (!$child instanceof DOMElement) {
+                continue;
+            }
+            $rootChildren[] = $child->localName;
+        }
+
+        if ($rootChildren !== ['credenciales', 'cfdi']) {
+            throw new RuntimeException('GenerarCFDI40 debe tener exactamente tem:credenciales y tem:cfdi como hijos.');
+        }
+
+        if (str_contains($xml, '<tem:Credenciales') || str_contains($xml, '<tes:Credenciales') || str_contains($xml, '<tes:Comprobante40R')) {
+            throw new RuntimeException('El XML final contiene wrappers obsoletos (Credenciales/Comprobante40R).');
+        }
+        if (str_contains($xml, 'FormaDePago') || str_contains($xml, 'MetodoDePago')) {
+            throw new RuntimeException('El XML final contiene nombres obsoletos (FormaDePago/MetodoDePago).');
+        }
+
+        return [
+            'root_operation' => $operation->tagName,
+            'root_children' => $rootChildren,
+            'namespace_tem' => self::NS_TEM,
+            'namespace_tes' => self::NS_TES,
+        ];
     }
 
     private function appendTesChildren(DOMDocument $doc, DOMElement $parent, array $data): void

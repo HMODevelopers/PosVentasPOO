@@ -175,6 +175,7 @@ class FacturacionService
             error_log('[CFDI40][GenerarCFDI40] last_response_xml=' . ($soapResult['last_response_xml'] ?? $soapResult['last_response'] ?? ''));
             $mapped = $this->responseMapper->map($soapResult['response'], $soapResult);
             error_log('[CFDI40][GenerarCFDI40] response_node_path=' . ($mapped['response_node_path'] ?? 'unknown'));
+            error_log('[CFDI40][GenerarCFDI40] error_detallado=' . (string)($mapped['mensaje_detallado'] ?? ''));
             $responsePayloadJson = $mapped['raw_response_json'] ?? json_encode($soapResult['response'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
             $this->guardarDebugSoap([
