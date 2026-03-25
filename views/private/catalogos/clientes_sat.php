@@ -176,7 +176,7 @@ require_once __DIR__.'/../../../includes/config.php';
                 <div class="form-group"><label>Régimen fiscal</label><select id="regimen_fiscal" class="form-control"></select></div>
               </div>
               <div class="col-12 col-md-6">
-                <div class="form-group"><label>Uso CFDI</label><select id="uso_cdfi" class="form-control"></select></div>
+                <div class="form-group"><label>Uso CFDI</label><select id="uso_cfdi" name="uso_cfdi" class="form-control"></select></div>
               </div>
               <div class="col-12 col-md-6">
                 <div class="form-group"><label>CP fiscal</label><input id="dom_fiscal_cp" class="form-control"></div>
@@ -426,7 +426,7 @@ $(function(){
     return $.getJSON(URL_CTRL,{accion:'catalogos-form'}).then(resp=>{
       catalogos = resp || catalogos;
       fillSimple('#regimen_fiscal', catalogos.regimenes, 'ClaveRegimenFiscal', 'Descripcion');
-      fillSimple('#uso_cdfi', catalogos.usos_cfdi, 'ClaveUsoCFDI', 'Descripcion');
+      fillSimple('#uso_cfdi', catalogos.usos_cfdi, 'ClaveUsoCFDI', 'Descripcion');
       fillSimple('#estado', catalogos.entidades, 'cve_ent', 'nombre_ent');
       $('#municipio').html('<option value=""></option>').val(null).trigger('change');
       $('#localidad').html('<option value=""></option>').val(null).trigger('change');
@@ -461,7 +461,7 @@ $(function(){
     forzarPaisMEX('MEX');
 
     fillSimple('#regimen_fiscal', catalogos.regimenes, 'ClaveRegimenFiscal', 'Descripcion');
-    fillSimple('#uso_cdfi', catalogos.usos_cfdi, 'ClaveUsoCFDI', 'Descripcion');
+    fillSimple('#uso_cfdi', catalogos.usos_cfdi, 'ClaveUsoCFDI', 'Descripcion');
     fillSimple('#estado', catalogos.entidades, 'cve_ent', 'nombre_ent');
 
     $('#municipio').html('<option value=""></option>').val(null).trigger('change');
@@ -512,7 +512,7 @@ $(function(){
             <td><b>${e(v.rfc || '')}</b></td>
             <td>${trunc(v.razon_social, 42)}</td>
             <td>${trunc(v.regimen_fiscal_descripcion || v.regimen_fiscal, 42)}</td>
-            <td>${e(txt(v.uso_cfdi_descripcion || v.uso_cfdi))}</td>
+            <td>${e(txt(v.uso_cfdi_descripcion || v.uso_cfdi || v.uso_cdfi))}</td>
             <td>${e(txt(v.estado_display))}</td>
             <td>${e(txt(v.municipio_display))}</td>
             <td>${e(txt(v.localidad_display))}</td>
@@ -629,7 +629,7 @@ $(function(){
         $('#d_rfc').text(txt(d.rfc));
         $('#d_razon_social').text(txt(d.razon_social));
         $('#d_regimen_fiscal').text(txt(d.regimen_fiscal_descripcion || d.regimen_fiscal));
-        $('#d_uso_cdfi').text(txt(d.uso_cfdi_descripcion || d.uso_cdfi));
+        $('#d_uso_cdfi').text(txt(d.uso_cfdi_descripcion || d.uso_cfdi || d.uso_cdfi));
         $('#d_estado').text(txt(d.estado_display));
         $('#d_municipio').text(txt(d.municipio_display));
         $('#d_localidad').text(txt(d.localidad_display));

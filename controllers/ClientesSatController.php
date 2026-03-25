@@ -9,6 +9,17 @@ $model = new ClientesSatModel();
 $raw = json_decode(file_get_contents('php://input'), true) ?: [];
 $accion = str_replace('_', '-', ($_REQUEST['accion'] ?? ($raw['accion'] ?? '')));
 
+
+$normalizeUsoCfdi = static function(array $input): array {
+    if (!array_key_exists('uso_cdfi', $input) && array_key_exists('uso_cfdi', $input)) {
+        $input['uso_cdfi'] = $input['uso_cfdi'];
+    }
+    if (!array_key_exists('uso_cfdi', $input) && array_key_exists('uso_cdfi', $input)) {
+        $input['uso_cfdi'] = $input['uso_cdfi'];
+    }
+    return $input;
+};
+
 switch ($accion) {
     case 'listar':
         $pagina = (int)($_POST['pagina'] ?? $_GET['pagina'] ?? 1);
@@ -54,7 +65,7 @@ switch ($accion) {
         break;
 
     case 'crear':
-        echo json_encode(['ok' => $model->crear($raw)]);
+        echo json_encode(['ok' => $model->crear($normalizeUsoCfdi($raw))]);
         break;
 
     case 'actualizar':
@@ -65,7 +76,7 @@ switch ($accion) {
         if ($rowKey === '' && trim((string)($raw['rfc'] ?? '')) !== '') {
             $rowKey = 'RFC:' . strtoupper(trim((string)$raw['rfc']));
         }
-        echo json_encode(['ok' => $rowKey !== '' ? $model->actualizar($rowKey, $raw) : false]);
+        echo json_encode(['ok' => $rowKey !== '' ? $model->actualizar($rowKey, $normalizeUsoCfdi($raw)) : false]);
         break;
 
     case 'eliminar':

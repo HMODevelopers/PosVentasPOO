@@ -11,7 +11,7 @@ class ClientesSatModel {
 
     public function listar(int $pagina = 1, int $limite = 10, array $f = []): array {
         $offset = (max(1, $pagina) - 1) * max(1, $limite);
-        $sql = "SELECT c.id, c.nombre_comercial, c.rfc, c.razon_social, c.regimen_fiscal, c.numero_registro_tributario, c.uso_cdfi, c.telefono, c.celular, c.email, c.email_alterno, c.pais, c.dom_fiscal_cp, c.estado, c.municipio, c.localidad, c.colonia, c.calle, c.numero_exterior, c.numero_interior, c.referencia, c.residencia_fiscal,
+        $sql = "SELECT c.id, c.nombre_comercial, c.rfc, c.razon_social, c.regimen_fiscal, c.numero_registro_tributario, c.uso_cdfi, c.uso_cdfi AS uso_cfdi, c.telefono, c.celular, c.email, c.email_alterno, c.pais, c.dom_fiscal_cp, c.estado, c.municipio, c.localidad, c.colonia, c.calle, c.numero_exterior, c.numero_interior, c.referencia, c.residencia_fiscal,
                        rf.Descripcion AS regimen_fiscal_descripcion,
                        uc.Descripcion AS uso_cfdi_descripcion,
                        CASE WHEN c.estado REGEXP '^[0-9]{2}$' THEN e.nombre_ent ELSE NULL END AS estado_nombre,
@@ -86,11 +86,11 @@ class ClientesSatModel {
     public function obtenerPorRowKey(string $rowKey): ?array {
         if (str_starts_with($rowKey, 'ID:')) {
             $id = (int)substr($rowKey, 3);
-            $st = $this->conn->prepare("SELECT *, CASE WHEN id IS NOT NULL THEN CONCAT('ID:', id) ELSE CONCAT('RFC:', rfc) END AS row_key FROM clientes_sat WHERE id = :id LIMIT 1");
+            $st = $this->conn->prepare("SELECT *, uso_cdfi AS uso_cfdi, CASE WHEN id IS NOT NULL THEN CONCAT('ID:', id) ELSE CONCAT('RFC:', rfc) END AS row_key FROM clientes_sat WHERE id = :id LIMIT 1");
             $st->bindValue(':id', $id, PDO::PARAM_INT);
         } else {
             $rfc = strtoupper(trim(str_replace('RFC:', '', $rowKey)));
-            $st = $this->conn->prepare("SELECT *, CASE WHEN id IS NOT NULL THEN CONCAT('ID:', id) ELSE CONCAT('RFC:', rfc) END AS row_key FROM clientes_sat WHERE rfc = :rfc LIMIT 1");
+            $st = $this->conn->prepare("SELECT *, uso_cdfi AS uso_cfdi, CASE WHEN id IS NOT NULL THEN CONCAT('ID:', id) ELSE CONCAT('RFC:', rfc) END AS row_key FROM clientes_sat WHERE rfc = :rfc LIMIT 1");
             $st->bindValue(':rfc', $rfc);
         }
         $st->execute();
@@ -103,6 +103,7 @@ class ClientesSatModel {
 
     public function obtenerDetallePorId(int $id): ?array {
         $sql = "SELECT c.*,
+                       c.uso_cdfi AS uso_cfdi,
                        rf.Descripcion AS regimen_fiscal_descripcion,
                        uc.Descripcion AS uso_cfdi_descripcion,
                        COALESCE(CASE WHEN c.estado REGEXP '^[0-9]{2}$' THEN e.nombre_ent END, c.estado) AS estado_display,
@@ -198,7 +199,7 @@ class ClientesSatModel {
             ':razon_social' => $this->nullable($d['razon_social'] ?? null),
             ':regimen_fiscal' => $this->nullable($d['regimen_fiscal'] ?? null),
             ':numero_registro_tributario' => $this->nullable($d['numero_registro_tributario'] ?? null),
-            ':uso_cdfi' => $this->nullable($d['uso_cdfi'] ?? null),
+            ':uso_cdfi' => $this->nullable($d['uso_cdfi'] ?? ($d['uso_cfdi'] ?? null)),
             ':telefono' => $this->nullable($d['telefono'] ?? null),
             ':celular' => $this->nullable($d['celular'] ?? null),
             ':email' => $this->nullable($d['email'] ?? null),
@@ -247,7 +248,7 @@ class ClientesSatModel {
         }
 
         $st = $this->conn->prepare("SELECT cve_ent FROM entidades WHERE UPPER(nombre_ent) = UPPER(:nombre) OR UPPER(nombre_abr) = UPPER(:nombre) ORDER BY cve_ent ASC LIMIT 1");
-        $st->execute([':nombre' => $valor]);
+        $st->execute([':nombre_ent' => $valor]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
         if (!empty($row['cve_ent'])) {
             return ['code' => str_pad((string)$row['cve_ent'], 2, '0', STR_PAD_LEFT), 'fallback' => ''];
