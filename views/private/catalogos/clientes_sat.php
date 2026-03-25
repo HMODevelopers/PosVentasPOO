@@ -173,10 +173,18 @@ require_once __DIR__.'/../../../includes/config.php';
                 <div class="form-group"><label>Nombre comercial</label><input id="nombre_comercial" class="form-control"></div>
               </div>
               <div class="col-12 col-md-6">
-                <div class="form-group"><label>Régimen fiscal</label><select id="regimen_fiscal" class="form-control"></select></div>
+                <div class="form-group">
+                  <label>Régimen fiscal</label>
+                  <select id="regimen_fiscal" class="form-control"></select>
+                  <small class="text-warning location-alert" id="regimen_fiscal_alert"></small>
+                </div>
               </div>
               <div class="col-12 col-md-6">
-                <div class="form-group"><label>Uso CFDI</label><select id="uso_cfdi" name="uso_cfdi" class="form-control"></select></div>
+                <div class="form-group">
+                  <label>Uso CFDI</label>
+                  <select id="uso_cfdi" name="uso_cfdi" class="form-control"></select>
+                  <small class="text-warning location-alert" id="uso_cfdi_alert"></small>
+                </div>
               </div>
               <div class="col-12 col-md-6">
                 <div class="form-group"><label>CP fiscal</label><input id="dom_fiscal_cp" class="form-control"></div>
@@ -406,7 +414,7 @@ $(function(){
   }
 
   function clearLegacyAlerts(){
-    ['estado','municipio','localidad'].forEach(field => $(`#${field}_alert`).hide().text(''));
+    ['regimen_fiscal','uso_cfdi','estado','municipio','localidad'].forEach(field => $(`#${field}_alert`).hide().text(''));
   }
 
   function forzarPaisMEX(rawPais=''){
@@ -486,6 +494,21 @@ $(function(){
     if(!localidadSel) showLegacyOption('localidad', r.localidad_texto_fallback);
 
     bloqueoEventos = false;
+  }
+
+  function precargarCatalogosLegacy(r){
+    const regimenSel = (r.regimen_fiscal_select || r.regimen_fiscal || '').toString();
+    const usoCfdiSel = (r.uso_cfdi_select || r.uso_cfdi || r.uso_cdfi || '').toString();
+
+    $('#regimen_fiscal').val(regimenSel || null).trigger('change');
+    $('#uso_cfdi').val(usoCfdiSel || null).trigger('change');
+
+    if(!(r.regimen_fiscal_match ?? false)){
+      showLegacyOption('regimen_fiscal', r.regimen_fiscal_original || r.regimen_fiscal_texto_fallback || r.regimen_fiscal || '');
+    }
+    if(!(r.uso_cfdi_match ?? false)){
+      showLegacyOption('uso_cfdi', r.uso_cfdi_original || r.uso_cfdi_texto_fallback || r.uso_cfdi || r.uso_cdfi || '');
+    }
   }
 
   function cargarRegistros(p){
@@ -654,7 +677,12 @@ $(function(){
       rfc:$(this).data('rfc'),
       row_key:$(this).data('row')
     }, async function(resp){
-      const r = resp?.data || {};
+      if(!resp?.ok || !resp?.data){
+        toastr.error(resp?.msg || 'No se pudo cargar el detalle para edición.');
+        return;
+      }
+
+      const r = resp.data || {};
       resetForm();
 
       // ✅ ahora sí: si viene id del backend, se setea (y se usará para actualizar)
@@ -663,6 +691,8 @@ $(function(){
           $('#'+k).val(r[k] ?? '');
         }
       });
+
+      precargarCatalogosLegacy(r);
 
       await precargarUbicacion(r);
 

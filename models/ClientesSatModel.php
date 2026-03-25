@@ -84,6 +84,42 @@ class ClientesSatModel {
     }
 
     public function obtenerPorRowKey(string $rowKey): ?array {
+        $row = $this->obtenerRegistroPorRowKey($rowKey);
+        if (!$row) return null;
+
+        $ub = $this->resolverUbicacionLegacy($row);
+        return array_merge($row, $ub);
+    }
+
+    public function obtenerDetalleEdicionPorRowKey(string $rowKey): ?array {
+        $row = $this->obtenerRegistroPorRowKey($rowKey);
+        if (!$row) return null;
+
+        $detalle = null;
+        if (!empty($row['id'])) {
+            $detalle = $this->obtenerDetallePorId((int)$row['id']);
+        }
+        if (is_array($detalle) && !empty($detalle)) {
+            $row = array_merge($row, $detalle);
+        }
+
+        $row['uso_cfdi'] = $row['uso_cfdi'] ?? ($row['uso_cdfi'] ?? null);
+
+        $ub = $this->resolverUbicacionLegacy($row);
+        $regimen = $this->resolverRegimenFiscalLegacy($row['regimen_fiscal'] ?? '');
+        $usoCfdi = $this->resolverUsoCfdiLegacy($row['uso_cdfi'] ?? ($row['uso_cfdi'] ?? ''));
+
+        return array_merge($row, $ub, $regimen, $usoCfdi, [
+            'estado_original' => (string)($row['estado'] ?? ''),
+            'municipio_original' => (string)($row['municipio'] ?? ''),
+            'localidad_original' => (string)($row['localidad'] ?? ''),
+            'estado_match' => (($ub['estado_select'] ?? '') !== ''),
+            'municipio_match' => (($ub['municipio_select'] ?? '') !== ''),
+            'localidad_match' => (($ub['localidad_select'] ?? '') !== ''),
+        ]);
+    }
+
+    private function obtenerRegistroPorRowKey(string $rowKey): ?array {
         if (str_starts_with($rowKey, 'ID:')) {
             $id = (int)substr($rowKey, 3);
             $st = $this->conn->prepare("SELECT *, uso_cdfi AS uso_cfdi, CASE WHEN id IS NOT NULL THEN CONCAT('ID:', id) ELSE CONCAT('RFC:', rfc) END AS row_key FROM clientes_sat WHERE id = :id LIMIT 1");
@@ -94,11 +130,7 @@ class ClientesSatModel {
             $st->bindValue(':rfc', $rfc);
         }
         $st->execute();
-        $row = $st->fetch(PDO::FETCH_ASSOC) ?: null;
-        if (!$row) return null;
-
-        $ub = $this->resolverUbicacionLegacy($row);
-        return array_merge($row, $ub);
+        return $st->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
     public function obtenerDetallePorId(int $id): ?array {
@@ -230,6 +262,68 @@ class ClientesSatModel {
             'estado_texto_fallback' => $estado['fallback'],
             'municipio_texto_fallback' => $municipio['fallback'],
             'localidad_texto_fallback' => $localidad['fallback'],
+        ];
+    }
+
+    private function resolverRegimenFiscalLegacy($valor): array {
+        $valor = trim((string)$valor);
+        if ($valor === '') {
+            return [
+                'regimen_fiscal_original' => '',
+                'regimen_fiscal_select' => '',
+                'regimen_fiscal_descripcion' => null,
+                'regimen_fiscal_match' => false,
+                'regimen_fiscal_texto_fallback' => '',
+            ];
+        }
+
+        $st = $this->conn->prepare("SELECT ClaveRegimenFiscal, Descripcion FROM cat_sat_regimen_fiscal WHERE ClaveRegimenFiscal = :clave LIMIT 1");
+        $st->execute([':clave' => $valor]);
+        $row = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if (!$row) {
+            $st = $this->conn->prepare("SELECT ClaveRegimenFiscal, Descripcion FROM cat_sat_regimen_fiscal WHERE UPPER(Descripcion) = UPPER(:descripcion) ORDER BY Activo DESC, ClaveRegimenFiscal ASC LIMIT 1");
+            $st->execute([':descripcion' => $valor]);
+            $row = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        return [
+            'regimen_fiscal_original' => $valor,
+            'regimen_fiscal_select' => (string)($row['ClaveRegimenFiscal'] ?? ''),
+            'regimen_fiscal_descripcion' => $row['Descripcion'] ?? null,
+            'regimen_fiscal_match' => !empty($row['ClaveRegimenFiscal']),
+            'regimen_fiscal_texto_fallback' => empty($row['ClaveRegimenFiscal']) ? $valor : '',
+        ];
+    }
+
+    private function resolverUsoCfdiLegacy($valor): array {
+        $valor = trim((string)$valor);
+        if ($valor === '') {
+            return [
+                'uso_cfdi_original' => '',
+                'uso_cfdi_select' => '',
+                'uso_cfdi_descripcion' => null,
+                'uso_cfdi_match' => false,
+                'uso_cfdi_texto_fallback' => '',
+            ];
+        }
+
+        $st = $this->conn->prepare("SELECT ClaveUsoCFDI, Descripcion FROM cat_sat_uso_cfdi WHERE ClaveUsoCFDI = :clave LIMIT 1");
+        $st->execute([':clave' => $valor]);
+        $row = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if (!$row) {
+            $st = $this->conn->prepare("SELECT ClaveUsoCFDI, Descripcion FROM cat_sat_uso_cfdi WHERE UPPER(Descripcion) = UPPER(:descripcion) ORDER BY Activo DESC, ClaveUsoCFDI ASC LIMIT 1");
+            $st->execute([':descripcion' => $valor]);
+            $row = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        return [
+            'uso_cfdi_original' => $valor,
+            'uso_cfdi_select' => (string)($row['ClaveUsoCFDI'] ?? ''),
+            'uso_cfdi_descripcion' => $row['Descripcion'] ?? null,
+            'uso_cfdi_match' => !empty($row['ClaveUsoCFDI']),
+            'uso_cfdi_texto_fallback' => empty($row['ClaveUsoCFDI']) ? $valor : '',
         ];
     }
 

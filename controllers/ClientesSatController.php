@@ -41,7 +41,13 @@ switch ($accion) {
         } elseif ($rowKey === '' && $rfc !== '') {
             $rowKey = 'RFC:' . strtoupper($rfc);
         }
-        echo json_encode(['data' => $rowKey !== '' ? $model->obtenerPorRowKey($rowKey) : null]);
+        try {
+            $data = $rowKey !== '' ? $model->obtenerDetalleEdicionPorRowKey($rowKey) : null;
+            echo json_encode(['ok' => true, 'data' => $data]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            echo json_encode(['ok' => false, 'msg' => 'No se pudo cargar el detalle para edición.', 'data' => null]);
+        }
         break;
 
 
