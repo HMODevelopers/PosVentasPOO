@@ -13,7 +13,6 @@ class FacturacionPayloadBuilder
         $cfdiRelacionados = $this->normalizeCfdiRelacionados($ctx['cfdi_relacionados'] ?? []);
 
         $subTotal = $this->n($ctx['totales']['subtotal'] ?? 0);
-        $descuento = $this->nullableAmount($ctx['totales']['descuento'] ?? 0);
         $total = $this->n($ctx['totales']['total'] ?? 0);
         $fecha = $ctx['fecha_emision'] ?? ($formaPago['fecha'] ?? date('Y-m-d\TH:i:s'));
         $moneda = strtoupper((string)($formaPago['moneda'] ?? 'MXN'));
@@ -41,18 +40,12 @@ class FacturacionPayloadBuilder
                 'MetodoPago' => (string)($formaPago['metodo_pago'] ?? 'PUE'),
                 'Moneda' => $moneda,
                 'Referencia' => $ctx['referencia'],
-                'Serie' => $emisor['serie'] ?? null,
                 'SubTotal' => $subTotal,
-                'TipoDeComprobante' => (string)($formaPago['tipo_comprobante'] ?? 'I'),
                 'TipoCambio' => $tipoCambio,
                 'Total' => $total,
-                'Confirmacion' => null,
-                'Descuento' => $descuento,
                 'Emisor' => array_filter([
-                    'Rfc' => $emisor['rfc'] ?? null,
                     'Nombre' => $emisor['nombre'],
                     'RegimenFiscal' => $emisor['regimen_fiscal'],
-                    'FacAtrAdquirente' => $emisor['fac_atr_adquirente'] ?? null,
                 ], fn($v) => $v !== null && $v !== ''),
                 'Receptor' => array_filter([
                     'DomicilioFiscalReceptor' => $receptor['domicilio_fiscal_receptor'],
@@ -73,7 +66,7 @@ class FacturacionPayloadBuilder
             $payload['cfdi']['InformacionGlobal'] = $informacionGlobal;
         }
         if (!empty($cfdiRelacionados)) {
-            $payload['cfdi']['CfdiRelacionados40R'] = $cfdiRelacionados;
+            $payload['cfdi']['CfdiRelacionados'] = $cfdiRelacionados;
         }
 
         return $payload;
@@ -82,11 +75,6 @@ class FacturacionPayloadBuilder
     private function n($value): string
     {
         return number_format((float)$value, 2, '.', '');
-    }
-
-    private function nullableAmount($value): ?string
-    {
-        return ((float)$value > 0) ? $this->n($value) : null;
     }
 
     private function normalizeConceptos(array $conceptos): array

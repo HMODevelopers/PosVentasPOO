@@ -255,16 +255,16 @@ class FacturacionSoapClient
             $cfdi['InformacionGlobal'] = $infoGlobal;
         }
 
-        $cfdiRelacionados = $this->normalizeOptionalNode($rawCfdi['CfdiRelacionados40R'] ?? []);
+        $cfdiRelacionados = $this->normalizeOptionalNode($rawCfdi['CfdiRelacionados'] ?? $rawCfdi['CfdiRelacionados40R'] ?? []);
         if (!empty($cfdiRelacionados)) {
-            $cfdi['CfdiRelacionados40R'] = $cfdiRelacionados;
+            $cfdi['CfdiRelacionados'] = $cfdiRelacionados;
         }
 
         if (!isset($cfdi['Referencia']) || $this->isEmptyNodeValue($cfdi['Referencia'])) {
             throw new RuntimeException('cfdi.Referencia es obligatoria para GenerarCFDI40.');
         }
 
-        return $this->orderCfdiForPac($cfdi, $conceptos, $emisorNorm, $receptorNorm, $infoGlobal, $cfdiRelacionados);
+        return $this->orderCfdiForPac($cfdi, $conceptos, $emisorNorm, $receptorNorm, $cfdiRelacionados);
     }
 
     private function orderCfdiForPac(
@@ -272,44 +272,44 @@ class FacturacionSoapClient
         array $conceptos,
         array $emisor,
         array $receptor,
-        array $infoGlobal,
         array $cfdiRelacionados
     ): array {
         $ordered = [];
         $preferredOrder = [
+            'CfdiRelacionados',
             'ClaveCFDI',
             'Conceptos',
+            'CondicionesDePago',
             'Emisor',
             'Exportacion',
-            'Fecha',
-            'Folio',
             'FormaPago',
             'LugarExpedicion',
             'MetodoPago',
             'Moneda',
             'Receptor',
             'Referencia',
-            'Serie',
             'SubTotal',
             'TipoCambio',
-            'TipoDeComprobante',
             'Total',
-            'CondicionesDePago',
-            'Descuento',
-            'Confirmacion',
-            'InformacionGlobal',
-            'CfdiRelacionados40R',
         ];
 
-        $cfdi['Conceptos'] = $conceptos;
-        $cfdi['Emisor'] = $emisor;
-        $cfdi['Receptor'] = $receptor;
-        if (!empty($infoGlobal)) {
-            $cfdi['InformacionGlobal'] = $infoGlobal;
-        }
-        if (!empty($cfdiRelacionados)) {
-            $cfdi['CfdiRelacionados40R'] = $cfdiRelacionados;
-        }
+        $cfdi = [
+            'CfdiRelacionados' => $this->normalizeCfdiRelacionadosNode($cfdiRelacionados),
+            'ClaveCFDI' => $cfdi['ClaveCFDI'] ?? null,
+            'Conceptos' => $this->orderConceptosForPac($conceptos),
+            'CondicionesDePago' => $cfdi['CondicionesDePago'] ?? null,
+            'Emisor' => $this->orderEmisorForPac($emisor),
+            'Exportacion' => $cfdi['Exportacion'] ?? null,
+            'FormaPago' => $cfdi['FormaPago'] ?? null,
+            'LugarExpedicion' => $cfdi['LugarExpedicion'] ?? null,
+            'MetodoPago' => $cfdi['MetodoPago'] ?? null,
+            'Moneda' => $cfdi['Moneda'] ?? null,
+            'Receptor' => $this->orderReceptorForPac($receptor),
+            'Referencia' => $cfdi['Referencia'] ?? null,
+            'SubTotal' => $cfdi['SubTotal'] ?? null,
+            'TipoCambio' => $cfdi['TipoCambio'] ?? null,
+            'Total' => $cfdi['Total'] ?? null,
+        ];
 
         foreach ($preferredOrder as $field) {
             if (!array_key_exists($field, $cfdi) || $this->isEmptyNodeValue($cfdi[$field])) {
@@ -333,8 +333,6 @@ class FacturacionSoapClient
         $allowedGeneralFields = [
             'ClaveCFDI',
             'Exportacion',
-            'Fecha',
-            'Folio',
             'FormaPago',
             'MetodoPago',
             'LugarExpedicion',
@@ -343,15 +341,7 @@ class FacturacionSoapClient
             'SubTotal',
             'TipoCambio',
             'Total',
-            'Confirmacion',
-            'Descuento',
-            'Serie',
-            'TipoDeComprobante',
             'CondicionesDePago',
-            'NoCertificado',
-            'Certificado',
-            'Sello',
-            'Version',
         ];
 
         $cfdi = [];
@@ -387,6 +377,137 @@ class FacturacionSoapClient
         $nombreNormalizado = str_replace(['Á', 'É', 'Í', 'Ó', 'Ú'], ['A', 'E', 'I', 'O', 'U'], $nombre);
 
         return $rfc === 'XAXX010101000' || str_contains($nombreNormalizado, 'PUBLICO EN GENERAL');
+    }
+
+    private function normalizeCfdiRelacionadosNode(array $node): array
+    {
+        if (empty($node)) {
+            return [];
+        }
+
+        $relacionados = $this->toAssocArray($node['CfdiRelacionados40R'] ?? $node);
+        if (empty($relacionados)) {
+            return [];
+        }
+
+        $cfdiRelacionado = $relacionados['CfdiRelacionado40R'] ?? [];
+        if (!is_array($cfdiRelacionado)) {
+            $cfdiRelacionado = [];
+        }
+        if ($this->isAssoc($cfdiRelacionado)) {
+            $cfdiRelacionado = [$cfdiRelacionado];
+        }
+
+        $uuids = [];
+        foreach ($cfdiRelacionado as $uuidItem) {
+            if (!is_array($uuidItem)) {
+                continue;
+            }
+            $uuid = trim((string)($uuidItem['UUID'] ?? ''));
+            if ($uuid === '') {
+                continue;
+            }
+            $uuids[] = ['UUID' => $uuid];
+        }
+
+        if (empty($uuids)) {
+            return [];
+        }
+
+        return [
+            'CfdiRelacionados40R' => [[
+                'CfdiRelacionado' => [
+                    'CfdiRelacionado40R' => $uuids,
+                ],
+                'TipoRelacion' => $relacionados['TipoRelacion'] ?? null,
+            ]],
+        ];
+    }
+
+    private function orderEmisorForPac(array $emisor): array
+    {
+        return array_filter([
+            'Nombre' => $emisor['Nombre'] ?? null,
+            'RegimenFiscal' => $emisor['RegimenFiscal'] ?? null,
+        ], fn($value) => !$this->isEmptyNodeValue($value));
+    }
+
+    private function orderReceptorForPac(array $receptor): array
+    {
+        return array_filter([
+            'DomicilioFiscalReceptor' => $receptor['DomicilioFiscalReceptor'] ?? null,
+            'Nombre' => $receptor['Nombre'] ?? null,
+            'RegimenFiscalReceptor' => $receptor['RegimenFiscalReceptor'] ?? null,
+            'Rfc' => $receptor['Rfc'] ?? null,
+            'UsoCFDI' => $receptor['UsoCFDI'] ?? null,
+            'NumRegIDTrib' => $receptor['NumRegIDTrib'] ?? null,
+            'ResidenciaFiscal' => $receptor['ResidenciaFiscal'] ?? null,
+        ], fn($value) => !$this->isEmptyNodeValue($value));
+    }
+
+    private function orderConceptosForPac(array $conceptos): array
+    {
+        $lista = $conceptos['Concepto40R'] ?? [];
+        if (!is_array($lista)) {
+            $lista = [];
+        }
+
+        $ordenados = [];
+        foreach ($lista as $concepto) {
+            if (!is_array($concepto)) {
+                continue;
+            }
+
+            $ordenados[] = array_filter([
+                'Cantidad' => $concepto['Cantidad'] ?? null,
+                'ClaveProdServ' => $concepto['ClaveProdServ'] ?? null,
+                'ClaveUnidad' => $concepto['ClaveUnidad'] ?? null,
+                'Descripcion' => $concepto['Descripcion'] ?? null,
+                'Importe' => $concepto['Importe'] ?? null,
+                'Impuestos' => $this->orderConceptoImpuestosForPac($concepto['Impuestos'] ?? []),
+                'NoIdentificacion' => $concepto['NoIdentificacion'] ?? null,
+                'ObjetoImp' => $concepto['ObjetoImp'] ?? null,
+                'Unidad' => $concepto['Unidad'] ?? null,
+                'ValorUnitario' => $concepto['ValorUnitario'] ?? null,
+            ], fn($value) => !$this->isEmptyNodeValue($value));
+        }
+
+        return ['Concepto40R' => $ordenados];
+    }
+
+    private function orderConceptoImpuestosForPac(array $impuestos): array
+    {
+        $traslados = $impuestos['Traslados']['TrasladoConcepto40R'] ?? [];
+        if (!is_array($traslados)) {
+            $traslados = [];
+        }
+        if ($this->isAssoc($traslados)) {
+            $traslados = [$traslados];
+        }
+
+        $trasladosOrdenados = [];
+        foreach ($traslados as $traslado) {
+            if (!is_array($traslado)) {
+                continue;
+            }
+            $trasladosOrdenados[] = array_filter([
+                'Base' => $traslado['Base'] ?? null,
+                'Importe' => $traslado['Importe'] ?? null,
+                'Impuesto' => $traslado['Impuesto'] ?? null,
+                'TasaOCuota' => $traslado['TasaOCuota'] ?? null,
+                'TipoFactor' => $traslado['TipoFactor'] ?? null,
+            ], fn($value) => !$this->isEmptyNodeValue($value));
+        }
+
+        if (empty($trasladosOrdenados)) {
+            return [];
+        }
+
+        return [
+            'Traslados' => [
+                'TrasladoConcepto40R' => $trasladosOrdenados,
+            ],
+        ];
     }
 
     private function normalizeConceptosNode($conceptos): array
@@ -761,6 +882,19 @@ class FacturacionSoapClient
 
         if ($rootChildren !== ['credenciales', 'cfdi']) {
             throw new RuntimeException('GenerarCFDI40 debe tener exactamente tem:credenciales y tem:cfdi como hijos.');
+        }
+
+        $credencialesNode = $operation->getElementsByTagNameNS(self::NS_TEM, 'credenciales')->item(0);
+        $cfdiNode = $operation->getElementsByTagNameNS(self::NS_TEM, 'cfdi')->item(0);
+        foreach ([$credencialesNode, $cfdiNode] as $requiredNode) {
+            if (!$requiredNode instanceof DOMElement) {
+                throw new RuntimeException('No se encontraron los nodos tem:credenciales/tem:cfdi requeridos.');
+            }
+            foreach ($requiredNode->childNodes as $child) {
+                if ($child instanceof DOMElement && $child->namespaceURI !== self::NS_TES) {
+                    throw new RuntimeException('Todos los nodos internos de GenerarCFDI40 deben usar el namespace tes.');
+                }
+            }
         }
 
         if (str_contains($xml, '<tem:Credenciales') || str_contains($xml, '<tes:Credenciales') || str_contains($xml, '<tes:Comprobante40R')) {

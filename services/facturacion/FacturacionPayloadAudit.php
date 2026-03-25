@@ -51,7 +51,7 @@ class FacturacionPayloadAudit
                 'Receptor',
                 'Conceptos',
                 'InformacionGlobal',
-                'CfdiRelacionados40R',
+                'CfdiRelacionados',
             ],
             $report
         );
@@ -66,7 +66,7 @@ class FacturacionPayloadAudit
             'cfdi',
             'Emisor',
             ['Nombre', 'RegimenFiscal'],
-            ['FacAtrAdquirente', 'Nombre', 'RegimenFiscal'],
+            ['Nombre', 'RegimenFiscal'],
             $report
         );
         $this->validateRequiredObject(
@@ -151,15 +151,15 @@ class FacturacionPayloadAudit
             }
         }
 
-        if (!empty($cfdi['CfdiRelacionados40R'])) {
-            if (!is_array($cfdi['CfdiRelacionados40R'])) {
-                $report['errors'][] = 'CfdiRelacionados40R debe ser un objeto/arreglo asociativo.';
+        if (!empty($cfdi['CfdiRelacionados'])) {
+            if (!is_array($cfdi['CfdiRelacionados'])) {
+                $report['errors'][] = 'CfdiRelacionados debe ser un objeto/arreglo asociativo.';
             } else {
-                $this->validateAllowedKeys($cfdi['CfdiRelacionados40R'], 'cfdi.CfdiRelacionados40R', ['TipoRelacion', 'CfdiRelacionado40R'], $report);
-                $this->validateFields($cfdi['CfdiRelacionados40R'], 'cfdi.CfdiRelacionados40R', ['TipoRelacion'], $report);
-                if (!empty($cfdi['CfdiRelacionados40R']['CfdiRelacionado40R'])) {
-                    foreach ((array)$cfdi['CfdiRelacionados40R']['CfdiRelacionado40R'] as $i => $rel) {
-                        $itemPath = "cfdi.CfdiRelacionados40R.CfdiRelacionado40R[{$i}]";
+                $this->validateAllowedKeys($cfdi['CfdiRelacionados'], 'cfdi.CfdiRelacionados', ['TipoRelacion', 'CfdiRelacionado40R'], $report);
+                $this->validateFields($cfdi['CfdiRelacionados'], 'cfdi.CfdiRelacionados', ['TipoRelacion'], $report);
+                if (!empty($cfdi['CfdiRelacionados']['CfdiRelacionado40R'])) {
+                    foreach ((array)$cfdi['CfdiRelacionados']['CfdiRelacionado40R'] as $i => $rel) {
+                        $itemPath = "cfdi.CfdiRelacionados.CfdiRelacionado40R[{$i}]";
                         if (!is_array($rel)) {
                             $report['errors'][] = "{$itemPath} debe ser un objeto/arreglo asociativo.";
                             continue;
