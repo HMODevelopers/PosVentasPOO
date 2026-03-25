@@ -127,6 +127,22 @@ class FacturacionService
             }
 
             error_log('[CFDI40][GenerarCFDI40] payload=' . $payloadJson);
+            error_log('[CFDI40][GenerarCFDI40][totales_payload] ' . json_encode([
+                'subtotal_fiscal_base' => (float)($payload['Comprobante40R']['SubTotal'] ?? 0),
+                'impuestos_calculados' => (float)($payload['Comprobante40R']['Impuestos']['TotalImpuestosTrasladados'] ?? 0),
+                'total_final' => (float)($payload['Comprobante40R']['Total'] ?? 0),
+                'conceptos' => array_map(static function (array $concepto): array {
+                    $traslado = is_array($concepto['TrasladoConcepto40R'] ?? null) && isset($concepto['TrasladoConcepto40R'][0])
+                        ? $concepto['TrasladoConcepto40R'][0]
+                        : [];
+                    return [
+                        'valor_unitario' => (float)($concepto['ValorUnitario'] ?? 0),
+                        'importe' => (float)($concepto['Importe'] ?? 0),
+                        'base_traslado' => (float)($traslado['Base'] ?? 0),
+                        'importe_traslado' => (float)($traslado['Importe'] ?? 0),
+                    ];
+                }, $payload['Comprobante40R']['Conceptos']['Concepto40R'] ?? []),
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             error_log('[CFDI40][GenerarCFDI40] auditoria=' . $auditJson);
 
             $soapResult = $this->soapClient()->timbrar($payload);

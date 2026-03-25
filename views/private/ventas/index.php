@@ -2976,6 +2976,61 @@ function fillFacturacionComprobante(draft){
   applyDraftToForm();
 }
 
+function normalizeObjetoImpValue(value){
+  const raw = String(value ?? '').trim();
+  if (!raw) return '02';
+  if (/^\d$/.test(raw)) return `0${raw}`;
+  return raw;
+}
+
+function getDetalleFiscalNumbers(detalle = {}){
+  const cantidad = Number(detalle?.cantidad ?? 0);
+  const precioUnitario = Number(detalle?.precio_unitario ?? 0);
+  const subtotalComercial = Number(detalle?.subtotal ?? (cantidad * precioUnitario));
+  const objetoImp = normalizeObjetoImpValue(detalle?.objeto_imp ?? detalle?.producto_objeto_imp ?? '02');
+  const tasaIva = Number(detalle?.tasa_iva ?? detalle?.producto_tasa_iva ?? 0);
+  const usaIva = objetoImp === '02' && tasaIva > 0;
+  const baseIvaRaw = detalle?.base_iva;
+  const importeIvaRaw = detalle?.importe_iva;
+  const hasBase = baseIvaRaw !== null && baseIvaRaw !== undefined && baseIvaRaw !== '' && !Number.isNaN(Number(baseIvaRaw));
+  const hasImpuesto = importeIvaRaw !== null && importeIvaRaw !== undefined && importeIvaRaw !== '' && !Number.isNaN(Number(importeIvaRaw));
+  const subtotalFiscalBase = usaIva
+    ? (hasBase ? Number(baseIvaRaw) : Number((subtotalComercial / (1 + tasaIva)).toFixed(2)))
+    : subtotalComercial;
+  const impuestosCalculados = usaIva
+    ? (hasImpuesto ? Number(importeIvaRaw) : Number((subtotalComercial - subtotalFiscalBase).toFixed(2)))
+    : 0;
+  return {
+    subtotalComercial,
+    subtotalFiscalBase,
+    impuestosCalculados,
+    totalFinal: subtotalComercial,
+    objetoImp,
+    tasaIva
+  };
+}
+
+function computeFacturaPreviewTotals(draft, detalles){
+  const conceptos = Array.isArray(draft?.venta?.conceptos) ? draft.venta.conceptos : [];
+  if (conceptos.length) {
+    const subtotalFiscalBase = conceptos.reduce((acc, concepto) => acc + Number(concepto?.Importe ?? 0), 0);
+    const impuestosCalculados = conceptos.reduce((acc, concepto) => {
+      const traslados = Array.isArray(concepto?.Traslados) ? concepto.Traslados : [];
+      return acc + traslados.reduce((subAcc, traslado) => subAcc + Number(traslado?.Importe ?? 0), 0);
+    }, 0);
+    const descuento = Number(draft?.venta?.descuento ?? 0);
+    const totalFinal = Number(draft?.venta?.total ?? ((subtotalFiscalBase - descuento) + impuestosCalculados));
+    return { subtotalFiscalBase, impuestosCalculados, descuento, totalFinal, source: 'conceptos' };
+  }
+
+  const detalleRows = Array.isArray(detalles) ? detalles : [];
+  const subtotalFiscalBase = detalleRows.reduce((acc, detalle) => acc + getDetalleFiscalNumbers(detalle).subtotalFiscalBase, 0);
+  const impuestosCalculados = detalleRows.reduce((acc, detalle) => acc + getDetalleFiscalNumbers(detalle).impuestosCalculados, 0);
+  const descuento = Number(draft?.venta?.descuento ?? 0);
+  const totalFinal = Number(draft?.venta?.total ?? ((subtotalFiscalBase - descuento) + impuestosCalculados));
+  return { subtotalFiscalBase, impuestosCalculados, descuento, totalFinal, source: 'detalles' };
+}
+
 function renderFacturacionPreview(resp, idVenta){
   const ctx = resp?.contexto || {};
   const draft = hydrateFacturaDraftFromContext(ctx);
@@ -2986,6 +3041,7 @@ function renderFacturacionPreview(resp, idVenta){
   const advertencias = Array.isArray(resp?.advertencias) ? resp.advertencias : [];
   const estatusFiscal = String(cfdi.estatus || venta.estatus_fiscal || '').toUpperCase();
   const detalles = Array.isArray(ctx.detalles) ? ctx.detalles : [];
+  const totalesPreview = computeFacturaPreviewTotals(draft, detalles);
 
   $('#fac-emisor-rfc').text(emisor.rfc || '—');
   $('#fac-emisor-nombre').text(emisor.nombre || '—');
@@ -2998,16 +3054,25 @@ function renderFacturacionPreview(resp, idVenta){
   $('#fac-folio').text(venta.folio || ('#' + idVenta));
   $('#fac-fecha').text(fechaMx(venta.fecha));
   $('#fac-cliente').text(venta.cliente_nombre || venta.cliente || 'Venta sin cliente ligado');
-  $('#fac-total-subtotal').text(mxn(draft.venta.subtotal || 0));
-  $('#fac-total-descuento').text(mxn(draft.venta.descuento || 0));
-  $('#fac-total-impuestos').text(mxn(draft.venta.impuestos || 0));
-  $('#fac-total').text(mxn(draft.venta.total || 0));
+  $('#fac-total-subtotal').text(mxn(totalesPreview.subtotalFiscalBase || 0));
+  $('#fac-total-descuento').text(mxn(totalesPreview.descuento || 0));
+  $('#fac-total-impuestos').text(mxn(totalesPreview.impuestosCalculados || 0));
+  $('#fac-total').text(mxn(totalesPreview.totalFinal || 0));
   console.debug('[FACTURACION][modal-resumen]', {
     id_venta: idVenta,
-    subtotal: Number(draft.venta.subtotal || 0),
-    descuento: Number(draft.venta.descuento || 0),
-    impuestos: Number(draft.venta.impuestos || 0),
-    total: Number(draft.venta.total || 0)
+    subtotal_comercial_origen: Number(venta?.subtotal_factura ?? 0),
+    subtotal_fiscal_base: Number(totalesPreview.subtotalFiscalBase || 0),
+    descuento: Number(totalesPreview.descuento || 0),
+    impuestos_calculados: Number(totalesPreview.impuestosCalculados || 0),
+    total_final: Number(totalesPreview.totalFinal || 0),
+    fuente_totales: totalesPreview.source,
+    campos_detalle: detalles.map(d => ({
+      subtotal: d?.subtotal ?? null,
+      base_iva: d?.base_iva ?? null,
+      importe_iva: d?.importe_iva ?? null,
+      objeto_imp: d?.objeto_imp ?? d?.producto_objeto_imp ?? null,
+      tasa_iva: d?.tasa_iva ?? d?.producto_tasa_iva ?? null
+    }))
   });
   $('#fac-importe-letra').text(ctx?.totales?.importe_letra || 'No disponible en el flujo actual.');
   $('#fac-estatus-fiscal').html(getBadgeFiscal(estatusFiscal));
@@ -3025,12 +3090,13 @@ function renderFacturacionPreview(resp, idVenta){
     const rows = conceptosPreview.length ? conceptosPreview.map((c, idx) => ({ concepto: c, detalle: detalles[idx] || {} })) : detalles.map((d, idx) => ({ concepto: null, detalle: d, index: idx }));
     rows.forEach(({ concepto, detalle }) => {
       const cantidad = Number(concepto?.Cantidad ?? detalle?.cantidad ?? 0);
-      const pu = Number(concepto?.ValorUnitario ?? (detalle?.precio_unitario || 0));
-      const importe = Number(concepto?.Importe ?? detalle?.subtotal ?? (cantidad * pu));
+      const detalleFiscal = getDetalleFiscalNumbers(detalle || {});
+      const pu = Number(concepto?.ValorUnitario ?? (cantidad > 0 ? (detalleFiscal.subtotalFiscalBase / cantidad) : (detalle?.precio_unitario || 0)));
+      const importe = Number(concepto?.Importe ?? detalleFiscal.subtotalFiscalBase ?? (cantidad * pu));
       const objetoImp = concepto?.ObjetoImp || detalle?.objeto_imp || detalle?.producto_objeto_imp || '—';
       const traslado = Array.isArray(concepto?.Traslados) ? concepto.Traslados[0] : null;
-      const tasaIva = Number(traslado?.TasaOCuota ?? detalle?.tasa_iva ?? detalle?.producto_tasa_iva ?? 0);
-      const ivaImporte = Number(traslado?.Importe ?? detalle?.importe_iva ?? 0);
+      const tasaIva = Number(traslado?.TasaOCuota ?? detalleFiscal.tasaIva ?? 0);
+      const ivaImporte = Number(traslado?.Importe ?? detalleFiscal.impuestosCalculados ?? 0);
       const impuestos = ivaImporte > 0 ? `IVA ${((tasaIva || 0) * 100).toFixed(2)}%: ${mxn(ivaImporte)}` : '—';
       detalleHtml += `
         <tr>

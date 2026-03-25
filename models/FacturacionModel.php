@@ -465,16 +465,19 @@ class FacturacionModel
         foreach ($detalles as $detalle) {
             $cantidad = (float)($detalle['cantidad'] ?? 0);
             $valorUnitarioBruto = (float)($detalle['precio_unitario'] ?? 0);
-            $importeBruto = (float)($detalle['subtotal'] ?? ($cantidad * $valorUnitarioBruto));
+            $subtotalComercialOrigen = (float)($detalle['subtotal'] ?? ($cantidad * $valorUnitarioBruto));
             $descuento = (float)($detalle['descuento'] ?? 0);
-            $objetoImp = (string)($detalle['objeto_imp'] ?? $detalle['producto_objeto_imp'] ?? '02');
+            $objetoImp = $this->normalizeObjetoImp($detalle['objeto_imp'] ?? $detalle['producto_objeto_imp'] ?? '02');
             $tasaIva = (float)($detalle['tasa_iva'] ?? $detalle['producto_tasa_iva'] ?? 0);
-            $base = $importeBruto;
+            $usaBaseFiscalIva = ($objetoImp === '02' && $tasaIva > 0);
+            $base = $subtotalComercialOrigen;
             $impuesto = 0.0;
 
-            if ($objetoImp === '02' && $tasaIva > 0) {
-                $base = isset($detalle['base_iva']) ? (float)$detalle['base_iva'] : round($importeBruto / (1 + $tasaIva), 2);
-                $impuesto = isset($detalle['importe_iva']) ? (float)$detalle['importe_iva'] : round($importeBruto - $base, 2);
+            if ($usaBaseFiscalIva) {
+                $base = $this->valorNumericoDetalle($detalle, 'base_iva')
+                    ?? round($subtotalComercialOrigen / (1 + $tasaIva), 2);
+                $impuesto = $this->valorNumericoDetalle($detalle, 'importe_iva')
+                    ?? round($subtotalComercialOrigen - $base, 2);
             }
 
             $valorUnitario = $cantidad > 0 ? round($base / $cantidad, 2) : $base;
@@ -493,7 +496,7 @@ class FacturacionModel
                 'ValorUnitario' => $this->n($valorUnitario),
             ];
 
-            if ($objetoImp === '02' && $tasaIva > 0) {
+            if ($usaBaseFiscalIva) {
                 $concepto['Traslados'] = [[
                     'Base' => $this->n($base),
                     'Impuesto' => '002',
@@ -505,15 +508,23 @@ class FacturacionModel
 
             error_log('[FACTURACION][buildConceptos] concepto=' . json_encode([
                 'id_producto' => (int)($detalle['id_producto'] ?? 0),
+                'campos_detalle_origen' => [
+                    'subtotal' => $detalle['subtotal'] ?? null,
+                    'base_iva' => $detalle['base_iva'] ?? null,
+                    'importe_iva' => $detalle['importe_iva'] ?? null,
+                    'objeto_imp' => $detalle['objeto_imp'] ?? null,
+                    'tasa_iva' => $detalle['tasa_iva'] ?? null,
+                ],
                 'cantidad' => $cantidad,
                 'precio_unitario_bruto' => $valorUnitarioBruto,
-                'importe_bruto' => $importeBruto,
+                'subtotal_comercial_origen' => $subtotalComercialOrigen,
                 'objeto_imp' => $objetoImp,
                 'tasa_iva' => $tasaIva,
                 'valor_unitario_base' => $valorUnitario,
-                'importe_base' => $importe,
-                'base_iva' => $base,
-                'importe_iva' => $impuesto,
+                'subtotal_fiscal_base' => $base,
+                'impuestos_calculados' => $impuesto,
+                'total_final' => $subtotalComercialOrigen,
+                'usa_base_fiscal_iva' => $usaBaseFiscalIva,
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
             $out[] = array_filter($concepto, fn($v) => $v !== null && $v !== '');
@@ -599,12 +610,21 @@ class FacturacionModel
 
         $totalVenta = (float)($venta['total'] ?? 0);
         $totalCalculado = max(0, ($subtotal - $descuento) + $impuestos);
+        $totalFinal = $totalVenta > 0 ? round($totalVenta, 2) : round($totalCalculado, 2);
+
+        error_log('[FACTURACION][buildTotales] ' . json_encode([
+            'subtotal_fiscal_base' => round($subtotal, 2),
+            'descuento' => round($descuento, 2),
+            'impuestos_calculados' => round($impuestos, 2),
+            'total_final' => $totalFinal,
+            'total_venta_origen' => round($totalVenta, 2),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         return [
             'subtotal' => round($subtotal, 2),
             'descuento' => $descuento,
             'impuestos' => round($impuestos, 2),
-            'total' => $totalVenta > 0 ? round($totalVenta, 2) : round($totalCalculado, 2),
+            'total' => $totalFinal,
             'importe_letra' => null,
         ];
     }
@@ -647,6 +667,32 @@ class FacturacionModel
     {
         return number_format((float)$value, 2, '.', '');
     }
+
+    private function normalizeObjetoImp($value): string
+    {
+        $raw = trim((string)$value);
+        if ($raw === '') {
+            return '02';
+        }
+
+        if (ctype_digit($raw) && strlen($raw) === 1) {
+            return '0' . $raw;
+        }
+
+        return $raw;
+    }
+
+    private function valorNumericoDetalle(array $detalle, string $campo): ?float
+    {
+        if (!array_key_exists($campo, $detalle) || $detalle[$campo] === null || $detalle[$campo] === '') {
+            return null;
+        }
+        if (!is_numeric((string)$detalle[$campo])) {
+            return null;
+        }
+        return (float)$detalle[$campo];
+    }
+
 
     private function listarRegimenesFiscales(): array
     {
