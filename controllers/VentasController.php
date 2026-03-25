@@ -466,6 +466,11 @@ class VentasController
                 'id_venta' => $idVenta,
                 'facturacion_input' => $facturacionInput,
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            error_log('[FACTURACION][tipo_cambio][php-recibido] ' . json_encode([
+                'id_venta' => $idVenta,
+                'moneda' => $facturacionInput['moneda'] ?? null,
+                'tipo_cambio' => $facturacionInput['tipo_cambio'] ?? null,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $resp = $service->facturarVenta($idVenta, $facturacionInput);
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;

@@ -410,12 +410,6 @@ class FacturacionModel
             $venta['tipo_cambio'] ?? null,
         ]);
 
-        if ($moneda === 'MXN') {
-            $tipoCambio = '1';
-        }
-        if ($moneda === 'XXX') {
-            $tipoCambio = null;
-        }
 
         return [
             'moneda' => $moneda,
@@ -805,19 +799,19 @@ class FacturacionModel
 
     private function normalizarDatosComprobante(array $data, array $venta): array
     {
-        $moneda = strtoupper(trim((string)($data['moneda'] ?? 'MXN')));
-        $metodoPago = strtoupper(trim((string)($data['metodo_pago'] ?? (((string)($venta['estatus'] ?? '') === 'Credito') ? 'PPD' : 'PUE'))));
-        $formaPago = strtoupper(trim((string)($data['forma_pago'] ?? ($venta['forma_pago_sat'] ?? ''))));
-        $tipoComprobante = strtoupper(trim((string)($data['tipo_comprobante'] ?? 'I')));
-        $exportacion = trim((string)($data['exportacion'] ?? '01'));
+        $moneda = strtoupper(trim((string)($data['moneda'] ?? '')));
+        $metodoPago = strtoupper(trim((string)($data['metodo_pago'] ?? '')));
+        $formaPago = strtoupper(trim((string)($data['forma_pago'] ?? '')));
+        $tipoComprobante = strtoupper(trim((string)($data['tipo_comprobante'] ?? '')));
+        $exportacion = trim((string)($data['exportacion'] ?? ''));
         $condiciones = trim((string)($data['condiciones_pago'] ?? ''));
         $tipoCambio = trim((string)($data['tipo_cambio'] ?? ''));
 
-        if ($moneda === 'MXN') {
-            $tipoCambio = '1';
-        } elseif ($moneda === 'XXX') {
-            $tipoCambio = '';
-        }
+        error_log('[FACTURACION][tipo_cambio][normalizar-comprobante] ' . json_encode([
+            'moneda' => $moneda,
+            'tipo_cambio_recibido' => $data['tipo_cambio'] ?? null,
+            'tipo_cambio_normalizado' => $tipoCambio,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         return [
             'moneda' => $moneda,

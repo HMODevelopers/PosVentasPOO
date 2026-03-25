@@ -356,14 +356,18 @@ class FacturacionSoapClient
             if (in_array($field, ['SubTotal', 'Total', 'Descuento'], true)) {
                 $value = $this->formatDecimal($value, 2);
             }
-            if ($field === 'TipoCambio') {
-                $value = $this->formatDecimal($value, 6);
-            }
 
             $cfdi[$field] = $value;
         }
 
-        return array_filter($cfdi, fn($value) => !$this->isEmptyNodeValue($value));
+        $cfdi = array_filter($cfdi, fn($value) => !$this->isEmptyNodeValue($value));
+
+        error_log('[FACTURACION][tipo_cambio][soap-serialize] ' . json_encode([
+            'moneda' => $cfdi['Moneda'] ?? null,
+            'tipo_cambio_serializado' => $cfdi['TipoCambio'] ?? null,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        return $cfdi;
     }
 
     private function shouldIncludeInformacionGlobal(array $receptor, array $informacionGlobal): bool

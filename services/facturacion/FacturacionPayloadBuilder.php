@@ -16,12 +16,15 @@ class FacturacionPayloadBuilder
         $total = $this->n($ctx['totales']['total'] ?? 0);
         $fecha = $ctx['fecha_emision'] ?? ($formaPago['fecha'] ?? date('Y-m-d\TH:i:s'));
         $moneda = strtoupper((string)($formaPago['moneda'] ?? 'MXN'));
-        $tipoCambio = $formaPago['tipo_cambio'] ?? null;
-        if ($moneda === 'MXN') {
-            $tipoCambio = '1';
-        } elseif ($moneda === 'XXX') {
-            $tipoCambio = null;
-        }
+        $tipoCambio = array_key_exists('tipo_cambio', $formaPago)
+            ? (string)$formaPago['tipo_cambio']
+            : null;
+
+        error_log('[FACTURACION][tipo_cambio][payload-builder] ' . json_encode([
+            'moneda' => $moneda,
+            'tipo_cambio_formulario' => $formaPago['tipo_cambio'] ?? null,
+            'tipo_cambio_payload' => $tipoCambio,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         $payload = [
             'credenciales' => [

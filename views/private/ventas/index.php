@@ -2473,7 +2473,7 @@ function createEmptyFacturaDraft(){
       moneda: 'MXN',
       metodo_pago: '',
       forma_pago: '',
-      tipo_cambio: '1',
+      tipo_cambio: '',
       exportacion: '01',
       tipo_comprobante: 'I',
       condiciones_pago: ''
@@ -2728,6 +2728,10 @@ function applyDraftToForm(){
   $('#fac-select-metodo-pago').val(draft.comprobante.metodo_pago || '');
   $('#fac-select-forma-pago').val(draft.comprobante.forma_pago || '');
   $('#fac-input-tipo-cambio').val(draft.comprobante.tipo_cambio ?? '');
+  console.debug('[FACTURACION][tipo_cambio][form-visible]', {
+    moneda: String(draft?.comprobante?.moneda || '').trim().toUpperCase(),
+    tipo_cambio_visible: String(draft?.comprobante?.tipo_cambio ?? '').trim()
+  });
   $('#fac-input-condiciones-pago').val(draft.comprobante.condiciones_pago || '');
   $('#fac-select-tipo-comprobante').val(draft.comprobante.tipo_comprobante || 'I');
   $('#fac-select-exportacion').val(draft.comprobante.exportacion || '01');
@@ -2747,12 +2751,6 @@ function updateFacturaDraft(path, value, options = {}){
     cursor = cursor[key];
   }
   cursor[segments[segments.length - 1]] = value;
-
-  if (path === 'comprobante.moneda') {
-    const moneda = String(value || '').trim().toUpperCase();
-    if (moneda === 'MXN') draft.comprobante.tipo_cambio = '1';
-    if (moneda === 'XXX') draft.comprobante.tipo_cambio = '';
-  }
 
   draft.receptor.es_publico_general = ['XAXX010101000'].includes(String(draft.receptor.rfc || '').trim().toUpperCase())
     || /PUBLICO|MOSTRADOR/.test(String(draft.receptor.nombre || '').trim().toUpperCase());
@@ -2916,20 +2914,18 @@ function syncTipoCambioFacturacion(){
   const $tipoCambio = $('#fac-input-tipo-cambio');
   const $help = $('#fac-tipo-cambio-help');
 
+  $tipoCambio.prop('readonly', false).prop('disabled', false);
+
   if (moneda === 'MXN') {
-    if ($tipoCambio.val() !== '1') $tipoCambio.val('1');
-    $tipoCambio.prop('readonly', true).prop('disabled', false);
-    $help.text('Para MXN el tipo de cambio se envía fijo en 1.');
+    $help.text('Moneda MXN: captura 1 en el formulario y se enviará exactamente ese valor.');
     return;
   }
 
   if (moneda === 'XXX') {
-    $tipoCambio.val('').prop('readonly', true).prop('disabled', true);
-    $help.text('Para la clave XXX no debe enviarse tipo de cambio.');
+    $help.text('Moneda XXX: deja vacío el tipo de cambio en el formulario.');
     return;
   }
 
-  $tipoCambio.prop('readonly', false).prop('disabled', false);
   $help.text('Para monedas distintas de MXN y XXX el tipo de cambio es obligatorio.');
 }
 
@@ -3274,7 +3270,14 @@ $(document)
   .off('input', '#fac-input-tipo-cambio, #fac-input-condiciones-pago')
   .on('input', '#fac-input-tipo-cambio, #fac-input-condiciones-pago', function(){
     const path = this.id === 'fac-input-tipo-cambio' ? 'comprobante.tipo_cambio' : 'comprobante.condiciones_pago';
-    updateFacturaDraft(path, String($(this).val() || '').trim());
+    const value = String($(this).val() || '').trim();
+    if (this.id === 'fac-input-tipo-cambio') {
+      console.debug('[FACTURACION][tipo_cambio][js-read]', {
+        moneda: String($('#fac-select-moneda').val() || '').trim().toUpperCase(),
+        tipo_cambio_leido: value
+      });
+    }
+    updateFacturaDraft(path, value);
   });
 
 $(document).off('shown.bs.modal', '#modalFacturarVenta').on('shown.bs.modal', '#modalFacturarVenta', function(){
@@ -3317,6 +3320,11 @@ $(document).off('submit', '#formFacturarVenta').on('submit', '#formFacturarVenta
   }
 
   $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span> Facturando...');
+
+  console.debug('[FACTURACION][tipo_cambio][ajax-send]', {
+    moneda: payload.moneda,
+    tipo_cambio: payload.tipo_cambio
+  });
 
   $.post(VENTAS_URL, Object.assign({ accion:'facturar' }, payload), function(resp){
       $('#fac-loader').show();
