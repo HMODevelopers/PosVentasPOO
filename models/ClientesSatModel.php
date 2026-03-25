@@ -248,7 +248,7 @@ class ClientesSatModel {
         }
 
         $st = $this->conn->prepare("SELECT cve_ent FROM entidades WHERE UPPER(nombre_ent) = UPPER(:nombre) OR UPPER(nombre_abr) = UPPER(:nombre) ORDER BY cve_ent ASC LIMIT 1");
-        $st->execute([':nombre_ent' => $valor]);
+        $st->execute([':nombre' => $valor]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
         if (!empty($row['cve_ent'])) {
             return ['code' => str_pad((string)$row['cve_ent'], 2, '0', STR_PAD_LEFT), 'fallback' => ''];
