@@ -177,7 +177,27 @@ class FacturacionService
             $mapped = $this->responseMapper->map($soapResult['response'], $soapResult);
             error_log('[CFDI40][GenerarCFDI40] response_node_path=' . ($mapped['response_node_path'] ?? 'unknown'));
             error_log('[CFDI40][GenerarCFDI40] error_detallado=' . (string)($mapped['mensaje_detallado'] ?? ''));
+            error_log('[CFDI40][GenerarCFDI40] respuesta_original_pac=' . json_encode($soapResult['response'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $responsePayloadJson = $mapped['raw_response_json'] ?? json_encode($soapResult['response'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            $xmlTimbrado = $this->normalizeNullableString($mapped['xml_timbrado'] ?? null);
+            $pdfBase64 = $this->normalizeNullableString($mapped['pdf_base64'] ?? null);
+            $xmlDisponible = $xmlTimbrado !== null;
+            $pdfVacio = $pdfBase64 === null;
+
+            error_log('[CFDI40][GenerarCFDI40] xml_recibido=' . ($xmlDisponible ? 'SI' : 'NO'));
+            error_log('[CFDI40][GenerarCFDI40] pdf_vacio=' . ($pdfVacio ? 'SI' : 'NO'));
+
+            $xmlData = $this->extraerDatosTimbreDesdeXml($xmlTimbrado);
+            if ($xmlData['parse_error']) {
+                error_log('[CFDI40][GenerarCFDI40] xml_parse_error=' . $xmlData['parse_error']);
+            }
+            error_log('[CFDI40][GenerarCFDI40] uuid_extraido_xml=' . ($xmlData['uuid'] ?? ''));
+            error_log('[CFDI40][GenerarCFDI40] fecha_timbrado_extraida_xml=' . ($xmlData['fecha_timbrado'] ?? ''));
+
+            $uuidFinal = $xmlData['uuid'] ?: $this->normalizeNullableString($mapped['uuid'] ?? null);
+            $fechaTimbradoFinal = $xmlData['fecha_timbrado'] ?: $this->normalizeNullableString($mapped['fecha_timbrado'] ?? null);
+            $operacionExitosaFinal = (bool)($mapped['operacion_exitosa'] ?? false) && $xmlDisponible;
 
             $this->guardarDebugSoap([
                 'id_venta' => $idVenta,
@@ -193,21 +213,21 @@ class FacturacionService
                 'response_object' => print_r($soapResult['response'], true),
                 'response_json' => json_encode($soapResult['response'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'response_node_path' => $mapped['response_node_path'] ?? null,
-                'operacion_exitosa' => $mapped['operacion_exitosa'] ? 1 : 0,
-                'error_general' => $mapped['operacion_exitosa'] ? null : ($mapped['mensaje_respuesta'] ?? null),
-                'error_detallado' => $mapped['operacion_exitosa'] ? null : ($mapped['mensaje_detallado'] ?? null),
+                'operacion_exitosa' => $operacionExitosaFinal ? 1 : 0,
+                'error_general' => $operacionExitosaFinal ? null : ($mapped['mensaje_respuesta'] ?? null),
+                'error_detallado' => $operacionExitosaFinal ? null : ($mapped['mensaje_detallado'] ?? null),
             ]);
 
-            $estatus = $mapped['operacion_exitosa'] ? 'TIMBRADO' : 'ERROR';
+            $estatus = $operacionExitosaFinal ? 'TIMBRADO' : 'ERROR';
             $this->model->updateCfdiRecord((int)$cfdi['id_cfdi'], [
                 'referencia' => $mapped['referencia'] ?: $ctx['referencia'],
-                'uuid' => $mapped['uuid'],
+                'uuid' => $uuidFinal,
                 'estatus' => $estatus,
-                'fecha_timbrado' => $mapped['fecha_timbrado'],
-                'xml_timbrado' => $mapped['xml_timbrado'],
-                'pdf_base64' => $mapped['pdf_base64'],
+                'fecha_timbrado' => $fechaTimbradoFinal,
+                'xml_timbrado' => $xmlTimbrado,
+                'pdf_base64' => $pdfBase64,
                 'codigo_respuesta' => $mapped['codigo_respuesta'],
-                'mensaje_respuesta' => $mapped['mensaje_respuesta'] ?: ($mapped['operacion_exitosa'] ? 'CFDI timbrado correctamente.' : 'El servicio devolvió un error.'),
+                'mensaje_respuesta' => $mapped['mensaje_respuesta'] ?: ($operacionExitosaFinal ? 'CFDI timbrado correctamente.' : 'El servicio devolvió un error.'),
                 'request_payload' => $payloadJson,
                 'response_payload' => $mapped['raw_response_json'],
             ]);
@@ -215,19 +235,19 @@ class FacturacionService
             $this->logger->log([
                 'id_cfdi' => $cfdi['id_cfdi'] ?? null,
                 'id_venta' => $idVenta,
-                'tipo_evento' => $mapped['operacion_exitosa'] ? 'RESPONSE' : 'ERROR',
-                'operacion_exitosa' => $mapped['operacion_exitosa'] ? 1 : 0,
-                'codigo_interno' => $mapped['operacion_exitosa'] ? 'TIMBRADO_OK' : 'ERROR_NEGOCIO',
-                'mensaje_general' => $mapped['mensaje_respuesta'] ?: ($mapped['operacion_exitosa'] ? 'CFDI timbrado correctamente.' : 'Error funcional del servicio.'),
+                'tipo_evento' => $operacionExitosaFinal ? 'RESPONSE' : 'ERROR',
+                'operacion_exitosa' => $operacionExitosaFinal ? 1 : 0,
+                'codigo_interno' => $operacionExitosaFinal ? 'TIMBRADO_OK' : 'ERROR_NEGOCIO',
+                'mensaje_general' => $mapped['mensaje_respuesta'] ?: ($operacionExitosaFinal ? 'CFDI timbrado correctamente.' : 'Error funcional del servicio.'),
                 'mensaje_detallado' => $mapped['mensaje_detallado'] ?? null,
                 'request_payload' => $payloadJson,
                 'response_payload' => $mapped['raw_response_json'],
-                'origen_error' => $mapped['operacion_exitosa'] ? null : 'NEGOCIO',
+                'origen_error' => $operacionExitosaFinal ? null : 'NEGOCIO',
             ]);
 
             return [
-                'ok' => $mapped['operacion_exitosa'],
-                'msg' => $mapped['mensaje_respuesta'] ?: ($mapped['operacion_exitosa'] ? 'CFDI timbrado correctamente.' : 'No fue posible timbrar el CFDI.'),
+                'ok' => $operacionExitosaFinal,
+                'msg' => $mapped['mensaje_respuesta'] ?: ($operacionExitosaFinal ? 'CFDI timbrado correctamente.' : 'No fue posible timbrar el CFDI.'),
                 'cfdi' => $this->model->getCfdiByVenta($idVenta),
                 'response' => $mapped['raw_response_array'],
             ];
@@ -271,6 +291,89 @@ class FacturacionService
         }
     }
 
+
+    private function normalizeNullableString($value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $normalized = trim($value);
+        return $normalized === '' ? null : $normalized;
+    }
+
+    private function extraerDatosTimbreDesdeXml(?string $xmlTimbrado): array
+    {
+        if ($xmlTimbrado === null) {
+            return [
+                'uuid' => null,
+                'fecha_timbrado' => null,
+                'parse_error' => null,
+            ];
+        }
+
+        $prevUseErrors = libxml_use_internal_errors(true);
+        libxml_clear_errors();
+
+        try {
+            $xml = simplexml_load_string($xmlTimbrado);
+            if (!$xml instanceof SimpleXMLElement) {
+                $messages = array_map(static function (LibXMLError $error): string {
+                    return trim($error->message);
+                }, libxml_get_errors());
+                return [
+                    'uuid' => null,
+                    'fecha_timbrado' => null,
+                    'parse_error' => 'No se pudo interpretar el XML timbrado. ' . implode(' | ', $messages),
+                ];
+            }
+
+            $tfd = null;
+            foreach ($xml->getNamespaces(true) as $prefix => $uri) {
+                if ($uri !== '') {
+                    $xml->registerXPathNamespace($prefix === '' ? 'ns' : $prefix, $uri);
+                }
+                if (stripos($uri, 'TimbreFiscalDigital') !== false) {
+                    $tfdPrefix = $prefix === '' ? 'ns' : $prefix;
+                    $nodes = $xml->xpath('//' . $tfdPrefix . ':TimbreFiscalDigital');
+                    if (!empty($nodes) && $nodes[0] instanceof SimpleXMLElement) {
+                        $tfd = $nodes[0];
+                        break;
+                    }
+                }
+            }
+
+            if (!$tfd instanceof SimpleXMLElement) {
+                $fallbackNodes = $xml->xpath('//*[local-name()="TimbreFiscalDigital"]');
+                if (!empty($fallbackNodes) && $fallbackNodes[0] instanceof SimpleXMLElement) {
+                    $tfd = $fallbackNodes[0];
+                }
+            }
+
+            if (!$tfd instanceof SimpleXMLElement) {
+                return [
+                    'uuid' => null,
+                    'fecha_timbrado' => null,
+                    'parse_error' => 'No se encontró el nodo TimbreFiscalDigital en el XML timbrado.',
+                ];
+            }
+
+            $attrs = $tfd->attributes();
+            return [
+                'uuid' => $this->normalizeNullableString((string)($attrs['UUID'] ?? '')),
+                'fecha_timbrado' => $this->normalizeNullableString((string)($attrs['FechaTimbrado'] ?? '')),
+                'parse_error' => null,
+            ];
+        } catch (Throwable $e) {
+            return [
+                'uuid' => null,
+                'fecha_timbrado' => null,
+                'parse_error' => 'Excepción al parsear XML timbrado: ' . $e->getMessage(),
+            ];
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($prevUseErrors);
+        }
+    }
 
     private function soapClient(): FacturacionSoapClient
     {
