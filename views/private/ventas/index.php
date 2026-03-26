@@ -3447,13 +3447,26 @@ function renderCfdiDetalle(cfdi, idVenta){
   $('#det-cfdi-body-row').html(bodyHtml);
 
   const xmlUrl = `${VENTAS_URL}?accion=descargar-cfdi-archivo&id_venta=${idVenta}&tipo=xml`;
-  const pdfUrl = `${VENTAS_URL}?accion=descargar-cfdi-archivo&id_venta=${idVenta}&tipo=pdf`;
+  const pdfUrl = `${BASE_URL}/utils/cfdi_pdf.php?id_venta=${encodeURIComponent(idVenta)}`;
   const mostrarXml = !!(data.xml_timbrado || estatus === 'TIMBRADO');
-  const mostrarPdf = !!(data.pdf_base64 || estatus === 'TIMBRADO');
+  const mostrarPdf = !!(data.xml_timbrado || estatus === 'TIMBRADO');
 
   $('#det-cfdi-xml').attr('href', xmlUrl).toggleClass('d-none', !mostrarXml);
   $('#det-cfdi-pdf').attr('href', pdfUrl).toggleClass('d-none', !mostrarPdf);
 }
+
+$(document).off('click', '#det-cfdi-pdf').on('click', '#det-cfdi-pdf', function(e){
+  e.preventDefault();
+  const $btn = $(this);
+  const url = String($btn.attr('href') || '').trim();
+  if (!url || $btn.hasClass('d-none') || $btn.prop('disabled')) return;
+
+  $btn.prop('disabled', true);
+  window.open(url, '_blank');
+  setTimeout(function(){
+    $btn.prop('disabled', false);
+  }, 1200);
+});
 
 /* ======================= INVOICE (A4/Carta) ======================= */
 function renderInvRow({cantidad, clave, descripcion, pu, importe}) {
