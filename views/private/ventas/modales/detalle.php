@@ -1,100 +1,157 @@
+<style>
+  #modalDetalle .modal-dialog.modal-detalle-venta {
+    max-width: 1200px;
+    width: calc(100vw - 2rem);
+  }
+  #modalDetalle .modal-content {
+    min-height: 85vh;
+    max-height: 90vh;
+    overflow: hidden;
+    border: 0;
+    border-radius: .75rem;
+  }
+  #modalDetalle .modal-header,
+  #modalDetalle .modal-footer {
+    background: #fff;
+    border-color: #edf2f7;
+  }
+  #modalDetalle .modal-body {
+    overflow-y: auto;
+    background: #f8fafc;
+    padding: 1rem 1.25rem 1.25rem;
+  }
+  #modalDetalle .dv-section {
+    background: #fff;
+    border: 1px solid #e9eef5;
+    border-radius: .65rem;
+    padding: 1rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+  }
+  #modalDetalle .dv-section + .dv-section { margin-top: .95rem; }
+  #modalDetalle .dv-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: .9rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  #modalDetalle .dv-kpi small {
+    display: block;
+    color: #64748b;
+    font-size: .76rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    margin-bottom: .2rem;
+  }
+  #modalDetalle .dv-kpi .value {
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  #modalDetalle .dv-total-box {
+    background: #f1f5f9;
+    border: 1px solid #dbe5f0;
+    border-radius: .6rem;
+    padding: .6rem .8rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  #modalDetalle .dv-total-box strong { font-size: 1.2rem; }
+  #modalDetalle .dv-cfdi-grid .dv-kpi {
+    border: 1px solid #edf2f7;
+    background: #fbfdff;
+    border-radius: .5rem;
+    padding: .65rem .75rem;
+    height: 100%;
+  }
+  #modalDetalle .dv-cfdi-actions {
+    border-top: 1px dashed #d7e2ef;
+    margin-top: .8rem;
+    padding-top: .9rem;
+  }
+  #modalDetalle .dv-cfdi-actions .btn {
+    min-width: 165px;
+    margin: 0 .55rem .55rem 0;
+    font-weight: 600;
+  }
+  #modalDetalle .badge-fiscal {
+    font-size: .8rem;
+    letter-spacing: .02em;
+    padding: .4rem .65rem;
+  }
+  @media (max-width: 991.98px) {
+    #modalDetalle .modal-dialog.modal-detalle-venta { width: calc(100vw - 1rem); }
+    #modalDetalle .modal-content { min-height: 82vh; max-height: 88vh; }
+    #modalDetalle .dv-cfdi-actions .btn { min-width: 145px; }
+  }
+</style>
+
 <div class="modal fade" id="modalDetalle" tabindex="-1" role="dialog" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-detalle-venta" role="document">
     <div class="modal-content">
 
-      <div class="modal-header">
-        <h4 class="modal-title fw-bold" id="myLargeModalLabel">Detalle de venta</h4>
+      <div class="modal-header py-2">
+        <div>
+          <h4 class="modal-title font-weight-bold mb-0" id="myLargeModalLabel">Detalle de venta</h4>
+          <small class="text-muted">Folio: <span id="det-header-folio">—</span></small>
+        </div>
         <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
       </div>
 
       <div class="modal-body">
-        <!-- Loader -->
-        <div id="det-loader" class="text-center py-3" style="display:none;">
+        <div id="det-loader" class="text-center py-4" style="display:none;">
           <div class="spinner-border" role="status"></div>
           <div class="mt-2 small text-muted">Cargando detalle...</div>
         </div>
 
-        <!-- Contenido -->
         <div id="det-contenido" style="display:none;">
-          <div class="row">
-            <div class="col-md-4 mb-3">
-              <small class="text-primary font-weight-bold">Folio</small>
-              <div class="h5 mb-0" id="det-folio">—</div>
-            </div>
-            <div class="col-md-4 mb-3">
-              <small class="text-primary font-weight-bold">Fecha</small>
-              <div class="h5 mb-0" id="det-fecha">—</div>
-            </div>
-            <div class="col-md-4 mb-3">
-              <small class="text-primary font-weight-bold">Estatus</small>
-              <div class="h5 mb-0" id="det-estatus">—</div>
-            </div>
+          <div class="dv-section" id="wrap-det-resumen">
+            <div class="dv-title">Resumen de venta</div>
+            <div class="row">
+              <div class="col-md-4 col-lg-3 mb-3 dv-kpi"><small>Folio</small><div class="value" id="det-folio">—</div></div>
+              <div class="col-md-4 col-lg-3 mb-3 dv-kpi"><small>Fecha</small><div class="value" id="det-fecha">—</div></div>
+              <div class="col-md-4 col-lg-3 mb-3 dv-kpi"><small>Estatus</small><div class="value" id="det-estatus">—</div></div>
+              <div class="col-md-6 col-lg-3 mb-3 dv-kpi"><small>Cliente</small><div class="value" id="det-cliente">—</div></div>
+              <div class="col-md-6 col-lg-3 mb-3 dv-kpi"><small>Cajero</small><div class="value" id="det-usuario">—</div></div>
+              <div class="col-md-6 col-lg-3 mb-3 dv-kpi"><small>Caja</small><div class="value" id="det-caja">—</div></div>
+              <div class="col-md-6 col-lg-3 mb-3 dv-kpi"><small>Forma de pago</small><div class="value" id="det-forma">—</div></div>
+              <div class="col-md-6 col-lg-3 mb-3 dv-kpi"><small>Tipo de precio</small><div class="value" id="det-tipo">—</div></div>
 
-            <div class="col-md-4 mb-3">
-              <small class="text-primary font-weight-bold">Cliente</small>
-              <div class="h5 mb-0" id="det-cliente">—</div>
-            </div>
-            <div class="col-md-4 mb-3">
-              <small class="text-primary font-weight-bold">Cajero</small>
-              <div class="h5 mb-0" id="det-usuario">—</div>
-            </div>
-            <div class="col-md-4 mb-3">
-              <small class="text-primary font-weight-bold">Caja</small>
-              <div class="h5 mb-0" id="det-caja">—</div>
-            </div>
-
-            <div class="col-md-4 mb-3">
-              <small class="text-primary font-weight-bold">Forma de pago</small>
-              <div class="h5 mb-0" id="det-forma">—</div>
-            </div>
-            <div class="col-md-4 mb-3">
-              <small class="text-primary font-weight-bold">Tipo de precio</small>
-              <div class="h5 mb-0" id="det-tipo">—</div>
-            </div>
-
-            <!-- Bloques exclusivos de crédito (ocultos por defecto) -->
-            <div class="col-md-4 mb-3 d-none" id="wrap-det-estatus-credito">
-              <small class="text-primary font-weight-bold">Estatus crédito</small>
-              <div class="h5 mb-0" id="det-estatus-credito">N/A</div>
-            </div>
-            <div class="col-md-6 mb-3 d-none" id="wrap-det-abonado">
-              <small class="text-primary font-weight-bold">Abonado</small>
-              <div class="h5 mb-0" id="det-abonado">$0.00</div>
-            </div>
-            <div class="col-md-6 mb-3 d-none" id="wrap-det-saldo">
-              <small class="text-primary font-weight-bold">Saldo</small>
-              <div class="h5 mb-0" id="det-saldo">$0.00</div>
+              <div class="col-md-4 mb-3 d-none dv-kpi" id="wrap-det-estatus-credito"><small>Estatus crédito</small><div class="value" id="det-estatus-credito">N/A</div></div>
+              <div class="col-md-4 mb-3 d-none dv-kpi" id="wrap-det-abonado"><small>Abonado</small><div class="value" id="det-abonado">$0.00</div></div>
+              <div class="col-md-4 mb-3 d-none dv-kpi" id="wrap-det-saldo"><small>Saldo</small><div class="value" id="det-saldo">$0.00</div></div>
             </div>
           </div>
 
-          <hr>
-
-          <!-- Detalle (items) -->
-          <h5 class="mb-2">Productos</h5>
-          <div class="table-responsive">
-            <table class="table table-sm table-striped table-bordered mb-0">
-              <thead>
-                <tr>
-                  <th class="text-center">Codigo</th>
-                  <th>Producto</th>
-                  <th class="text-center">Póliza</th>
-                  <th class="text-center">Cant.</th>
-                  <th class="text-right">Precio</th>
-                  <th class="text-right">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody id="det-tbody"></tbody>
-              <tfoot>
-                <tr>
-                  <th colspan="5" class="text-right">Total</th>
-                  <th class="text-right h5 mb-0" id="det-total">$0.00</th>
-                </tr>
-              </tfoot>
-            </table>
+          <div class="dv-section" id="wrap-det-productos">
+            <div class="dv-title">
+              <span>Productos</span>
+              <div class="dv-total-box"><span class="text-muted">Total</span><strong id="det-total">$0.00</strong></div>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover table-bordered mb-0">
+                <thead class="thead-light">
+                  <tr>
+                    <th class="text-center">Código</th>
+                    <th>Producto</th>
+                    <th class="text-center">Póliza</th>
+                    <th class="text-center">Cant.</th>
+                    <th class="text-right">Precio</th>
+                    <th class="text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody id="det-tbody"></tbody>
+              </table>
+            </div>
           </div>
 
-          <div id="wrap-det-desglose" class="d-none mt-3">
-            <h5 class="mb-2">Desglose de pagos</h5>
+          <div id="wrap-det-desglose" class="d-none dv-section">
+            <div class="dv-title">Desglose de pagos</div>
             <div class="border rounded p-3">
               <div id="det-desglose-items" class="mb-2"></div>
               <div class="d-flex justify-content-between align-items-center font-weight-bold">
@@ -105,44 +162,46 @@
             </div>
           </div>
 
-          <hr>
+          <div id="wrap-det-cfdi" class="dv-section mt-3">
+            <div class="dv-title">CFDI emitido</div>
+            <div id="det-cfdi-empty" class="alert alert-light border mb-0 d-none">
+              <i class="mdi mdi-file-document-outline mr-1"></i>Sin CFDI emitido para esta venta.
+            </div>
 
-          <div id="wrap-det-cfdi" class="mt-3">
-            <h5 class="mb-2">Facturación</h5>
-            <div class="row">
-              <div class="col-md-3 mb-3">
-                <small class="text-primary font-weight-bold">Estatus fiscal</small>
-                <div class="h5 mb-0" id="det-cfdi-estatus">SIN FACTURAR</div>
+            <div id="det-cfdi-card">
+              <div class="row dv-cfdi-grid">
+                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Estatus fiscal</small><div class="value" id="det-cfdi-estatus">—</div></div>
+                <div class="col-md-4 col-lg-5 mb-2 dv-kpi"><small>UUID</small><div class="value" id="det-cfdi-uuid">—</div></div>
+                <div class="col-md-4 col-lg-4 mb-2 dv-kpi"><small>Referencia</small><div class="value" id="det-cfdi-ref">—</div></div>
+                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Fecha timbrado</small><div class="value" id="det-cfdi-fecha">—</div></div>
+                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>RFC receptor</small><div class="value" id="det-cfdi-rfc">—</div></div>
+                <div class="col-md-4 col-lg-6 mb-2 dv-kpi"><small>Nombre receptor</small><div class="value" id="det-cfdi-nombre">—</div></div>
+                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Uso CFDI</small><div class="value" id="det-cfdi-uso">—</div></div>
+                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Forma de pago</small><div class="value" id="det-cfdi-forma">—</div></div>
+                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Método de pago</small><div class="value" id="det-cfdi-metodo">—</div></div>
+                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Subtotal CFDI</small><div class="value" id="det-cfdi-subtotal">—</div></div>
+                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Total CFDI</small><div class="value" id="det-cfdi-total">—</div></div>
+                <div class="col-md-4 col-lg-3 mb-2 dv-kpi d-none" id="wrap-det-cfdi-codigo"><small>Código respuesta</small><div class="value" id="det-cfdi-codigo">—</div></div>
+                <div class="col-12 mb-2 dv-kpi"><small>Mensaje SAT / Proveedor</small><div class="value" id="det-cfdi-msg">Sin CFDI generado.</div></div>
               </div>
-              <div class="col-md-3 mb-3">
-                <small class="text-primary font-weight-bold">UUID</small>
-                <div class="h5 mb-0" id="det-cfdi-uuid">—</div>
-              </div>
-              <div class="col-md-3 mb-3">
-                <small class="text-primary font-weight-bold">Referencia</small>
-                <div class="h5 mb-0" id="det-cfdi-ref">—</div>
-              </div>
-              <div class="col-md-3 mb-3">
-                <small class="text-primary font-weight-bold">Fecha timbrado</small>
-                <div class="h5 mb-0" id="det-cfdi-fecha">—</div>
-              </div>
-              <div class="col-12 mb-2">
-                <div id="det-cfdi-msg" class="alert alert-light border mb-2">Sin CFDI generado.</div>
-              </div>
-              <div class="col-12 d-flex flex-wrap gap-2">
-                <a id="det-cfdi-xml" href="#" class="btn btn-outline-secondary btn-sm mr-2 d-none" target="_blank">
-                  <i class="mdi mdi-xml mr-1"></i>XML
+
+              <div class="dv-cfdi-actions">
+                <div class="small text-muted mb-2">Acciones CFDI</div>
+                <a id="det-cfdi-xml" href="#" class="btn btn-primary d-none" target="_blank">
+                  <i class="mdi mdi-xml mr-1"></i>Descargar XML
                 </a>
-                <a id="det-cfdi-pdf" href="#" class="btn btn-outline-secondary btn-sm d-none" target="_blank">
-                  <i class="mdi mdi-file-pdf-box mr-1"></i>PDF
+                <a id="det-cfdi-pdf" href="#" class="btn btn-danger d-none" target="_blank">
+                  <i class="mdi mdi-file-pdf-box mr-1"></i>Imprimir PDF
+                </a>
+                <a id="det-cfdi-verxml" href="#" class="btn btn-outline-info d-none" target="_blank">
+                  <i class="mdi mdi-eye-outline mr-1"></i>Ver XML
                 </a>
               </div>
             </div>
           </div>
 
-          <!-- Abonos (oculto por defecto) -->
-          <div id="wrap-det-abonos" class="d-none">
-            <h5 class="mb-2">Abonos</h5>
+          <div id="wrap-det-abonos" class="d-none dv-section">
+            <div class="dv-title">Abonos</div>
             <div class="table-responsive">
               <table class="table table-sm table-striped table-bordered mb-0">
                 <thead>
@@ -160,14 +219,11 @@
             </div>
           </div>
 
-          <!-- Error -->
-          <div id="det-error" class="alert alert-danger my-3" style="display:none;">
-            No se pudo cargar el detalle.
-          </div>
+          <div id="det-error" class="alert alert-danger my-3" style="display:none;">No se pudo cargar el detalle.</div>
         </div>
       </div>
 
-      <div class="modal-footer">
+      <div class="modal-footer py-2">
         <button type="button" class="btn btn-light" data-dismiss="modal">Cerrar</button>
       </div>
 

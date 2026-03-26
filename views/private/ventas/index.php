@@ -719,6 +719,7 @@ $(document).on('click','a.accion-ver-detalle',function(e){
   // Limpia tablas
   $('#det-tbody').empty();
   $('#det-total').text('$0.00');
+  $('#det-header-folio').text('—');
   renderCfdiDetalle(null, id);
   $('#det-abonos-body').html('<tr><td colspan="4" class="text-center text-muted">Sin abonos</td></tr>');
 
@@ -738,6 +739,7 @@ $(document).on('click','a.accion-ver-detalle',function(e){
 
     // Encabezado
     $('#det-folio').text(v.folio || '—');
+    $('#det-header-folio').text(v.folio || '—');
     $('#det-fecha').text(fechaMx(v.fecha));
     $('#det-estatus').html(getBadge(v.estatus || '—'));
     $('#det-cliente').text(v.cliente || 'Público en general');
@@ -3392,19 +3394,41 @@ $(function(){
 function renderCfdiDetalle(cfdi, idVenta){
   const data = cfdi || {};
   const estatus = String(data.estatus || '').toUpperCase();
-  $('#det-cfdi-estatus').html(getBadgeFiscal(estatus));
+  const hasCfdi = !!(data && (data.uuid || data.referencia || data.fecha_timbrado || data.estatus || data.xml_timbrado || data.pdf_base64));
+
+  $('#det-cfdi-empty').toggleClass('d-none', hasCfdi);
+  $('#det-cfdi-card').toggleClass('d-none', !hasCfdi);
+
+  if (!hasCfdi) {
+    return;
+  }
+
+  const badge = $(getBadgeFiscal(estatus)).addClass('badge-fiscal');
+  $('#det-cfdi-estatus').html(badge);
   $('#det-cfdi-uuid').text(data.uuid || '—');
   $('#det-cfdi-ref').text(data.referencia || '—');
   $('#det-cfdi-fecha').text(data.fecha_timbrado ? fechaMx(data.fecha_timbrado) : '—');
-  $('#det-cfdi-msg')
-    .removeClass('alert-danger alert-success alert-warning alert-light')
-    .addClass(estatus === 'TIMBRADO' ? 'alert-success' : (estatus === 'ERROR' ? 'alert-danger' : (estatus === 'PENDIENTE' ? 'alert-warning' : 'alert-light')) )
-    .text(data.mensaje_respuesta || (estatus ? `Estatus fiscal: ${estatus}` : 'Sin CFDI generado.'));
+  $('#det-cfdi-rfc').text(data.rfc_receptor || '—');
+  $('#det-cfdi-nombre').text(data.nombre_receptor || '—');
+  $('#det-cfdi-uso').text(data.uso_cfdi || '—');
+  $('#det-cfdi-forma').text(data.forma_pago || '—');
+  $('#det-cfdi-metodo').text(data.metodo_pago || '—');
+  $('#det-cfdi-subtotal').text(data.subtotal != null ? mxn(data.subtotal) : '—');
+  $('#det-cfdi-total').text(data.total != null ? mxn(data.total) : '—');
+  $('#det-cfdi-msg').text(data.mensaje_respuesta || (estatus ? `Estatus fiscal: ${estatus}` : 'Sin CFDI generado.'));
+
+  const codigoRespuesta = String(data.codigo_respuesta || '').trim();
+  $('#det-cfdi-codigo').text(codigoRespuesta || '—');
+  $('#wrap-det-cfdi-codigo').toggleClass('d-none', !codigoRespuesta);
 
   const xmlUrl = `${VENTAS_URL}?accion=descargar-cfdi-archivo&id_venta=${idVenta}&tipo=xml`;
   const pdfUrl = `${VENTAS_URL}?accion=descargar-cfdi-archivo&id_venta=${idVenta}&tipo=pdf`;
-  $('#det-cfdi-xml').attr('href', xmlUrl).toggleClass('d-none', !(data.xml_timbrado || estatus === 'TIMBRADO'));
-  $('#det-cfdi-pdf').attr('href', pdfUrl).toggleClass('d-none', !(data.pdf_base64 || estatus === 'TIMBRADO'));
+  const mostrarXml = !!(data.xml_timbrado || estatus === 'TIMBRADO');
+  const mostrarPdf = !!(data.pdf_base64 || estatus === 'TIMBRADO');
+
+  $('#det-cfdi-xml').attr('href', xmlUrl).toggleClass('d-none', !mostrarXml);
+  $('#det-cfdi-verxml').attr('href', xmlUrl).toggleClass('d-none', !mostrarXml);
+  $('#det-cfdi-pdf').attr('href', pdfUrl).toggleClass('d-none', !mostrarPdf);
 }
 
 /* ======================= INVOICE (A4/Carta) ======================= */
