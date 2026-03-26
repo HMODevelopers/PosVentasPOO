@@ -62,23 +62,7 @@
     gap: .5rem;
   }
   #modalDetalle .dv-total-box strong { font-size: 1.2rem; }
-  #modalDetalle .dv-cfdi-grid .dv-kpi {
-    border: 1px solid #edf2f7;
-    background: #fbfdff;
-    border-radius: .5rem;
-    padding: .65rem .75rem;
-    height: 100%;
-  }
-  #modalDetalle .dv-cfdi-actions {
-    border-top: 1px dashed #d7e2ef;
-    margin-top: .8rem;
-    padding-top: .9rem;
-  }
-  #modalDetalle .dv-cfdi-actions .btn {
-    min-width: 165px;
-    margin: 0 .55rem .55rem 0;
-    font-weight: 600;
-  }
+  #modalDetalle #det-cfdi-actions .btn { font-weight: 600; }
   #modalDetalle .badge-fiscal {
     font-size: .8rem;
     letter-spacing: .02em;
@@ -87,7 +71,7 @@
   @media (max-width: 991.98px) {
     #modalDetalle .modal-dialog.modal-detalle-venta { width: calc(100vw - 1rem); }
     #modalDetalle .modal-content { min-height: 82vh; max-height: 88vh; }
-    #modalDetalle .dv-cfdi-actions .btn { min-width: 145px; }
+    #modalDetalle #det-cfdi-actions .btn { margin-bottom: .35rem; }
   }
 </style>
 
@@ -163,39 +147,31 @@
           </div>
 
           <div id="wrap-det-cfdi" class="dv-section mt-3">
-            <div class="dv-title">CFDI emitido</div>
-            <div id="det-cfdi-empty" class="alert alert-light border mb-0 d-none">
-              <i class="mdi mdi-file-document-outline mr-1"></i>Sin CFDI emitido para esta venta.
-            </div>
-
-            <div id="det-cfdi-card">
-              <div class="row dv-cfdi-grid">
-                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Estatus fiscal</small><div class="value" id="det-cfdi-estatus">—</div></div>
-                <div class="col-md-4 col-lg-5 mb-2 dv-kpi"><small>UUID</small><div class="value" id="det-cfdi-uuid">—</div></div>
-                <div class="col-md-4 col-lg-4 mb-2 dv-kpi"><small>Referencia</small><div class="value" id="det-cfdi-ref">—</div></div>
-                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Fecha timbrado</small><div class="value" id="det-cfdi-fecha">—</div></div>
-                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>RFC receptor</small><div class="value" id="det-cfdi-rfc">—</div></div>
-                <div class="col-md-4 col-lg-6 mb-2 dv-kpi"><small>Nombre receptor</small><div class="value" id="det-cfdi-nombre">—</div></div>
-                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Uso CFDI</small><div class="value" id="det-cfdi-uso">—</div></div>
-                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Forma de pago</small><div class="value" id="det-cfdi-forma">—</div></div>
-                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Método de pago</small><div class="value" id="det-cfdi-metodo">—</div></div>
-                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Subtotal CFDI</small><div class="value" id="det-cfdi-subtotal">—</div></div>
-                <div class="col-md-4 col-lg-3 mb-2 dv-kpi"><small>Total CFDI</small><div class="value" id="det-cfdi-total">—</div></div>
-                <div class="col-md-4 col-lg-3 mb-2 dv-kpi d-none" id="wrap-det-cfdi-codigo"><small>Código respuesta</small><div class="value" id="det-cfdi-codigo">—</div></div>
-                <div class="col-12 mb-2 dv-kpi"><small>Mensaje SAT / Proveedor</small><div class="value" id="det-cfdi-msg">Sin CFDI generado.</div></div>
-              </div>
-
-              <div class="dv-cfdi-actions">
-                <div class="small text-muted mb-2">Acciones CFDI</div>
-                <a id="det-cfdi-xml" href="#" class="btn btn-primary d-none" target="_blank">
+            <div class="dv-title">
+              <span>CFDI emitido</span>
+              <div id="det-cfdi-actions" class="text-right">
+                <a id="det-cfdi-xml" href="#" class="btn btn-primary btn-sm d-none" target="_blank">
                   <i class="mdi mdi-xml mr-1"></i>Descargar XML
                 </a>
-                <a id="det-cfdi-pdf" href="#" class="btn btn-danger d-none" target="_blank">
+                <a id="det-cfdi-pdf" href="#" class="btn btn-danger btn-sm d-none" target="_blank">
                   <i class="mdi mdi-file-pdf-box mr-1"></i>Imprimir PDF
                 </a>
-                <a id="det-cfdi-verxml" href="#" class="btn btn-outline-info d-none" target="_blank">
-                  <i class="mdi mdi-eye-outline mr-1"></i>Ver XML
-                </a>
+              </div>
+            </div>
+            <div id="det-cfdi-empty" class="alert alert-light border mb-0 d-none">
+              <i class="mdi mdi-file-document-outline mr-1"></i>Esta venta no tiene CFDI emitido.
+            </div>
+
+            <div id="det-cfdi-card" class="d-none">
+              <div class="table-responsive">
+                <table class="table table-sm table-hover table-bordered mb-0">
+                  <thead class="thead-light">
+                    <tr id="det-cfdi-head-row"></tr>
+                  </thead>
+                  <tbody>
+                    <tr id="det-cfdi-body-row"></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

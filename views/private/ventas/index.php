@@ -3394,32 +3394,57 @@ $(function(){
 function renderCfdiDetalle(cfdi, idVenta){
   const data = cfdi || {};
   const estatus = String(data.estatus || '').toUpperCase();
-  const hasCfdi = !!(data && (data.uuid || data.referencia || data.fecha_timbrado || data.estatus || data.xml_timbrado || data.pdf_base64));
+  const columnasCfdi = [
+    {
+      key: 'estatus',
+      label: 'Estatus',
+      value: () => estatus ? `<span class="badge badge-fiscal ${estatus === 'TIMBRADO' ? 'badge-success' : 'badge-secondary'}">${escapeHtml(estatus)}</span>` : ''
+    },
+    {
+      key: 'uuid',
+      label: 'UUID',
+      value: () => String(data.uuid || '').trim()
+    },
+    {
+      key: 'referencia',
+      label: 'Referencia',
+      value: () => String(data.referencia || '').trim()
+    },
+    {
+      key: 'fecha_timbrado',
+      label: 'Fecha timbrado',
+      value: () => data.fecha_timbrado ? escapeHtml(fechaMx(data.fecha_timbrado)) : ''
+    },
+    {
+      key: 'mensaje_respuesta',
+      label: 'Mensaje respuesta',
+      value: () => String(data.mensaje_respuesta || '').trim()
+    },
+    {
+      key: 'codigo_respuesta',
+      label: 'Código respuesta',
+      value: () => String(data.codigo_respuesta || '').trim()
+    }
+  ];
+  const columnasVisibles = columnasCfdi
+    .map(col => ({ ...col, rendered: col.value() }))
+    .filter(col => col.rendered !== '' && col.rendered != null);
+
+  const hasCfdi = columnasVisibles.length > 0;
 
   $('#det-cfdi-empty').toggleClass('d-none', hasCfdi);
   $('#det-cfdi-card').toggleClass('d-none', !hasCfdi);
 
   if (!hasCfdi) {
+    $('#det-cfdi-head-row').empty();
+    $('#det-cfdi-body-row').empty();
     return;
   }
 
-  const badge = $(getBadgeFiscal(estatus)).addClass('badge-fiscal');
-  $('#det-cfdi-estatus').html(badge);
-  $('#det-cfdi-uuid').text(data.uuid || '—');
-  $('#det-cfdi-ref').text(data.referencia || '—');
-  $('#det-cfdi-fecha').text(data.fecha_timbrado ? fechaMx(data.fecha_timbrado) : '—');
-  $('#det-cfdi-rfc').text(data.rfc_receptor || '—');
-  $('#det-cfdi-nombre').text(data.nombre_receptor || '—');
-  $('#det-cfdi-uso').text(data.uso_cfdi || '—');
-  $('#det-cfdi-forma').text(data.forma_pago || '—');
-  $('#det-cfdi-metodo').text(data.metodo_pago || '—');
-  $('#det-cfdi-subtotal').text(data.subtotal != null ? mxn(data.subtotal) : '—');
-  $('#det-cfdi-total').text(data.total != null ? mxn(data.total) : '—');
-  $('#det-cfdi-msg').text(data.mensaje_respuesta || (estatus ? `Estatus fiscal: ${estatus}` : 'Sin CFDI generado.'));
-
-  const codigoRespuesta = String(data.codigo_respuesta || '').trim();
-  $('#det-cfdi-codigo').text(codigoRespuesta || '—');
-  $('#wrap-det-cfdi-codigo').toggleClass('d-none', !codigoRespuesta);
+  const headHtml = columnasVisibles.map(col => `<th>${escapeHtml(col.label)}</th>`).join('');
+  const bodyHtml = columnasVisibles.map(col => `<td>${col.rendered}</td>`).join('');
+  $('#det-cfdi-head-row').html(headHtml);
+  $('#det-cfdi-body-row').html(bodyHtml);
 
   const xmlUrl = `${VENTAS_URL}?accion=descargar-cfdi-archivo&id_venta=${idVenta}&tipo=xml`;
   const pdfUrl = `${VENTAS_URL}?accion=descargar-cfdi-archivo&id_venta=${idVenta}&tipo=pdf`;
@@ -3427,7 +3452,6 @@ function renderCfdiDetalle(cfdi, idVenta){
   const mostrarPdf = !!(data.pdf_base64 || estatus === 'TIMBRADO');
 
   $('#det-cfdi-xml').attr('href', xmlUrl).toggleClass('d-none', !mostrarXml);
-  $('#det-cfdi-verxml').attr('href', xmlUrl).toggleClass('d-none', !mostrarXml);
   $('#det-cfdi-pdf').attr('href', pdfUrl).toggleClass('d-none', !mostrarPdf);
 }
 
