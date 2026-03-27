@@ -402,12 +402,12 @@
                   </div>
                   <div class="col-md-4 col-sm-6 mt-2">
                     <label for="fac-input-tipo-cambio">Tipo de cambio</label>
-                    <input type="number" class="form-control" id="fac-input-tipo-cambio" min="0" step="0.000001" inputmode="decimal" autocomplete="off">
+                    <input type="number" class="form-control" id="fac-input-tipo-cambio" min="0" step="0.000001" inputmode="decimal" autocomplete="off" value="1" readonly>
                     <small id="fac-tipo-cambio-help" class="form-text cfdi-helper mb-0">Se ajusta automáticamente según la moneda seleccionada.</small>
                   </div>
                   <div class="col-md-4 col-sm-6 mt-2">
                     <label for="fac-input-condiciones-pago">Condiciones de pago</label>
-                    <input type="text" class="form-control" id="fac-input-condiciones-pago" maxlength="255" autocomplete="off">
+                    <input type="text" class="form-control" id="fac-input-condiciones-pago" maxlength="255" autocomplete="off" readonly>
                   </div>
                   <div class="col-md-4 col-sm-6 mt-2">
                     <label for="fac-select-tipo-comprobante">Tipo de comprobante</label>

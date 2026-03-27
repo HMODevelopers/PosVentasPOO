@@ -2475,7 +2475,7 @@ function createEmptyFacturaDraft(){
       moneda: 'MXN',
       metodo_pago: '',
       forma_pago: '',
-      tipo_cambio: '',
+      tipo_cambio: '1',
       exportacion: '01',
       tipo_comprobante: 'I',
       condiciones_pago: ''
@@ -2650,6 +2650,15 @@ function getFacturaDraft(){
   return facturaDraftState;
 }
 
+function ensureTipoCambioDefault(draft){
+  const moneda = String(draft?.comprobante?.moneda ?? '').trim().toUpperCase();
+  const tipoCambioActual = String(draft?.comprobante?.tipo_cambio ?? '').trim();
+  if (moneda === 'MXN' && !tipoCambioActual) {
+    draft.comprobante.tipo_cambio = '1';
+  }
+  return draft;
+}
+
 function renderFacturaDraftUI(){
   const draft = getFacturaDraft();
   const validaciones = draft.validaciones || validateFacturaDraft(draft);
@@ -2717,6 +2726,7 @@ function renderFacturaDraftUI(){
 
 function applyDraftToForm(){
   const draft = getFacturaDraft();
+  ensureTipoCambioDefault(draft);
   $('#fac-input-rfc').val(draft.receptor.rfc || '');
   $('#fac-input-razon-social').val(draft.receptor.nombre || '');
   $('#fac-input-nombre-comercial').val(draft.receptor.nombre_comercial || '');
@@ -2729,12 +2739,12 @@ function applyDraftToForm(){
   $('#fac-select-moneda').val(draft.comprobante.moneda || 'MXN');
   $('#fac-select-metodo-pago').val(draft.comprobante.metodo_pago || '');
   $('#fac-select-forma-pago').val(draft.comprobante.forma_pago || '');
-  $('#fac-input-tipo-cambio').val(draft.comprobante.tipo_cambio ?? '');
+  $('#fac-input-tipo-cambio').val(draft.comprobante.tipo_cambio ?? '').prop('readonly', true);
   console.debug('[FACTURACION][tipo_cambio][form-visible]', {
     moneda: String(draft?.comprobante?.moneda || '').trim().toUpperCase(),
     tipo_cambio_visible: String(draft?.comprobante?.tipo_cambio ?? '').trim()
   });
-  $('#fac-input-condiciones-pago').val(draft.comprobante.condiciones_pago || '');
+  $('#fac-input-condiciones-pago').val(draft.comprobante.condiciones_pago || '').prop('readonly', true);
   $('#fac-select-tipo-comprobante').val(draft.comprobante.tipo_comprobante || 'I');
   $('#fac-select-exportacion').val(draft.comprobante.exportacion || '01');
   syncTipoCambioFacturacion();
@@ -2753,6 +2763,7 @@ function updateFacturaDraft(path, value, options = {}){
     cursor = cursor[key];
   }
   cursor[segments[segments.length - 1]] = value;
+  ensureTipoCambioDefault(draft);
 
   draft.receptor.es_publico_general = ['XAXX010101000'].includes(String(draft.receptor.rfc || '').trim().toUpperCase())
     || /PUBLICO|MOSTRADOR/.test(String(draft.receptor.nombre || '').trim().toUpperCase());
@@ -2774,6 +2785,7 @@ function hydrateFacturaDraftFromContext(ctx = {}){
   facturaDraftState.catalogos = deepMerge(createEmptyFacturaDraft().catalogos, ctx.catalogos || facturaDraftState.catalogos || {});
   facturaDraftState.cfdi = ctx.cfdi_actual || {};
   facturaDraftState.venta.id_venta = Number(facturaDraftState.venta.id_venta || ctx?.venta?.id_venta || $('#fac-id-venta').val() || 0);
+  ensureTipoCambioDefault(facturaDraftState);
   facturaDraftState.validaciones = validateFacturaDraft(facturaDraftState);
   facturaDraftState.listoParaTimbrar = !!facturaDraftState.validaciones.listoParaTimbrar;
   return facturaDraftState;
@@ -2869,7 +2881,8 @@ function resetModalFacturacion(){
   $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
   $('#fac-folio, #fac-fecha, #fac-cliente, #fac-emisor-rfc, #fac-emisor-nombre, #fac-emisor-sucursal, #fac-emisor-regimen, #fac-emisor-lugar, #fac-emisor-serie, #fac-emisor-tipo, #fac-emisor-exportacion').text('—');
   $('#fac-input-rfc, #fac-input-razon-social, #fac-input-correo, #fac-input-cp, #fac-input-residencia-fiscal, #fac-input-num-reg-id-trib, #fac-input-nombre-comercial').val('').prop('readonly', false).prop('disabled', false);
-  $('#fac-input-condiciones-pago, #fac-input-tipo-cambio').val('').prop('readonly', false).prop('disabled', false);
+  $('#fac-input-condiciones-pago').val('').prop('readonly', true).prop('disabled', false);
+  $('#fac-input-tipo-cambio').val('1').prop('readonly', true).prop('disabled', false);
   $('#fac-select-regimen, #fac-select-uso-cfdi').html('<option value="">Seleccione…</option>').prop('disabled', false);
   $('#fac-select-moneda, #fac-select-metodo-pago, #fac-select-forma-pago, #fac-select-tipo-comprobante, #fac-select-exportacion').html('<option value="">Seleccione…</option>').prop('disabled', false);
   $('#fac-select-cliente').empty().val(null).trigger('change');
@@ -2924,10 +2937,14 @@ function syncTipoCambioFacturacion(){
   const $tipoCambio = $('#fac-input-tipo-cambio');
   const $help = $('#fac-tipo-cambio-help');
 
-  $tipoCambio.prop('readonly', false).prop('disabled', false);
+  $tipoCambio.prop('readonly', true).prop('disabled', false);
 
   if (moneda === 'MXN') {
-    $help.text('Moneda MXN: captura 1 en el formulario y se enviará exactamente ese valor.');
+    if (!String($tipoCambio.val() || '').trim()) {
+      $tipoCambio.val('1');
+      updateFacturaDraft('comprobante.tipo_cambio', '1', { skipRender: true });
+    }
+    $help.text('Moneda MXN: el tipo de cambio se envía fijo en 1.');
     return;
   }
 
