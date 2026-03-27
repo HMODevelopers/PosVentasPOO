@@ -373,8 +373,8 @@ class FacturacionModel
         $sql = "SELECT cfe.*, s.nombre AS sucursal_nombre
                 FROM ventas v
                 INNER JOIN cajas c ON c.id_caja = v.id_caja
-                LEFT JOIN sucursales s ON s.id_sucursal = c.id_sucursal
                 INNER JOIN config_fiscal_emisor cfe ON cfe.id_sucursal = c.id_sucursal AND cfe.activo = 1 AND cfe.es_default = 1
+                LEFT JOIN sucursales s ON s.id_sucursal = cfe.id_sucursal
                 WHERE v.id_venta = :id
                 ORDER BY cfe.id_config DESC
                 LIMIT 1";
@@ -382,21 +382,108 @@ class FacturacionModel
         $st->execute([':id' => $idVenta]);
         $row = $st->fetch(PDO::FETCH_ASSOC) ?: [];
 
+        $regimenFiscal = $this->schema->rowValue($row, ['regimen_fiscal_emisor', 'regimen_fiscal']);
+        $tipoComprobante = $this->schema->rowValue($row, ['tipo_comprobante'], 'I');
+        $exportacion = $this->schema->rowValue($row, ['exportacion_default'], '01');
+        $moneda = $this->schema->rowValue($row, ['moneda_default'], 'MXN');
+
+        $regimenDescripcion = $this->obtenerDescripcionCatalogoSat(
+            'cat_sat_regimen_fiscal',
+            $regimenFiscal,
+            ['ClaveRegimenFiscal'],
+            ['Descripcion']
+        );
+        $tipoComprobanteDescripcion = $this->obtenerDescripcionCatalogoSat(
+            'cat_sat_tipo_comprobante',
+            $tipoComprobante,
+            ['ClaveTipoComprobante', 'ClaveTipoDeComprobante', 'Clave'],
+            ['Descripcion', 'Descripción', 'Nombre']
+        );
+        $exportacionDescripcion = $this->obtenerDescripcionCatalogoSat(
+            'cat_sat_exportacion',
+            $exportacion,
+            ['ClaveExportacion', 'ClaveExportación', 'Clave'],
+            ['Descripcion', 'Descripción', 'Nombre']
+        );
+        $monedaDescripcion = $this->obtenerDescripcionCatalogoSat(
+            'cat_sat_moneda',
+            $moneda,
+            ['ClaveMoneda', 'Clave'],
+            ['Descripcion', 'Descripción', 'Nombre']
+        );
+
         return [
             'rfc' => $this->schema->rowValue($row, ['rfc_emisor', 'rfc']),
             'nombre' => $this->schema->rowValue($row, ['razon_social_emisor', 'nombre', 'razon_social']),
             'sucursal' => $this->schema->rowValue($row, ['sucursal_nombre', 'nombre_sucursal']),
-            'regimen_fiscal' => $this->schema->rowValue($row, ['regimen_fiscal_emisor', 'regimen_fiscal']),
+            'regimen_fiscal' => $regimenFiscal,
+            'regimen_fiscal_descripcion' => $regimenDescripcion,
+            'regimen_fiscal_label' => $this->buildClaveDescripcionLabel($regimenFiscal, $regimenDescripcion),
             'lugar_expedicion' => $this->schema->rowValue($row, ['cp_expedicion', 'codigo_postal', 'lugar_expedicion']),
             'serie' => $this->schema->rowValue($row, ['serie']),
             'folio_actual' => $this->schema->rowValue($row, ['folio_actual']),
-            'tipo_comprobante' => $this->schema->rowValue($row, ['tipo_comprobante'], 'I'),
-            'exportacion' => $this->schema->rowValue($row, ['exportacion_default'], '01'),
-            'moneda' => $this->schema->rowValue($row, ['moneda_default'], 'MXN'),
+            'tipo_comprobante' => $tipoComprobante,
+            'tipo_comprobante_descripcion' => $tipoComprobanteDescripcion,
+            'tipo_comprobante_label' => $this->buildClaveDescripcionLabel($tipoComprobante, $tipoComprobanteDescripcion),
+            'exportacion' => $exportacion,
+            'exportacion_descripcion' => $exportacionDescripcion,
+            'exportacion_label' => $this->buildClaveDescripcionLabel($exportacion, $exportacionDescripcion),
+            'moneda' => $moneda,
+            'moneda_descripcion' => $monedaDescripcion,
+            'moneda_label' => $this->buildClaveDescripcionLabel($moneda, $monedaDescripcion),
             'objeto_imp_default' => $this->schema->rowValue($row, ['objeto_imp_default'], '02'),
             'fac_atr_adquirente' => $this->schema->rowValue($row, ['fac_atr_adquirente']),
             'raw' => $row,
         ];
+    }
+
+    private function obtenerDescripcionCatalogoSat(
+        string $tabla,
+        ?string $clave,
+        array $columnasClave,
+        array $columnasDescripcion
+    ): ?string {
+        $clave = trim((string)$clave);
+        if ($clave === '' || !$this->schema->tableExists($tabla)) {
+            return null;
+        }
+
+        $colClave = $this->schema->pickColumn($tabla, $columnasClave);
+        $colDescripcion = $this->schema->pickColumn($tabla, $columnasDescripcion);
+        if (!$colClave || !$colDescripcion) {
+            return null;
+        }
+
+        $sql = sprintf(
+            'SELECT %s AS descripcion FROM %s WHERE %s = :clave LIMIT 1',
+            $colDescripcion,
+            $tabla,
+            $colClave
+        );
+
+        $st = $this->conn->prepare($sql);
+        $st->execute([':clave' => $clave]);
+        $descripcion = $st->fetchColumn();
+        if (!is_string($descripcion)) {
+            return null;
+        }
+
+        $descripcion = trim($descripcion);
+        return $descripcion !== '' ? $descripcion : null;
+    }
+
+    private function buildClaveDescripcionLabel(?string $clave, ?string $descripcion): string
+    {
+        $clave = trim((string)$clave);
+        $descripcion = trim((string)$descripcion);
+
+        if ($clave === '' && $descripcion === '') {
+            return '—';
+        }
+        if ($clave !== '' && $descripcion !== '') {
+            return $clave . ' - ' . $descripcion;
+        }
+        return $clave !== '' ? $clave : $descripcion;
     }
 
     private function buildInformacionGlobal(array $receptor): array

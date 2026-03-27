@@ -2910,6 +2910,14 @@ function fillFacturacionSelectFromPairs($select, items, currentValue, placeholde
   $select.val(currentValue !== undefined && currentValue !== null ? String(currentValue) : '');
 }
 
+function formatClaveDescripcion(clave, descripcion, emptyText = '—'){
+  const claveTxt = String(clave ?? '').trim();
+  const descripcionTxt = String(descripcion ?? '').trim();
+  if (!claveTxt && !descripcionTxt) return emptyText;
+  if (claveTxt && descripcionTxt) return `${claveTxt} - ${descripcionTxt}`;
+  return claveTxt || descripcionTxt || emptyText;
+}
+
 function syncTipoCambioFacturacion(){
   const draft = getFacturaDraft();
   const moneda = String(draft?.comprobante?.moneda || $('#fac-select-moneda').val() || '').trim().toUpperCase();
@@ -3044,11 +3052,26 @@ function renderFacturacionPreview(resp, idVenta){
   $('#fac-emisor-rfc').text(emisor.rfc || '—');
   $('#fac-emisor-nombre').text(emisor.nombre || '—');
   $('#fac-emisor-sucursal').text(emisor.sucursal || venta.sucursal_nombre || '—');
-  $('#fac-emisor-regimen').text(emisor.regimen_fiscal || '—');
+  $('#fac-emisor-regimen').text(
+    emisor.regimen_fiscal_label
+    || formatClaveDescripcion(emisor.regimen_fiscal, emisor.regimen_fiscal_descripcion)
+  );
   $('#fac-emisor-lugar').text(emisor.lugar_expedicion || '—');
-  $('#fac-emisor-serie').text(emisor.serie || '—');
-  $('#fac-emisor-tipo').text(emisor.tipo_comprobante || draft.comprobante.tipo_comprobante || '—');
-  $('#fac-emisor-exportacion').text(emisor.exportacion || draft.comprobante.exportacion || '—');
+  $('#fac-emisor-serie').text(String(emisor.serie || '').trim() || 'Sin serie');
+  $('#fac-emisor-tipo').text(
+    emisor.tipo_comprobante_label
+    || formatClaveDescripcion(
+      emisor.tipo_comprobante || draft.comprobante.tipo_comprobante,
+      emisor.tipo_comprobante_descripcion
+    )
+  );
+  $('#fac-emisor-exportacion').text(
+    emisor.exportacion_label
+    || formatClaveDescripcion(
+      emisor.exportacion || draft.comprobante.exportacion,
+      emisor.exportacion_descripcion
+    )
+  );
   $('#fac-folio').text(venta.folio || ('#' + idVenta));
   $('#fac-fecha').text(fechaMx(venta.fecha));
   $('#fac-cliente').text(venta.cliente_nombre || venta.cliente || 'Venta sin cliente ligado');
