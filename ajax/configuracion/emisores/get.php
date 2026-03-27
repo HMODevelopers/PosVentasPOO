@@ -1,11 +1,17 @@
 <?php
 require_once __DIR__ . '/_bootstrap.php';
 
-if ((int)($_GET['sucursales'] ?? $_POST['sucursales'] ?? 0) === 1) {
+if ((int)($_GET['catalogos'] ?? $_POST['catalogos'] ?? 0) === 1) {
     try {
-        json_ok($model->listarSucursalesActivas());
+        json_ok([
+            'sucursales' => $model->listarSucursalesActivas(),
+            'regimenes' => $model->listarRegimenesFiscalesActivos(),
+            'monedas' => $model->listarMonedasActivas(),
+            'tipos_comprobante' => $model->listarTiposComprobanteActivos(),
+            'exportaciones' => $model->listarExportacionesActivas(),
+        ]);
     } catch (Throwable $e) {
-        json_err('No se pudieron obtener las sucursales.', 'CFG-SUC-500');
+        json_err('No se pudieron obtener los catálogos.', 'CFG-CAT-500');
     }
 }
 

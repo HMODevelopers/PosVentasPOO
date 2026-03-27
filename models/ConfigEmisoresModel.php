@@ -10,6 +10,8 @@ class ConfigEmisoresModel {
         'serie','folio_actual','activo','es_default'
     ];
 
+    private array $tableColumnsCache = [];
+
     public function __construct() {
         global $pdo;
         $this->conn = $pdo;
@@ -66,7 +68,8 @@ class ConfigEmisoresModel {
         $st->bindValue(':lim', max(1, $limite), PDO::PARAM_INT);
         $st->bindValue(':off', max(0, $offset), PDO::PARAM_INT);
         $st->execute();
-        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return $this->enriquecerRowsConEtiquetas($rows);
     }
 
     public function contar(array $filtros): int {
@@ -135,11 +138,12 @@ class ConfigEmisoresModel {
     }
 
     public function actualizar(int $id, array $data): bool {
-        if (!$this->obtenerPorId($id)) {
+        $actual = $this->obtenerPorId($id);
+        if (!$actual) {
             return false;
         }
 
-        $d = $this->sanitizeData($data);
+        $d = $this->sanitizeData($data, $actual);
         $sets = [];
         foreach ($this->fillable as $f) {
             $sets[] = "{$f}=:{$f}";
@@ -244,14 +248,58 @@ class ConfigEmisoresModel {
         return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
-    private function sanitizeData(array $data): array {
+    public function listarRegimenesFiscalesActivos(): array {
+        return $this->listarCatalogoSAT(
+            'cat_sat_regimen_fiscal',
+            ['ClaveRegimenFiscal'],
+            ['Descripcion'],
+            ['Activo'],
+            'clave ASC'
+        );
+    }
+
+    public function listarMonedasActivas(): array {
+        return $this->listarCatalogoSAT(
+            'cat_sat_moneda',
+            ['ClaveMoneda'],
+            ['Descripcion'],
+            ['Activo'],
+            'clave ASC'
+        );
+    }
+
+    public function listarTiposComprobanteActivos(): array {
+        return $this->listarCatalogoSAT(
+            'cat_sat_tipo_comprobante',
+            ['ClaveTipoComprobante', 'ClaveTipoDeComprobante', 'Clave'],
+            ['Descripcion', 'Descripción', 'Nombre'],
+            ['Activo', 'Estatus'],
+            'clave ASC'
+        );
+    }
+
+    public function listarExportacionesActivas(): array {
+        return $this->listarCatalogoSAT(
+            'cat_sat_exportacion',
+            ['ClaveExportacion', 'ClaveExportación', 'Clave'],
+            ['Descripcion', 'Descripción', 'Nombre'],
+            ['Activo', 'Estatus'],
+            'clave ASC'
+        );
+    }
+
+    private function sanitizeData(array $data, array $prev = []): array {
         $clean = [];
         foreach ($this->fillable as $f) {
-            $v = $data[$f] ?? null;
+            $v = $data[$f] ?? ($prev[$f] ?? null);
             if (in_array($f, ['id_sucursal','folio_actual','activo','es_default'], true)) {
                 $clean[$f] = (int)$v;
             } elseif ($f === 'rfc_emisor') {
-                $clean[$f] = strtoupper(substr(trim((string)$v), 0, 13));
+                $clean[$f] = preg_replace('/[^A-Z0-9&Ñ]/u', '', strtoupper(substr(trim((string)$v), 0, 13)));
+            } elseif ($f === 'cp_expedicion') {
+                $clean[$f] = substr(preg_replace('/\D+/', '', (string)$v), 0, 5);
+            } elseif ($f === 'serie') {
+                $clean[$f] = strtoupper(substr(preg_replace('/[^A-Z0-9]/', '', trim((string)$v)), 0, 10));
             } else {
                 $clean[$f] = trim((string)$v);
             }
@@ -260,7 +308,8 @@ class ConfigEmisoresModel {
         $clean['tipo_comprobante'] = strtoupper(substr($clean['tipo_comprobante'] ?: 'I', 0, 1));
         $clean['exportacion_default'] = substr($clean['exportacion_default'] ?: '01', 0, 2);
         $clean['moneda_default'] = strtoupper(substr($clean['moneda_default'] ?: 'MXN', 0, 3));
-        $clean['objeto_imp_default'] = substr($clean['objeto_imp_default'] ?: '02', 0, 2);
+        $clean['objeto_imp_default'] = substr(($clean['objeto_imp_default'] ?: ($prev['objeto_imp_default'] ?? '02')), 0, 2);
+        $clean['folio_actual'] = max(0, (int)$clean['folio_actual']);
         $clean['activo'] = $clean['activo'] ? 1 : 0;
         $clean['es_default'] = $clean['es_default'] ? 1 : 0;
         if ($clean['es_default'] === 1) {
@@ -286,5 +335,115 @@ class ConfigEmisoresModel {
             $st = $this->conn->prepare("UPDATE config_fiscal_emisor SET es_default = 1 WHERE id_config = :id_config");
             $st->execute([':id_config' => $idActual]);
         }
+    }
+
+    private function enriquecerRowsConEtiquetas(array $rows): array {
+        if (!$rows) {
+            return [];
+        }
+
+        $regimenMap = $this->catalogMap($this->listarRegimenesFiscalesActivos());
+        $monedaMap = $this->catalogMap($this->listarMonedasActivas());
+        $tipoMap = $this->catalogMap($this->listarTiposComprobanteActivos());
+        $exportMap = $this->catalogMap($this->listarExportacionesActivas());
+
+        foreach ($rows as &$row) {
+            $row['regimen_fiscal_emisor_label'] = $this->resolveLabel($row['regimen_fiscal_emisor'] ?? '', $regimenMap, 'Régimen');
+            $row['moneda_default_label'] = $this->resolveLabel($row['moneda_default'] ?? '', $monedaMap, 'Moneda');
+            $row['tipo_comprobante_label'] = $this->resolveLabel($row['tipo_comprobante'] ?? '', $tipoMap, 'Tipo');
+            $row['exportacion_default_label'] = $this->resolveLabel($row['exportacion_default'] ?? '', $exportMap, 'Exportación');
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    private function catalogMap(array $catalogRows): array {
+        $map = [];
+        foreach ($catalogRows as $item) {
+            $key = (string)($item['clave'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $map[$key] = (string)($item['label'] ?? $key);
+        }
+        return $map;
+    }
+
+    private function resolveLabel(string $value, array $map, string $prefix): string {
+        $value = trim((string)$value);
+        if ($value === '') {
+            return '—';
+        }
+        if (isset($map[$value])) {
+            return $map[$value];
+        }
+        return $value . ' (legacy / no vigente en catálogo)';
+    }
+
+    private function listarCatalogoSAT(string $table, array $keyCandidates, array $descCandidates, array $activeCandidates, string $order = 'clave ASC'): array {
+        try {
+            $columns = $this->getTableColumns($table);
+            if (!$columns) {
+                return [];
+            }
+
+            $keyCol = $this->pickColumn($columns, $keyCandidates);
+            $descCol = $this->pickColumn($columns, $descCandidates);
+            if (!$keyCol || !$descCol) {
+                return [];
+            }
+
+            $activeCol = $this->pickColumn($columns, $activeCandidates);
+            $sql = "SELECT {$keyCol} AS clave, {$descCol} AS descripcion FROM {$table}";
+            if ($activeCol) {
+                $sql .= " WHERE {$activeCol} = 1";
+            }
+            $sql .= " ORDER BY {$order}";
+            $st = $this->conn->query($sql);
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            foreach ($rows as &$r) {
+                $r['clave'] = trim((string)($r['clave'] ?? ''));
+                $r['descripcion'] = trim((string)($r['descripcion'] ?? ''));
+                $r['label'] = $r['clave'] . ' - ' . $r['descripcion'];
+            }
+            unset($r);
+            return $rows;
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    private function getTableColumns(string $table): array {
+        if (array_key_exists($table, $this->tableColumnsCache)) {
+            return $this->tableColumnsCache[$table];
+        }
+
+        try {
+            $st = $this->conn->query("SHOW COLUMNS FROM {$table}");
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $cols = [];
+            foreach ($rows as $r) {
+                if (!empty($r['Field'])) {
+                    $cols[] = (string)$r['Field'];
+                }
+            }
+            $this->tableColumnsCache[$table] = $cols;
+            return $cols;
+        } catch (Throwable $e) {
+            $this->tableColumnsCache[$table] = [];
+            return [];
+        }
+    }
+
+    private function pickColumn(array $columns, array $candidates): ?string {
+        foreach ($candidates as $candidate) {
+            foreach ($columns as $col) {
+                if (strcasecmp($col, $candidate) === 0) {
+                    return $col;
+                }
+            }
+        }
+        return null;
     }
 }
