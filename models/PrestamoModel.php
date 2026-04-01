@@ -19,8 +19,17 @@ class PrestamoModel
         $limite = max(1, $limite);
         $offset = ($pagina - 1) * $limite;
 
-        $sql = "SELECT p.*
+        $sql = "SELECT p.*,
+                       c.nombre AS cliente_nombre,
+                       u.nombre AS empleado_nombre,
+                       CASE
+                         WHEN p.tipo = 'Cliente' THEN NULLIF(TRIM(c.nombre), '')
+                         WHEN p.tipo = 'Empleado' THEN NULLIF(TRIM(u.nombre), '')
+                         ELSE NULL
+                       END AS beneficiario_nombre
                 FROM prestamos p
+                LEFT JOIN clientes c ON c.id_cliente = p.id_cliente
+                LEFT JOIN usuarios u ON u.id_usuario = p.id_empleado
                 WHERE p.activo = 1";
         $params = [];
 
@@ -98,7 +107,19 @@ class PrestamoModel
      public function obtenerPorId(int $id)
     {
         // Préstamo
-        $st = $this->conn->prepare("SELECT * FROM prestamos WHERE id_prestamo = :id LIMIT 1");
+        $st = $this->conn->prepare("SELECT p.*,
+                                          c.nombre AS cliente_nombre,
+                                          u.nombre AS empleado_nombre,
+                                          CASE
+                                            WHEN p.tipo = 'Cliente' THEN NULLIF(TRIM(c.nombre), '')
+                                            WHEN p.tipo = 'Empleado' THEN NULLIF(TRIM(u.nombre), '')
+                                            ELSE NULL
+                                          END AS beneficiario_nombre
+                                   FROM prestamos p
+                                   LEFT JOIN clientes c ON c.id_cliente = p.id_cliente
+                                   LEFT JOIN usuarios u ON u.id_usuario = p.id_empleado
+                                   WHERE p.id_prestamo = :id
+                                   LIMIT 1");
         $st->bindValue(':id', $id, PDO::PARAM_INT);
         $st->execute();
         $prestamo = $st->fetch(PDO::FETCH_ASSOC);

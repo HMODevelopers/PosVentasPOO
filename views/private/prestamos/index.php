@@ -276,12 +276,17 @@ $hoy = date('Y-m-d');
       }
 
       function beneficiarioLabel(r){
-        if (r.tipo==='Cliente' && r.id_cliente)   return `Cliente #${r.id_cliente}`;
-        if (r.tipo==='Empleado' && r.id_empleado) return `Empleado #${r.id_empleado}`;
+        const nombre = (r.beneficiario_nombre || '').trim();
+        if (nombre) return nombre;
+
         if (r.tipo==='Otro'){
           const extra = parseBeneficiarioDesdeConcepto(r.concepto);
-          return extra ? `Otro: ${extra}` : 'Otro';
+          return extra ? extra : 'Otro';
         }
+
+        if (r.tipo==='Cliente') return 'Cliente sin nombre';
+        if (r.tipo==='Empleado') return 'Empleado sin nombre';
+
         return r.tipo || '—';
       }
 
@@ -718,12 +723,17 @@ $hoy = date('Y-m-d');
           $('#det-estatus').text(p.estatus);
 
           const benefDet = (function(){
-            if (p.tipo==='Cliente' && p.id_cliente) return `Cliente #${p.id_cliente}`;
-            if (p.tipo==='Empleado' && p.id_empleado) return `Empleado #${p.id_empleado}`;
+            const nombre = (p.beneficiario_nombre || '').trim();
+            if (nombre) return nombre;
+
             if (p.tipo==='Otro'){
               const extra = parseBeneficiarioDesdeConcepto(p.concepto);
-              return extra ? `Otro: ${extra}` : 'Otro';
+              return extra ? extra : 'Otro';
             }
+
+            if (p.tipo==='Cliente') return 'Cliente sin nombre';
+            if (p.tipo==='Empleado') return 'Empleado sin nombre';
+
             return p.tipo || '—';
           })();
 
