@@ -191,7 +191,7 @@ class DashboardModel
                JOIN formas_pago fp ON fp.id_forma_pago = p.id_forma_pago
               WHERE p.fecha_prestamo >= :ini AND p.fecha_prestamo < :fin
                 AND p.activo = 1
-                AND p.estatus <> 'Cancelado'
+                AND p.estatus = 'Aplicado'
                 AND p.tipo_operacion = 'Pago'
                 AND fp.clave_sat = :sat_ef",
             [':ini'=>$ini, ':fin'=>$fin, ':sat_ef'=>self::SAT_EFECTIVO]
@@ -204,7 +204,7 @@ class DashboardModel
                JOIN formas_pago fp ON fp.id_forma_pago = p.id_forma_pago
               WHERE p.fecha_prestamo >= :ini AND p.fecha_prestamo < :fin
                 AND p.activo = 1
-                AND p.estatus <> 'Cancelado'
+                AND p.estatus = 'Aplicado'
                 AND p.tipo_operacion = 'Pago'
                 AND fp.clave_sat IN ($inTarP)",
             [':ini'=>$ini, ':fin'=>$fin] + $pTarP

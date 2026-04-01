@@ -27,7 +27,7 @@ class PrestamoModel
         // Normaliza filtros
         $q              = trim($f['q']               ?? '');
         $tipoOperacion  = trim($f['tipo_operacion']  ?? ''); // Prestamo | Disposicion | Pago
-        $estatus        = trim($f['estatus']         ?? ''); // Pendiente|Pagado|Cancelado|SinRetorno
+        $estatus        = trim($f['estatus']         ?? ''); // Pendiente|Pagado|Aplicado|Cancelado|SinRetorno
         $tipoBenef      = trim($f['tipo']            ?? ''); // Cliente|Empleado|Otro
         $idCliente      = (int)($f['id_cliente']     ?? 0);
         $idEmpleado     = (int)($f['id_empleado']    ?? 0);
@@ -139,7 +139,13 @@ class PrestamoModel
                 $idFormaPago = null;
             }
 
-            $estatus = ($tipoOp === 'Disposicion') ? 'SinRetorno' : 'Pendiente';
+            if ($tipoOp === 'Disposicion') {
+                $estatus = 'SinRetorno';
+            } elseif ($tipoOp === 'Pago') {
+                $estatus = 'Aplicado';
+            } else {
+                $estatus = 'Pendiente';
+            }
             $saldo   = ($tipoOp === 'Prestamo') ? $monto : 0;
 
             $sql = "INSERT INTO prestamos

@@ -152,6 +152,7 @@ $hoy = date('Y-m-d');
                       <option value="">Todos</option>
                       <option value="Pendiente">Pendiente</option>
                       <option value="Pagado">Pagado</option>
+                      <option value="Aplicado">Aplicado</option>
                       <option value="Cancelado">Cancelado</option>
                       <option value="SinRetorno">Sin Retorno</option>
                     </select>
@@ -261,6 +262,7 @@ $hoy = date('Y-m-d');
         const m = {
           'Pendiente':'badge-light-warning',
           'Pagado':'badge-light-success',
+          'Aplicado':'badge-light-primary',
           'Cancelado':'badge-light-danger',
           'SinRetorno':'badge-light-secondary'
         };
