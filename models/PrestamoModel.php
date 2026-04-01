@@ -26,7 +26,7 @@ class PrestamoModel
 
         // Normaliza filtros
         $q              = trim($f['q']               ?? '');
-        $tipoOperacion  = trim($f['tipo_operacion']  ?? ''); // Prestamo | Disposicion
+        $tipoOperacion  = trim($f['tipo_operacion']  ?? ''); // Prestamo | Disposicion | Pago
         $estatus        = trim($f['estatus']         ?? ''); // Pendiente|Pagado|Cancelado|SinRetorno
         $tipoBenef      = trim($f['tipo']            ?? ''); // Cliente|Empleado|Otro
         $idCliente      = (int)($f['id_cliente']     ?? 0);
@@ -126,18 +126,27 @@ class PrestamoModel
             $this->conn->beginTransaction();
 
             // Reglas de negocio
-            $tipoOp  = $data['tipo_operacion'] ?? 'Prestamo'; // Prestamo | Disposicion
+            $tipoOp  = $data['tipo_operacion'] ?? 'Prestamo'; // Prestamo | Disposicion | Pago
             $monto   = (float)($data['monto_total'] ?? 0);
             if ($monto <= 0) throw new Exception('El monto debe ser mayor a 0');
 
+            $idFormaPago = isset($data['id_forma_pago']) ? (int)$data['id_forma_pago'] : null;
+            if ($tipoOp === 'Pago') {
+                if (!$this->formaPagoValida($idFormaPago)) {
+                    throw new Exception('Selecciona una forma de pago válida para Pago');
+                }
+            } else {
+                $idFormaPago = null;
+            }
+
             $estatus = ($tipoOp === 'Disposicion') ? 'SinRetorno' : 'Pendiente';
-            $saldo   = ($tipoOp === 'Disposicion') ? 0 : $monto;
+            $saldo   = ($tipoOp === 'Prestamo') ? $monto : 0;
 
             $sql = "INSERT INTO prestamos
                     (tipo_operacion, tipo, id_cliente, id_empleado, id_usuario,
-                     monto_total, saldo, concepto, fecha_prestamo, estatus, activo, fecha_creacion)
+                     monto_total, saldo, concepto, fecha_prestamo, estatus, id_forma_pago, activo, fecha_creacion)
                     VALUES
-                    (:tope, :tipo, :idc, :ide, :usr, :monto, :saldo, :concepto, :fch, :est, 1, NOW())";
+                    (:tope, :tipo, :idc, :ide, :usr, :monto, :saldo, :concepto, :fch, :est, :idfp, 1, NOW())";
 
             $st = $this->conn->prepare($sql);
             $ok = $st->execute([
@@ -150,7 +159,8 @@ class PrestamoModel
                 ':saldo'   => $saldo,
                 ':concepto'=> $data['concepto'] ?? null,
                 ':fch'     => $data['fecha_prestamo'] ?? date('Y-m-d H:i:s'),
-                ':est'     => $estatus
+                ':est'     => $estatus,
+                ':idfp'    => $idFormaPago
             ]);
 
             if (!$ok) { $this->conn->rollBack(); return 0; }
@@ -173,7 +183,8 @@ class PrestamoModel
                     'saldo'          => $saldo,
                     'concepto'       => $data['concepto'] ?? null,
                     'fecha_prestamo' => $data['fecha_prestamo'] ?? date('Y-m-d H:i:s'),
-                    'estatus'        => $estatus
+                    'estatus'        => $estatus,
+                    'id_forma_pago'   => $idFormaPago
                 ]
             );
 

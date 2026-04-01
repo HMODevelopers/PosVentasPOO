@@ -1,11 +1,11 @@
-<!-- Modal: Nuevo préstamo / disposición -->
+<!-- Modal: Nuevo préstamo / disposición / pago -->
 <div id="modalNuevo" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="modalNuevoLabel" aria-hidden="true" data-backdrop="static">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
     <div class="modal-content">
       <form id="formNuevo" autocomplete="off">
         <div class="modal-header">
           <h5 class="modal-title" id="modalNuevoLabel">
-            <i class="mdi mdi-plus"></i> Nuevo préstamo / disposición
+            <i class="mdi mdi-plus"></i> Nuevo préstamo / disposición / pago
           </h5>
           <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
             <span aria-hidden="true">&times;</span>
@@ -16,7 +16,7 @@
 
           <div class="alert alert-info py-2 px-3 mb-3">
             <i class="mdi mdi-information-outline"></i>
-            Si eliges <b>Préstamo</b> después podrás registrar <b>abonos</b>. Una <b>Disposición</b> queda <b>Sin Retorno</b>.
+            Si eliges <b>Préstamo</b> después podrás registrar <b>abonos</b>. Una <b>Disposición</b> queda <b>Sin Retorno</b>. Si eliges <b>Pago</b>, se pedirá la <b>forma de pago</b> para dashboard.
           </div>
 
           <!-- Línea 1: Tipo de operación / Beneficiario -->
@@ -26,6 +26,7 @@
               <select name="tipo_operacion" id="tipo_operacion" class="form-control" required>
                 <option value="Prestamo">Préstamo</option>
                 <option value="Disposicion">Disposición</option>
+                <option value="Pago">Pago</option>
               </select>
             </div>
             <div class="form-group col-md-6">
@@ -62,6 +63,17 @@
               <label class="form-label">Nombre del beneficiario (Otro)</label>
               <input type="text" class="form-control" id="txtOtro" placeholder="Nombre de la persona" maxlength="120">
               <small class="text-muted">Se añadirá a <b>Concepto</b> como <b>[Beneficiario: Nombre]</b>.</small>
+            </div>
+          </div>
+
+
+
+          <div class="form-row d-none" id="wrapFormaPagoNuevo">
+            <div class="form-group col-md-12">
+              <label class="form-label" for="selFormaPagoNuevo">Forma de pago</label>
+              <select name="id_forma_pago" id="selFormaPagoNuevo" class="form-control">
+                <option value="">Cargando…</option>
+              </select>
             </div>
           </div>
 

@@ -145,8 +145,6 @@ class DashboardModel
 
         $ventaTarjeta = $ventaTarjetaPagos + $ventaTarjetaSinPagos;
 
-        // Total contado
-        $ventaDiaContado = $ventaEfectivo + $ventaTarjeta;
 
         /* ===== Ventas a CRÉDITO (igual que antes) ===== */
         $ventaCredito = $this->sumOrZero(
@@ -175,7 +173,7 @@ class DashboardModel
             [':ini'=>$ini, ':fin'=>$fin] + $pSucVentas
         );
 
-        /* ===== Préstamos / Disposiciones — siempre EFECTIVO ===== */
+        /* ===== Préstamos / Disposiciones (egreso en caja) ===== */
         $prestamosTotal = $this->sumOrZero(
             "SELECT IFNULL(SUM(p.monto_total),0)
                FROM prestamos p
@@ -185,6 +183,39 @@ class DashboardModel
                 AND p.tipo_operacion IN ('Prestamo','Disposicion')",
             [':ini'=>$ini, ':fin'=>$fin]
         );
+
+        /* ===== Operación Pago (ingreso por forma de pago) ===== */
+        $pagosPrestamoEfectivo = $this->sumOrZero(
+            "SELECT IFNULL(SUM(p.monto_total),0)
+               FROM prestamos p
+               JOIN formas_pago fp ON fp.id_forma_pago = p.id_forma_pago
+              WHERE p.fecha_prestamo >= :ini AND p.fecha_prestamo < :fin
+                AND p.activo = 1
+                AND p.estatus <> 'Cancelado'
+                AND p.tipo_operacion = 'Pago'
+                AND fp.clave_sat = :sat_ef",
+            [':ini'=>$ini, ':fin'=>$fin, ':sat_ef'=>self::SAT_EFECTIVO]
+        );
+
+        [$inTarP, $pTarP] = $this->inNamed('sat', self::SAT_TARJETA_SET);
+        $pagosPrestamoTarjeta = $this->sumOrZero(
+            "SELECT IFNULL(SUM(p.monto_total),0)
+               FROM prestamos p
+               JOIN formas_pago fp ON fp.id_forma_pago = p.id_forma_pago
+              WHERE p.fecha_prestamo >= :ini AND p.fecha_prestamo < :fin
+                AND p.activo = 1
+                AND p.estatus <> 'Cancelado'
+                AND p.tipo_operacion = 'Pago'
+                AND fp.clave_sat IN ($inTarP)",
+            [':ini'=>$ini, ':fin'=>$fin] + $pTarP
+        );
+
+        // Integrar pagos del módulo de préstamos por forma de pago
+        $ventaEfectivo += $pagosPrestamoEfectivo;
+        $ventaTarjeta  += $pagosPrestamoTarjeta;
+
+        // Total contado
+        $ventaDiaContado = $ventaEfectivo + $ventaTarjeta;
 
         /* ===== Abonos a PRÉSTAMOS (por método) ===== */
         $abonosEfectivo = $this->sumOrZero(
@@ -274,6 +305,9 @@ class DashboardModel
             // Préstamos / Disposiciones (siempre efectivo)
             'prestamos' => [
                 'prestamos_disposiciones_total' => round($prestamosTotal, 2),
+                'pagos_efectivo'               => round($pagosPrestamoEfectivo, 2),
+                'pagos_tarjeta_transfer'       => round($pagosPrestamoTarjeta, 2),
+                'pagos_total'                  => round($pagosPrestamoEfectivo + $pagosPrestamoTarjeta, 2),
             ],
 
             // Abonos a préstamos

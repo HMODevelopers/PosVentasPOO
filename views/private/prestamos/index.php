@@ -68,6 +68,7 @@ $hoy = date('Y-m-d');
       .badge-soft { padding:.35rem .55rem; border-radius: .5rem; font-weight:600; }
       .badge-prestamo { background: rgba(64,153,255,.12); color:#4099ff; }
       .badge-dispo    { background: rgba(250,92,124,.12); color:#fa5c7c; }
+      .badge-pago     { background: rgba(16,183,89,.12); color:#10b759; }
       .text-center{ text-align:center!important; }
       .text-right{ text-align:right!important; }
       .clean-filter{ display:none; }
@@ -139,6 +140,7 @@ $hoy = date('Y-m-d');
                       <option value="">Todos</option>
                       <option value="Prestamo">Préstamo</option>
                       <option value="Disposicion">Disposición</option>
+                      <option value="Pago">Pago</option>
                     </select>
                   </div>
                 </div>
@@ -166,7 +168,7 @@ $hoy = date('Y-m-d');
           <div class="col-12">
             <div class="card-box">
               <div class="d-flex justify-content-between align-items-center mb-2">
-                <h4 class="header-title mb-0">Listado de Préstamos / Disposiciones</h4>
+                <h4 class="header-title mb-0">Listado de Préstamos / Disposiciones / Pagos</h4>
                 <button id="btnNuevo" class="btn btn-primary btn-sm">
                   <i class="mdi mdi-plus"></i> Nuevo
                 </button>
@@ -249,9 +251,10 @@ $hoy = date('Y-m-d');
       let paginaActual=1; const limitePorPagina=10;
 
       function badgeTipo(op){
-        return (op==='Prestamo')
-          ? '<span class="badge-soft badge-prestamo">Préstamo</span>'
-          : '<span class="badge-soft badge-dispo">Disposición</span>';
+        if (op==='Prestamo') return '<span class="badge-soft badge-prestamo">Préstamo</span>';
+        if (op==='Disposicion') return '<span class="badge-soft badge-dispo">Disposición</span>';
+        if (op==='Pago') return '<span class="badge-soft badge-pago">Pago</span>';
+        return `<span class="badge badge-light">${op||'—'}</span>`;
       }
 
       function badgeEstatus(s){
@@ -501,6 +504,33 @@ $hoy = date('Y-m-d');
           .always(()=> $sel.prop('disabled', false));
       }
 
+      function tipoOperacionLabel(op){
+        if (op==='Prestamo') return 'Préstamo';
+        if (op==='Disposicion') return 'Disposición';
+        if (op==='Pago') return 'Pago';
+        return op || '—';
+      }
+
+      function cargarFormasPagoNuevo(selected){
+        const $sel = $('#selFormaPagoNuevo');
+        if (!$sel.length) return;
+
+        $sel.prop('disabled', true).empty().append('<option value="">Cargando…</option>');
+        $.get(FORMAS_PAGO_URL, {accion:'listar_select'})
+          .done(r=>{
+            const arr = r?.data || (Array.isArray(r)?r:[]);
+            $sel.empty().append('<option value="">-- Seleccionar forma de pago --</option>');
+            arr.forEach(fp=>{
+              $sel.append(`<option value="${fp.id_forma_pago}">${fp.descripcion}</option>`);
+            });
+            if (selected!=null) $sel.val(String(selected));
+          })
+          .fail(()=>{
+            $sel.empty().append('<option value="">(sin formas de pago)</option>');
+          })
+          .always(()=> $sel.prop('disabled', false));
+      }
+
       // Mostrar/ocultar inputs según tipo de beneficiario
       function toggleBenefWrappers(){
         const t = $('#tipo').val();
@@ -531,13 +561,27 @@ $hoy = date('Y-m-d');
       }
 
       // ========= Nuevo =========
+      function toggleTipoOperacionNuevo(){
+        const op = $('#tipo_operacion').val();
+        const esPago = (op === 'Pago');
+        $('#wrapFormaPagoNuevo').toggleClass('d-none', !esPago);
+        $('#selFormaPagoNuevo').prop('required', esPago);
+        if (esPago) {
+          cargarFormasPagoNuevo();
+        } else {
+          $('#selFormaPagoNuevo').val('');
+        }
+      }
+
       $('#btnNuevo').on('click', ()=> {
         $('#formNuevo')[0].reset();
         $('#tipo').val('Cliente'); // default
         toggleBenefWrappers();
+        toggleTipoOperacionNuevo();
         $('#modalNuevo').modal('show');
       });
       $('#tipo').on('change', toggleBenefWrappers);
+      $('#tipo_operacion').on('change', toggleTipoOperacionNuevo);
 
       $('#formNuevo').on('submit', function(e){
         e.preventDefault();
@@ -548,6 +592,14 @@ $hoy = date('Y-m-d');
 
         if (!data.id_cliente)  delete data.id_cliente;
         if (!data.id_empleado) delete data.id_empleado;
+
+        const opSel = data.tipo_operacion || 'Prestamo';
+        if (opSel !== 'Pago') {
+          delete data.id_forma_pago;
+        } else if (!data.id_forma_pago) {
+          toastr.warning('Selecciona la forma de pago para registrar Pago.');
+          return;
+        }
 
         const otro = ($('#tipo').val()==='Otro') ? ($('#txtOtro').val()||'').trim() : '';
         if (otro){
@@ -660,7 +712,7 @@ $hoy = date('Y-m-d');
           }
 
           $('#det-folio').text(p.id_prestamo);
-          $('#det-tipo').text(p.tipo_operacion==='Prestamo' ? 'Préstamo' : 'Disposición');
+          $('#det-tipo').text(tipoOperacionLabel(p.tipo_operacion));
           $('#det-estatus').text(p.estatus);
 
           const benefDet = (function(){
