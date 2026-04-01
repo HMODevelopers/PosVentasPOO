@@ -210,10 +210,6 @@ class DashboardModel
             [':ini'=>$ini, ':fin'=>$fin] + $pTarP
         );
 
-        // Integrar pagos del módulo de préstamos por forma de pago
-        $ventaEfectivo += $pagosPrestamoEfectivo;
-        $ventaTarjeta  += $pagosPrestamoTarjeta;
-
         // Total contado
         $ventaDiaContado = $ventaEfectivo + $ventaTarjeta;
 
@@ -242,7 +238,10 @@ class DashboardModel
                 AND fp.clave_sat IN ($inTarA)",
             [':ini'=>$ini, ':fin'=>$fin] + $pTarA
         );
-        $abonosTotal = $abonosEfectivo + $abonosTarjeta;
+        // Bloque "Pagos/Abonos (Préstamos)" = pagos aplicados + abonos del módulo previo
+        $pagosAbonosPrestamoEfectivo = $pagosPrestamoEfectivo + $abonosEfectivo;
+        $pagosAbonosPrestamoTarjeta  = $pagosPrestamoTarjeta + $abonosTarjeta;
+        $pagosAbonosPrestamoTotal    = $pagosAbonosPrestamoEfectivo + $pagosAbonosPrestamoTarjeta;
 
         /* ===== Abonos a VENTAS a CRÉDITO (por método) ===== */
         [$wSucVC, $pSucVC] = $this->whereSucursalVentas($idSucursal);
@@ -285,8 +284,9 @@ class DashboardModel
         // Total de ventas (contado + crédito)
         $ventaTotalReal = $ventaDiaContado + $ventaCredito;
 
-        // Caja = Venta EFECTIVO + Abonos EF (préstamos) + Abonos EF (ventas crédito) − Préstamos/Disp (EF)
-        $efectivoEnCaja = $ventaEfectivo + $abonosEfectivo + $abonosCredEf - $prestamosTotal;
+        // Caja = Venta EFECTIVO + Pagos/Abonos EF (préstamos) + Abonos EF (ventas crédito) − Préstamos/Disp
+        // Nota: pagos por tarjeta/transfer no afectan efectivo en caja.
+        $efectivoEnCaja = $ventaEfectivo + $pagosAbonosPrestamoEfectivo + $abonosCredEf - $prestamosTotal;
 
         return [
             'fecha'            => $fecha,
@@ -312,9 +312,9 @@ class DashboardModel
 
             // Abonos a préstamos
             'abonos' => [
-                'efectivo'         => round($abonosEfectivo, 2),
-                'tarjeta_transfer' => round($abonosTarjeta, 2),
-                'total'            => round($abonosTotal, 2),
+                'efectivo'         => round($pagosAbonosPrestamoEfectivo, 2),
+                'tarjeta_transfer' => round($pagosAbonosPrestamoTarjeta, 2),
+                'total'            => round($pagosAbonosPrestamoTotal, 2),
             ],
 
             // Abonos a ventas a crédito
@@ -330,7 +330,7 @@ class DashboardModel
 
             // Compatibilidad con JS previo
             'prestamos_dia'    => round($prestamosTotal, 2),
-            'abonos_dia'       => round($abonosTotal, 2),
+            'abonos_dia'       => round($pagosAbonosPrestamoTotal, 2),
             'venta_total'      => round(($ventaDiaContado - $importeChkda), 2),
         ];
     }
