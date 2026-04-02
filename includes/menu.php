@@ -44,6 +44,9 @@ acl_bootstrap();
               <!-- CAMBIO: ortografía "Préstamos" -->
               <li><a href="<?= BASE_URL ?>/views/private/prestamos/index.php">Préstamos y abonos</a></li>
             <?php endif; ?>
+            <?php if (can('ventas.creditos_historial')): ?>
+              <li><a href="<?= BASE_URL ?>/views/private/reportes/historial_credito_clientes.php">Historial de crédito de clientes</a></li>
+            <?php endif; ?>
             <?php if (can('ventas.pos')): ?>
               <!-- CAMBIO: conservamos tu POS en /caja/index.php para no romper rutas -->
               <li><a href="<?= BASE_URL ?>/views/private/caja/index.php">Punto de venta (POS)</a></li>
