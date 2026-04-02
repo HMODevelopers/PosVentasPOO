@@ -1,5 +1,5 @@
 <?php
-include_once '../includes/db.php';
+include_once __DIR__ . '/../includes/db.php';
 
 class HistorialCreditoClientesModel
 {
@@ -40,10 +40,11 @@ class HistorialCreditoClientesModel
             $params[':id_cliente'] = $idCliente;
         }
 
-        $folio = trim($filtros['folio'] ?? '');
-        if ($folio !== '') {
-            $where .= "\n                AND v.folio LIKE :folio";
-            $params[':folio'] = "%{$folio}%";
+        $estatusCredito = trim($filtros['estatus_credito'] ?? '');
+        if ($estatusCredito === 'pendiente') {
+            $where .= "\n                AND GREATEST(v.total - COALESCE(abt.total_abonado_total, 0), 0) > 0";
+        } elseif ($estatusCredito === 'liquidado') {
+            $where .= "\n                AND GREATEST(v.total - COALESCE(abt.total_abonado_total, 0), 0) <= 0";
         }
 
         return $where;
@@ -55,21 +56,8 @@ class HistorialCreditoClientesModel
         $limite = max(1, $limite);
         $offset = ($pagina - 1) * $limite;
 
-        [$abIni, $abFin] = $this->rangoFechas(trim($filtros['fecha_inicial'] ?? ''), trim($filtros['fecha_final'] ?? ''));
-
-        $params = [
-            ':ab_ini' => $abIni,
-            ':ab_fin' => $abFin,
-        ];
+        $params = [];
         $whereVentas = $this->filtrosVentasCredito($filtros, $params);
-
-        $estatusFiltro = trim($filtros['estatus_credito'] ?? '');
-        $having = '';
-        if ($estatusFiltro === 'pendiente') {
-            $having = " HAVING saldo_pendiente_actual > 0";
-        } elseif ($estatusFiltro === 'liquidado') {
-            $having = " HAVING saldo_pendiente_actual <= 0";
-        }
 
         $sql = "
             SELECT
@@ -77,7 +65,7 @@ class HistorialCreditoClientesModel
                 COALESCE(c.nombre, CONCAT('Cliente #', b.id_cliente)) AS cliente,
                 COUNT(*) AS ventas_credito_periodo,
                 COALESCE(SUM(b.total_venta), 0) AS total_vendido_periodo,
-                COALESCE(SUM(b.abonado_periodo), 0) AS total_abonado_periodo,
+                COALESCE(SUM(b.abonado_total), 0) AS total_abonado,
                 COALESCE(SUM(GREATEST(b.total_venta - b.abonado_total, 0)), 0) AS saldo_pendiente_actual,
                 MAX(b.ultimo_movimiento_venta) AS ultimo_movimiento,
                 CASE
@@ -89,19 +77,9 @@ class HistorialCreditoClientesModel
                     v.id_venta,
                     v.id_cliente,
                     v.total AS total_venta,
-                    COALESCE(abp.total_abonado_periodo, 0) AS abonado_periodo,
                     COALESCE(abt.total_abonado_total, 0) AS abonado_total,
                     GREATEST(v.fecha, COALESCE(abt.ultimo_abono, v.fecha)) AS ultimo_movimiento_venta
                 FROM ventas v
-                LEFT JOIN (
-                    SELECT
-                        a.id_venta,
-                        SUM(CASE WHEN a.activo = 1 THEN a.monto ELSE 0 END) AS total_abonado_periodo
-                    FROM ventas_abonos a
-                    WHERE a.fecha_abono >= :ab_ini
-                      AND a.fecha_abono < :ab_fin
-                    GROUP BY a.id_venta
-                ) abp ON abp.id_venta = v.id_venta
                 LEFT JOIN (
                     SELECT
                         a.id_venta,
@@ -114,7 +92,6 @@ class HistorialCreditoClientesModel
             ) b
             LEFT JOIN clientes c ON c.id_cliente = b.id_cliente
             GROUP BY b.id_cliente, c.nombre
-            {$having}
             ORDER BY ultimo_movimiento DESC, cliente ASC
             LIMIT :lim OFFSET :off
         ";
@@ -131,21 +108,8 @@ class HistorialCreditoClientesModel
 
     public function contarResumenClientes(array $filtros = []): int
     {
-        [$abIni, $abFin] = $this->rangoFechas(trim($filtros['fecha_inicial'] ?? ''), trim($filtros['fecha_final'] ?? ''));
-
-        $params = [
-            ':ab_ini' => $abIni,
-            ':ab_fin' => $abFin,
-        ];
+        $params = [];
         $whereVentas = $this->filtrosVentasCredito($filtros, $params);
-
-        $estatusFiltro = trim($filtros['estatus_credito'] ?? '');
-        $having = '';
-        if ($estatusFiltro === 'pendiente') {
-            $having = " HAVING saldo_pendiente_actual > 0";
-        } elseif ($estatusFiltro === 'liquidado') {
-            $having = " HAVING saldo_pendiente_actual <= 0";
-        }
 
         $sql = "
             SELECT COUNT(*) AS total_clientes
@@ -170,7 +134,6 @@ class HistorialCreditoClientesModel
                     WHERE {$whereVentas}
                 ) b
                 GROUP BY b.id_cliente
-                {$having}
             ) q
         ";
 
@@ -186,11 +149,7 @@ class HistorialCreditoClientesModel
     {
         if ($idCliente <= 0) return ['resumen' => null, 'ventas' => []];
 
-        [$abIni, $abFin] = $this->rangoFechas(trim($filtros['fecha_inicial'] ?? ''), trim($filtros['fecha_final'] ?? ''));
-
         $params = [
-            ':ab_ini' => $abIni,
-            ':ab_fin' => $abFin,
             ':id_cliente' => $idCliente,
         ];
 
@@ -202,7 +161,6 @@ class HistorialCreditoClientesModel
                 v.folio,
                 v.fecha,
                 v.total AS total_venta,
-                COALESCE(abp.total_abonado_periodo, 0) AS abonado_periodo,
                 COALESCE(abt.total_abonado_total, 0) AS abonado_total,
                 GREATEST(v.total - COALESCE(abt.total_abonado_total, 0), 0) AS saldo_actual,
                 CASE
@@ -214,15 +172,6 @@ class HistorialCreditoClientesModel
                 COALESCE(c.nombre, CONCAT('Cliente #', v.id_cliente)) AS cliente_nombre
             FROM ventas v
             LEFT JOIN clientes c ON c.id_cliente = v.id_cliente
-            LEFT JOIN (
-                SELECT
-                    a.id_venta,
-                    SUM(CASE WHEN a.activo = 1 THEN a.monto ELSE 0 END) AS total_abonado_periodo
-                FROM ventas_abonos a
-                WHERE a.fecha_abono >= :ab_ini
-                  AND a.fecha_abono < :ab_fin
-                GROUP BY a.id_venta
-            ) abp ON abp.id_venta = v.id_venta
             LEFT JOIN (
                 SELECT
                     a.id_venta,
@@ -283,7 +232,7 @@ class HistorialCreditoClientesModel
             'cliente' => $ventas[0]['cliente_nombre'],
             'ventas_credito_periodo' => count($ventas),
             'total_vendido_periodo' => 0,
-            'total_abonado_periodo' => 0,
+            'total_abonado' => 0,
             'saldo_pendiente_actual' => 0,
             'ultimo_movimiento' => null,
         ];
@@ -304,7 +253,7 @@ class HistorialCreditoClientesModel
             $venta['abonos'] = $abVenta;
 
             $resumen['total_vendido_periodo'] += (float)$venta['total_venta'];
-            $resumen['total_abonado_periodo'] += (float)$venta['abonado_periodo'];
+            $resumen['total_abonado'] += (float)$venta['abonado_total'];
             $resumen['saldo_pendiente_actual'] += (float)$venta['saldo_actual'];
             if (!$resumen['ultimo_movimiento'] || $venta['ultimo_movimiento'] > $resumen['ultimo_movimiento']) {
                 $resumen['ultimo_movimiento'] = $venta['ultimo_movimiento'];

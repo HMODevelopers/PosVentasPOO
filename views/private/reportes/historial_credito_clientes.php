@@ -84,8 +84,7 @@ $_SESSION['LAST_ACTIVITY']  = time();
         </div>
       </div>
       <div class="row">
-        <div class="col-md-3"><div class="form-group"><label>Folio</label><input type="text" id="FiltroFolio" class="form-control filtrar" autocomplete="off"></div></div>
-        <div class="col-md-9 d-flex align-items-end justify-content-end">
+        <div class="col-md-12 d-flex align-items-end justify-content-end">
           <button id="BtnBuscar" class="btn btn-primary btn-sm mr-2"><i class="mdi mdi-magnify"></i> Buscar</button>
           <button id="BtnLimpiar" class="btn btn-light btn-sm"><i class="mdi mdi-broom"></i> Limpiar filtros</button>
         </div>
@@ -101,7 +100,7 @@ $_SESSION['LAST_ACTIVITY']  = time();
               <thead>
                 <tr>
                   <th>Cliente</th><th class="text-center">Ventas a crédito en el periodo</th><th class="text-center">Total vendido a crédito en el periodo</th>
-                  <th class="text-center">Total abonado en el periodo</th><th class="text-center">Saldo pendiente actual</th><th class="text-center">Último movimiento</th><th class="text-center">Estatus general</th><th class="text-center">Acciones</th>
+                  <th class="text-center">Total abonado</th><th class="text-center">Saldo pendiente actual</th><th class="text-center">Último movimiento</th><th class="text-center">Estatus general</th><th class="text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody id="tbodyResumen"><tr><td colspan="8" class="text-center text-muted">Sin registros</td></tr></tbody>
@@ -166,7 +165,7 @@ $(function(){
   function filtros(){ return {
     accion:'listar-resumen', pagina:paginaActual, limite:limite,
     fecha_inicial:$('#FiltroDesde').val(), fecha_final:$('#FiltroHasta').val(), id_cliente:$('#FiltroCliente').val(),
-    estatus_credito:$('#FiltroEstatus').val(), folio:$('#FiltroFolio').val().trim()
+    estatus_credito:$('#FiltroEstatus').val()
   };}
 
   function renderPag(total){
@@ -188,7 +187,7 @@ $(function(){
             <td>${esc(it.cliente||'')}</td>
             <td class="text-center">${Number(it.ventas_credito_periodo||0)}</td>
             <td class="text-right">${mxn(it.total_vendido_periodo)}</td>
-            <td class="text-right">${mxn(it.total_abonado_periodo)}</td>
+            <td class="text-right">${mxn(it.total_abonado)}</td>
             <td class="text-right">${mxn(it.saldo_pendiente_actual)}</td>
             <td class="text-center">${fFecha(it.ultimo_movimiento)}</td>
             <td class="text-center">${badge}</td>
@@ -204,7 +203,7 @@ $(function(){
 
   function cargarDetalle(idCliente){
     $('#LoadingImage').show();
-    $.getJSON(URL_CTRL,{accion:'detalle-cliente', id_cliente:idCliente, fecha_inicial:$('#FiltroDesde').val(), fecha_final:$('#FiltroHasta').val(), folio:$('#FiltroFolio').val().trim()})
+    $.getJSON(URL_CTRL,{accion:'detalle-cliente', id_cliente:idCliente, fecha_inicial:$('#FiltroDesde').val(), fecha_final:$('#FiltroHasta').val(), estatus_credito:$('#FiltroEstatus').val()})
       .done(r=>{
         const data = r?.data||{}; const resumen = data.resumen; const ventas = data.ventas||[];
         if(!resumen){
@@ -215,7 +214,7 @@ $(function(){
         $('#resumenCliente').html(`<div class="row">
           <div class="col-md-4"><strong>Cliente:</strong> ${esc(resumen.cliente)}</div>
           <div class="col-md-4"><strong>Total vendido a crédito:</strong> ${mxn(resumen.total_vendido_periodo)}</div>
-          <div class="col-md-4"><strong>Total abonado en periodo:</strong> ${mxn(resumen.total_abonado_periodo)}</div>
+          <div class="col-md-4"><strong>Total abonado:</strong> ${mxn(resumen.total_abonado)}</div>
           <div class="col-md-4"><strong>Saldo pendiente actual:</strong> ${mxn(resumen.saldo_pendiente_actual)}</div>
           <div class="col-md-4"><strong>Cantidad de ventas:</strong> ${Number(resumen.ventas_credito_periodo||0)}</div>
           <div class="col-md-4"><strong>Último movimiento:</strong> ${fFecha(resumen.ultimo_movimiento)}</div>
@@ -259,7 +258,7 @@ $(function(){
 
   $('#BtnBuscar').on('click', ()=>{ paginaActual=1; cargarResumen(); });
   $('#BtnLimpiar').on('click', ()=>{
-    $('#FiltroCliente,#FiltroEstatus').val(''); $('#FiltroFolio').val('');
+    $('#FiltroCliente,#FiltroEstatus').val('');
     const h=new Date(), y=h.getFullYear(), m=String(h.getMonth()+1).padStart(2,'0');
     $('#FiltroDesde').val(`${y}-${m}-01`); $('#FiltroHasta').val(new Date(y,h.getMonth()+1,0).toISOString().slice(0,10));
     paginaActual=1; cargarResumen();

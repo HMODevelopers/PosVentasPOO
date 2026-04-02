@@ -20,7 +20,6 @@ try {
                 'fecha_final'    => trim($_REQUEST['fecha_final'] ?? ''),
                 'id_cliente'     => (int)($_REQUEST['id_cliente'] ?? 0),
                 'estatus_credito'=> trim($_REQUEST['estatus_credito'] ?? ''),
-                'folio'          => trim($_REQUEST['folio'] ?? ''),
             ];
 
             $data = $model->listarResumenClientes($pagina, $limite, $filtros);
@@ -40,7 +39,7 @@ try {
                 'fecha_inicial'  => trim($_REQUEST['fecha_inicial'] ?? ''),
                 'fecha_final'    => trim($_REQUEST['fecha_final'] ?? ''),
                 'id_cliente'     => $idCliente,
-                'folio'          => trim($_REQUEST['folio'] ?? ''),
+                'estatus_credito'=> trim($_REQUEST['estatus_credito'] ?? ''),
             ];
 
             $payload = $model->obtenerDetalleCliente($idCliente, $filtros);
@@ -53,6 +52,7 @@ try {
             break;
     }
 } catch (Throwable $e) {
+    error_log('[HistorialCreditoClientesController] ' . $e->getMessage());
     http_response_code(500);
     echo json_encode(['ok' => false, 'msg' => 'Error del servidor'], JSON_UNESCAPED_UNICODE);
 }
