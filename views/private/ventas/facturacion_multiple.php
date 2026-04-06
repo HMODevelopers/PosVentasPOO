@@ -275,6 +275,7 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
   const VENTAS_URL = `${BASE_URL}/controllers/VentasController.php`;
   const selectedTickets = new Map();
   let draft = null;
+  let initialFormLoaded = false;
   let ticketPage = 1;
   const ticketLimit = 10;
 
@@ -329,17 +330,25 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
     $('#fac-validaciones').html(lista.map(msg => `<li class="cfdi-validation-list__item"><strong>Validación</strong>${esc(msg)}</li>`).join(''));
   }
 
-  function resetView(){
-    draft = null;
+  function clearConceptosTotales(){
+    draft = draft || {};
     $('#fac-loader').hide();
     $('#fac-contenido').removeClass('d-none');
     $('#fac-error, #fac-warning, #fac-success').addClass('d-none').empty();
     $('#fac-multi-tickets').text(selectedTickets.size);
-    $('#fac-folio,#fac-fecha,#fac-cliente,#fac-emisor-rfc,#fac-emisor-nombre,#fac-emisor-sucursal,#fac-emisor-regimen,#fac-emisor-lugar,#fac-emisor-serie,#fac-emisor-tipo,#fac-emisor-exportacion').text('—');
-    $('#fac-estatus-fiscal').html(getBadgeFiscal(''));
+    $('#fac-folio,#fac-fecha,#fac-cliente').text('—');
     $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
     $('#fac-total-subtotal,#fac-total-descuento,#fac-total-impuestos,#fac-total').text(mxn(0));
     $('#fac-importe-letra').text('No disponible en el flujo actual.');
+    renderValidationReport(null);
+    $('#btnConfirmarFacturar').prop('disabled', true);
+  }
+
+  function resetView(){
+    draft = null;
+    clearConceptosTotales();
+    $('#fac-emisor-rfc,#fac-emisor-nombre,#fac-emisor-sucursal,#fac-emisor-regimen,#fac-emisor-lugar,#fac-emisor-serie,#fac-emisor-tipo,#fac-emisor-exportacion').text('—');
+    $('#fac-estatus-fiscal').html(getBadgeFiscal(''));
     fillFacturacionSelect($('#fac-select-regimen'), [], 'ClaveRegimenFiscal', 'Descripcion', '');
     fillFacturacionSelect($('#fac-select-uso-cfdi'), [], 'ClaveUsoCFDI', 'Descripcion', '');
     fillFacturacionSelect($('#fac-select-moneda'), [], 'ClaveMoneda', 'Descripcion', '');
@@ -347,9 +356,59 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
     fillFacturacionSelectFromPairs($('#fac-select-metodo-pago'), [], '');
     fillFacturacionSelectFromPairs($('#fac-select-tipo-comprobante'), [], '');
     fillFacturacionSelectFromPairs($('#fac-select-exportacion'), [], '');
-    $('#fac-input-rfc,#fac-input-razon-social,#fac-input-nombre-comercial,#fac-input-correo,#fac-input-cp,#fac-input-residencia-fiscal,#fac-input-num-reg-id-trib,#fac-id-cliente-sat').val('');
-    renderValidationReport(null);
-    $('#btnConfirmarFacturar').prop('disabled', true);
+    $('#fac-id-cliente-sat,#fac-input-rfc,#fac-input-razon-social,#fac-input-nombre-comercial,#fac-input-correo,#fac-input-cp,#fac-input-residencia-fiscal,#fac-input-num-reg-id-trib').val('');
+    $('#fac-input-tipo-cambio').val('1');
+    $('#fac-input-condiciones-pago').val('');
+  }
+
+  function applyInitialContext(ctx){
+    if (!ctx || initialFormLoaded) return;
+    const draftInit = ctx.factura_draft || {};
+    const em = ctx.emisor || {};
+    $('#fac-emisor-rfc').text(em.rfc || '—');
+    $('#fac-emisor-nombre').text(em.nombre || '—');
+    $('#fac-emisor-sucursal').text(em.sucursal || '—');
+    $('#fac-emisor-regimen').text(em.regimen_fiscal_label || em.regimen_fiscal || '—');
+    $('#fac-emisor-lugar').text(em.lugar_expedicion || '—');
+    $('#fac-emisor-serie').text(em.serie || '—');
+    $('#fac-emisor-tipo').text(em.tipo_comprobante_label || draftInit?.comprobante?.tipo_comprobante || 'I');
+    $('#fac-emisor-exportacion').text(em.exportacion_label || draftInit?.comprobante?.exportacion || '01');
+    $('#fac-estatus-fiscal').html(getBadgeFiscal(ctx?.cfdi_actual?.estatus || ''));
+
+    fillFacturacionSelect($('#fac-select-regimen'), ctx.catalogos?.regimenes_fiscales || [], 'ClaveRegimenFiscal', 'Descripcion', $('#fac-select-regimen').val() || draftInit?.receptor?.regimen_fiscal || '');
+    fillFacturacionSelect($('#fac-select-uso-cfdi'), ctx.catalogos?.usos_cfdi || [], 'ClaveUsoCFDI', 'Descripcion', $('#fac-select-uso-cfdi').val() || draftInit?.receptor?.uso_cfdi || '');
+    fillFacturacionSelect($('#fac-select-moneda'), ctx.catalogos?.monedas || [], 'ClaveMoneda', 'Descripcion', $('#fac-select-moneda').val() || draftInit?.comprobante?.moneda || 'MXN');
+    fillFacturacionSelect($('#fac-select-forma-pago'), ctx.catalogos?.formas_pago || [], 'clave_sat', 'descripcion', $('#fac-select-forma-pago').val() || draftInit?.comprobante?.forma_pago || '');
+    fillFacturacionSelectFromPairs($('#fac-select-metodo-pago'), ctx.catalogos?.metodos_pago || [], $('#fac-select-metodo-pago').val() || draftInit?.comprobante?.metodo_pago || '');
+    fillFacturacionSelectFromPairs($('#fac-select-tipo-comprobante'), ctx.catalogos?.tipos_comprobante || [], $('#fac-select-tipo-comprobante').val() || draftInit?.comprobante?.tipo_comprobante || 'I');
+    fillFacturacionSelectFromPairs($('#fac-select-exportacion'), ctx.catalogos?.exportaciones || [], $('#fac-select-exportacion').val() || draftInit?.comprobante?.exportacion || '01');
+
+    if (!$('#fac-input-tipo-cambio').val()) $('#fac-input-tipo-cambio').val(draftInit?.comprobante?.tipo_cambio || '1');
+    if (!$('#fac-input-condiciones-pago').val()) $('#fac-input-condiciones-pago').val(draftInit?.comprobante?.condiciones_pago || '');
+    initialFormLoaded = true;
+  }
+
+  function loadInitialFormContext(){
+    $.get(VENTAS_URL, {accion:'facturacion-multiple-tickets', q:'', pagina:1, limite:1}, function(resp){
+      const first = Array.isArray(resp?.items) ? resp.items[0] : null;
+      const firstId = Number(first?.id_venta || 0);
+      if (!firstId) {
+        $('#fac-loader').hide();
+        $('#fac-contenido').removeClass('d-none');
+        return;
+      }
+      $.post(VENTAS_URL, {accion:'facturacion-multiple-preview', ids_ventas:[firstId]}, function(preview){
+        applyInitialContext(preview?.contexto || null);
+        clearConceptosTotales();
+      }, 'json').always(function(){
+        $('#fac-loader').hide();
+        $('#fac-contenido').removeClass('d-none');
+      });
+    }, 'json').fail(function(){
+      $('#fac-loader').hide();
+      $('#fac-contenido').removeClass('d-none');
+      $('#fac-warning').removeClass('d-none').text('No se pudieron precargar los catálogos fiscales. Puedes agregarlos al seleccionar un ticket.');
+    });
   }
 
   function initClienteSelect(){
@@ -449,7 +508,7 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
 
   function refreshPreview(){
     const ids = Array.from(selectedTickets.keys());
-    if(!ids.length){ resetView(); return; }
+    if(!ids.length){ clearConceptosTotales(); return; }
     $('#fac-loader').show();
     $('#fac-contenido').addClass('d-none');
     $('#fac-error, #fac-success').addClass('d-none').empty();
@@ -460,8 +519,8 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
 
       const ctx = resp.contexto || {};
       draft = ctx.factura_draft || {};
+      applyInitialContext(ctx);
       const venta = ctx.venta || {};
-      const em = ctx.emisor || {};
       const conceptos = Array.isArray(draft?.venta?.conceptos) ? draft.venta.conceptos : [];
       const report = resp.validation_report || draft.validaciones || null;
 
@@ -470,14 +529,6 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
       $('#fac-fecha').text(fechaMx(venta.fecha));
       $('#fac-cliente').text(venta.cliente_nombre || venta.cliente || 'Venta múltiple');
       $('#fac-multi-tickets').text(ids.length);
-      $('#fac-emisor-rfc').text(em.rfc || '—');
-      $('#fac-emisor-nombre').text(em.nombre || '—');
-      $('#fac-emisor-sucursal').text(em.sucursal || '—');
-      $('#fac-emisor-regimen').text(em.regimen_fiscal_label || em.regimen_fiscal || '—');
-      $('#fac-emisor-lugar').text(em.lugar_expedicion || '—');
-      $('#fac-emisor-serie').text(em.serie || '—');
-      $('#fac-emisor-tipo').text(em.tipo_comprobante_label || draft?.comprobante?.tipo_comprobante || 'I');
-      $('#fac-emisor-exportacion').text(em.exportacion_label || draft?.comprobante?.exportacion || '01');
       $('#fac-estatus-fiscal').html(getBadgeFiscal(ctx?.cfdi_actual?.estatus || venta?.estatus_fiscal || ''));
 
       $('#fac-total-subtotal').text(mxn(draft?.venta?.subtotal || ctx?.totales?.subtotal || 0));
@@ -485,26 +536,6 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
       $('#fac-total-impuestos').text(mxn(draft?.venta?.impuestos || ctx?.totales?.impuestos || 0));
       $('#fac-total').text(mxn(draft?.venta?.total || ctx?.totales?.total || 0));
       $('#fac-importe-letra').text(ctx?.totales?.importe_letra || 'No disponible en el flujo actual.');
-
-      fillFacturacionSelect($('#fac-select-regimen'), ctx.catalogos?.regimenes_fiscales || [], 'ClaveRegimenFiscal', 'Descripcion', draft?.receptor?.regimen_fiscal || '');
-      fillFacturacionSelect($('#fac-select-uso-cfdi'), ctx.catalogos?.usos_cfdi || [], 'ClaveUsoCFDI', 'Descripcion', draft?.receptor?.uso_cfdi || '');
-      fillFacturacionSelect($('#fac-select-moneda'), ctx.catalogos?.monedas || [], 'ClaveMoneda', 'Descripcion', draft?.comprobante?.moneda || 'MXN');
-      fillFacturacionSelect($('#fac-select-forma-pago'), ctx.catalogos?.formas_pago || [], 'clave_sat', 'descripcion', draft?.comprobante?.forma_pago || '');
-      fillFacturacionSelectFromPairs($('#fac-select-metodo-pago'), ctx.catalogos?.metodos_pago || [], draft?.comprobante?.metodo_pago || '');
-      fillFacturacionSelectFromPairs($('#fac-select-tipo-comprobante'), ctx.catalogos?.tipos_comprobante || [], draft?.comprobante?.tipo_comprobante || 'I');
-      fillFacturacionSelectFromPairs($('#fac-select-exportacion'), ctx.catalogos?.exportaciones || [], draft?.comprobante?.exportacion || '01');
-
-      const rec = draft.receptor || {};
-      $('#fac-id-cliente-sat').val(rec.id_cliente_fiscal || '');
-      $('#fac-input-rfc').val(rec.rfc || '');
-      $('#fac-input-razon-social').val(rec.nombre || '');
-      $('#fac-input-nombre-comercial').val(rec.nombre_comercial || '');
-      $('#fac-input-correo').val(rec.correo || '');
-      $('#fac-input-cp').val(rec.codigo_postal || '');
-      $('#fac-input-residencia-fiscal').val(rec.residencia_fiscal || '');
-      $('#fac-input-num-reg-id-trib').val(rec.numero_registro_tributario || '');
-      $('#fac-input-tipo-cambio').val(draft?.comprobante?.tipo_cambio || '1');
-      $('#fac-input-condiciones-pago').val(draft?.comprobante?.condiciones_pago || '');
 
       const rows = conceptos.map(c=>{
         const tr = Array.isArray(c?.Traslados) ? c.Traslados[0] : null;
@@ -599,7 +630,7 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
     }).always(()=> $btn.prop('disabled', false).html(old));
   });
 
-  $(function(){ initClienteSelect(); resetView(); });
+  $(function(){ initClienteSelect(); resetView(); loadInitialFormContext(); });
 })();
 </script>
 </body>
