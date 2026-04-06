@@ -51,6 +51,9 @@ acl_bootstrap();
               <!-- CAMBIO: conservamos tu POS en /caja/index.php para no romper rutas -->
               <li><a href="<?= BASE_URL ?>/views/private/caja/index.php">Punto de venta (POS)</a></li>
             <?php endif; ?>
+            <?php if (can('ventas.facturacion_multiple')): ?>
+              <li><a href="<?= BASE_URL ?>/views/private/ventas/facturacion_multiple.php">Facturación múltiple</a></li>
+            <?php endif; ?>
           </ul>
         </li>
         <?php endif; ?>

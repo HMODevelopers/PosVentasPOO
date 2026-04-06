@@ -41,6 +41,7 @@ class FacturacionService
             if (!empty($facturacionInput)) {
                 $idClienteSat = (int)($facturacionInput['id_cliente_sat'] ?? 0);
                 $ctx = $this->model->aplicarDatosFacturacionExistente($ctx, $idClienteSat, $facturacionInput);
+                $ctx = $this->applyInputOverrides($ctx, $facturacionInput);
             }
         } catch (Throwable $e) {
             return ['ok' => false, 'msg' => $e->getMessage()];
@@ -291,6 +292,37 @@ class FacturacionService
         }
     }
 
+
+
+    private function applyInputOverrides(array $ctx, array $input): array
+    {
+        $conceptos = is_array($input['conceptos'] ?? null) ? $input['conceptos'] : [];
+        if (!empty($conceptos)) {
+            $ctx['conceptos'] = $conceptos;
+            if (is_array($ctx['venta'] ?? null)) {
+                $ctx['venta']['conceptos'] = $conceptos;
+            }
+            if (is_array($ctx['factura_draft'] ?? null)) {
+                $ctx['factura_draft']['venta']['conceptos'] = $conceptos;
+            }
+        }
+
+        $totales = is_array($input['totales'] ?? null) ? $input['totales'] : [];
+        if (!empty($totales)) {
+            $ctx['totales'] = array_merge(is_array($ctx['totales'] ?? null) ? $ctx['totales'] : [], $totales);
+            if (is_array($ctx['venta'] ?? null)) {
+                $ctx['venta']['total'] = (float)($totales['total'] ?? ($ctx['venta']['total'] ?? 0));
+            }
+            if (is_array($ctx['factura_draft'] ?? null)) {
+                $ctx['factura_draft']['venta']['subtotal'] = (float)($totales['subtotal'] ?? 0);
+                $ctx['factura_draft']['venta']['descuento'] = (float)($totales['descuento'] ?? 0);
+                $ctx['factura_draft']['venta']['impuestos'] = (float)($totales['impuestos'] ?? 0);
+                $ctx['factura_draft']['venta']['total'] = (float)($totales['total'] ?? 0);
+            }
+        }
+
+        return $ctx;
+    }
 
     private function normalizeNullableString($value): ?string
     {

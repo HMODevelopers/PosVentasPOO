@@ -370,6 +370,117 @@ class VentasController
             break;
         }
 
+
+        case 'facturacion-multiple-tickets': {
+            $q = trim((string)($_POST['q'] ?? $_GET['q'] ?? $raw['q'] ?? ''));
+            $limite = self::asInt($_POST['limite'] ?? $_GET['limite'] ?? $raw['limite'] ?? 50);
+
+            global $pdo;
+            $schema = new FacturacionSchemaHelper($pdo);
+            $model = new FacturacionModel($pdo, $schema);
+
+            echo json_encode([
+                'ok' => true,
+                'tickets' => $model->listarTicketsFacturablesMultiples($q, $limite),
+            ], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
+        case 'facturacion-multiple-preview': {
+            $ids = $_POST['ids_ventas'] ?? $_GET['ids_ventas'] ?? $raw['ids_ventas'] ?? [];
+            if (is_string($ids)) {
+                $ids = array_filter(array_map('intval', explode(',', $ids)));
+            }
+            if (!is_array($ids)) {
+                $ids = [];
+            }
+            $ids = array_values(array_unique(array_filter(array_map('intval', $ids), fn($id) => $id > 0)));
+            if (!$ids) self::jsonError('Debes seleccionar al menos un ticket.', 422);
+
+            global $pdo;
+            $schema = new FacturacionSchemaHelper($pdo);
+            $model = new FacturacionModel($pdo, $schema);
+            $validator = new FacturacionValidator();
+
+            $baseId = (int)$ids[0];
+            $ctxBase = $model->loadContext($baseId);
+            $conceptos = [];
+            $detalles = [];
+            $totalTickets = 0.0;
+            $folios = [];
+
+            foreach ($ids as $idVenta) {
+                $ctxTmp = $model->loadContext((int)$idVenta);
+                $ventaTmp = $ctxTmp['venta'] ?? [];
+                $folios[] = $ventaTmp['folio'] ?? ('#' . $idVenta);
+                $totalTickets += (float)($ventaTmp['total'] ?? 0);
+                foreach ((array)($ctxTmp['conceptos'] ?? []) as $concepto) {
+                    $conceptos[] = $concepto;
+                }
+                foreach ((array)($ctxTmp['detalles'] ?? []) as $detalle) {
+                    $detalles[] = $detalle;
+                }
+            }
+
+            $subtotal = 0.0;
+            $descuento = 0.0;
+            $impuestos = 0.0;
+            foreach ($conceptos as $concepto) {
+                $subtotal += (float)($concepto['Importe'] ?? 0);
+                $descuento += (float)($concepto['Descuento'] ?? 0);
+                foreach ((array)($concepto['Traslados'] ?? []) as $traslado) {
+                    $impuestos += (float)($traslado['Importe'] ?? 0);
+                }
+                foreach ((array)($concepto['Retenciones'] ?? []) as $retencion) {
+                    $impuestos -= (float)($retencion['Importe'] ?? 0);
+                }
+            }
+
+            $ctxBase['venta']['total'] = round($totalTickets, 2);
+            $ctxBase['venta']['folio'] = implode(', ', $folios);
+            $ctxBase['venta']['id_venta'] = $baseId;
+            $ctxBase['venta']['tickets_ids'] = $ids;
+            $ctxBase['venta']['tickets_total'] = count($ids);
+            $ctxBase['conceptos'] = $conceptos;
+            $ctxBase['detalles'] = $detalles;
+            $ctxBase['totales'] = [
+                'subtotal' => round($subtotal, 2),
+                'descuento' => round($descuento, 2),
+                'impuestos' => round($impuestos, 2),
+                'total' => round($totalTickets, 2),
+                'importe_letra' => null,
+            ];
+            if (is_array($ctxBase['factura_draft'] ?? null)) {
+                $ctxBase['factura_draft']['venta']['id_venta'] = $baseId;
+                $ctxBase['factura_draft']['venta']['folio'] = implode(', ', $folios);
+                $ctxBase['factura_draft']['venta']['conceptos'] = $conceptos;
+                $ctxBase['factura_draft']['venta']['detalle_origen'] = $detalles;
+                $ctxBase['factura_draft']['venta']['subtotal'] = round($subtotal, 2);
+                $ctxBase['factura_draft']['venta']['descuento'] = round($descuento, 2);
+                $ctxBase['factura_draft']['venta']['impuestos'] = round($impuestos, 2);
+                $ctxBase['factura_draft']['venta']['total'] = round($totalTickets, 2);
+                $ctxBase['factura_draft']['venta']['tickets_ids'] = $ids;
+                $ctxBase['factura_draft']['venta']['tickets_total'] = count($ids);
+                $ctxBase['factura_draft']['venta']['tickets_folios'] = $folios;
+            }
+
+            $validationReport = $validator->validateDetailed($ctxBase);
+            $validaciones = $validationReport['listaErrores'];
+            $ctxBase['factura_draft']['validaciones'] = $validationReport;
+            $ctxBase['factura_draft']['listoParaTimbrar'] = $validationReport['listoParaTimbrar'];
+
+            echo json_encode([
+                'ok' => true,
+                'facturable' => empty($validaciones),
+                'msg' => empty($validaciones) ? 'Información de facturación cargada.' : 'La venta tiene observaciones antes de facturar.',
+                'contexto' => $ctxBase,
+                'validaciones' => $validaciones,
+                'validation_report' => $validationReport,
+                'advertencias' => [],
+            ], JSON_UNESCAPED_UNICODE);
+            break;
+        }
+
         case 'facturacion-buscar-clientes': {
             $q = trim((string)($_POST['q'] ?? $_GET['q'] ?? $raw['q'] ?? ''));
             $limite = self::asInt($_POST['limite'] ?? $_GET['limite'] ?? $raw['limite'] ?? 20);
@@ -465,6 +576,25 @@ class VentasController
                 'tipo_cambio' => $facturacionInput['comprobante']['tipo_cambio'] ?? null,
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $resp = $service->facturarVenta($idVenta, $facturacionInput);
+
+            $idsVentasMulti = $postBody['ids_ventas'] ?? [];
+            if (is_string($idsVentasMulti)) {
+                $idsVentasMulti = array_filter(array_map('intval', explode(',', $idsVentasMulti)));
+            }
+            if (!is_array($idsVentasMulti)) {
+                $idsVentasMulti = [];
+            }
+            $idsVentasMulti = array_values(array_unique(array_filter(array_map('intval', $idsVentasMulti), fn($id) => $id > 0)));
+            if (!empty($resp['ok']) && $idsVentasMulti) {
+                $schema = new FacturacionSchemaHelper($pdo);
+                $model = new FacturacionModel($pdo, $schema);
+                $cfdi = $resp['cfdi'] ?? null;
+                $idCfdi = (int)($cfdi['id_cfdi'] ?? $cfdi['id_venta_cfdi'] ?? 0);
+                if ($idCfdi > 0) {
+                    $model->registrarTicketsEnCfdi($idCfdi, $idsVentasMulti);
+                }
+            }
+
             echo json_encode($resp, JSON_UNESCAPED_UNICODE);
             break;
         }

@@ -72,6 +72,59 @@ class FacturacionModel
         return $st->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
+
+    public function listarTicketsFacturablesMultiples(string $q = '', int $limite = 50): array
+    {
+        $limite = max(1, min(200, $limite));
+        $params = [];
+        $sql = "SELECT v.id_venta, v.folio, v.fecha, v.total, c.nombre AS cliente_nombre
+                FROM ventas v
+                LEFT JOIN clientes c ON c.id_cliente = v.id_cliente
+                LEFT JOIN ventas_cfdi vc ON vc.id_venta = v.id_venta AND UPPER(COALESCE(vc.estatus, '')) = 'TIMBRADO'
+                LEFT JOIN ventas_cfdi_tickets vct ON vct.id_venta = v.id_venta
+                WHERE COALESCE(v.activo, 1) = 1
+                  AND UPPER(COALESCE(v.estatus, '')) <> 'CANCELADA'
+                  AND vc.id_venta IS NULL
+                  AND vct.id_venta IS NULL";
+
+        $q = trim($q);
+        if ($q !== '') {
+            $sql .= " AND (v.folio LIKE :q OR CAST(v.id_venta AS CHAR) LIKE :q OR c.nombre LIKE :q)";
+            $params[':q'] = '%' . $q . '%';
+        }
+
+        $sql .= " ORDER BY v.id_venta DESC LIMIT :lim";
+        $st = $this->conn->prepare($sql);
+        foreach ($params as $k => $v) {
+            $st->bindValue($k, $v);
+        }
+        $st->bindValue(':lim', $limite, PDO::PARAM_INT);
+        $st->execute();
+        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function registrarTicketsEnCfdi(int $idCfdi, array $idsVenta): void
+    {
+        if (!$this->schema->tableExists('ventas_cfdi_tickets')) {
+            return;
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $idsVenta), fn($id) => $id > 0)));
+        if (!$ids) {
+            return;
+        }
+
+        $sql = 'INSERT INTO ventas_cfdi_tickets (id_cfdi, id_venta, created_at) VALUES (:id_cfdi, :id_venta, NOW())';
+        $st = $this->conn->prepare($sql);
+        foreach ($ids as $idVenta) {
+            try {
+                $st->execute([':id_cfdi' => $idCfdi, ':id_venta' => $idVenta]);
+            } catch (Throwable $e) {
+                // Ignora duplicados para mantener idempotencia
+            }
+        }
+    }
+
     public function createOrGetCfdiRecord(int $idVenta, array $data): array
     {
         if (!$this->schema->tableExists('ventas_cfdi')) {
