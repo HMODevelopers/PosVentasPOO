@@ -585,6 +585,35 @@ class VentasController
             if ($idClienteSat <= 0) self::jsonError('Debe seleccionar un receptor existente.', 422);
 
             global $pdo;
+            $schema = new FacturacionSchemaHelper($pdo);
+            $model = new FacturacionModel($pdo, $schema);
+
+            $idsVentasMulti = $raw['ids_ventas'] ?? $_POST['ids_ventas'] ?? $_GET['ids_ventas'] ?? [];
+            if (is_string($idsVentasMulti)) {
+                $idsVentasMulti = array_filter(array_map('intval', explode(',', $idsVentasMulti)));
+            }
+            if (!is_array($idsVentasMulti)) {
+                $idsVentasMulti = [];
+            }
+            $idsVentasMulti = array_values(array_unique(array_filter(array_map('intval', $idsVentasMulti), fn($id) => $id > 0)));
+
+            $idsLote = $idsVentasMulti;
+            if (!$idsLote) {
+                $idsLote = [$idVenta];
+            } elseif (!in_array($idVenta, $idsLote, true)) {
+                $idsLote[] = $idVenta;
+                $idsLote = array_values(array_unique($idsLote));
+            }
+
+            $idsYaTimbrados = $model->obtenerVentasYaTimbradas($idsLote);
+            if (!empty($idsYaTimbrados)) {
+                self::jsonError(
+                    'Algunos tickets ya están timbrados y no pueden volver a facturarse: ' . implode(', ', $idsYaTimbrados),
+                    422
+                );
+            }
+            $esFacturacionMultiple = count($idsLote) > 1;
+
             $service = new FacturacionService($pdo);
             $postBody = is_array($raw) && $raw ? $raw : $_POST;
             $facturacionInput = [
@@ -608,34 +637,11 @@ class VentasController
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $resp = $service->facturarVenta($idVenta, $facturacionInput);
 
-            $idsVentasMulti = $postBody['ids_ventas'] ?? [];
-            if (is_string($idsVentasMulti)) {
-                $idsVentasMulti = array_filter(array_map('intval', explode(',', $idsVentasMulti)));
-            }
-            if (!is_array($idsVentasMulti)) {
-                $idsVentasMulti = [];
-            }
-            $idsVentasMulti = array_values(array_unique(array_filter(array_map('intval', $idsVentasMulti), fn($id) => $id > 0)));
-            if ($idsVentasMulti) {
-                $schema = new FacturacionSchemaHelper($pdo);
-                $model = new FacturacionModel($pdo, $schema);
-                $idsYaTimbrados = $model->obtenerVentasYaTimbradas($idsVentasMulti);
-                if (!empty($idsYaTimbrados)) {
-                    self::jsonError(
-                        'Algunos tickets ya están timbrados y no pueden volver a facturarse: ' . implode(', ', $idsYaTimbrados),
-                        422
-                    );
-                }
-            }
-            if (!empty($resp['ok']) && $idsVentasMulti) {
-                $schema = $schema ?? new FacturacionSchemaHelper($pdo);
-                $model = $model ?? new FacturacionModel($pdo, $schema);
+            if (!empty($resp['ok']) && $esFacturacionMultiple) {
                 $cfdi = $resp['cfdi'] ?? null;
                 $idCfdi = (int)($cfdi['id_cfdi'] ?? $cfdi['id_venta_cfdi'] ?? 0);
                 if ($idCfdi > 0) {
-                    $idsParticipantes = $idsVentasMulti;
-                    $idsParticipantes[] = $idVenta;
-                    $idsParticipantes = array_values(array_unique(array_filter(array_map('intval', $idsParticipantes), fn($id) => $id > 0)));
+                    $idsParticipantes = $idsLote;
 
                     $txLocal = !$pdo->inTransaction();
                     if ($txLocal) {
