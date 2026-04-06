@@ -373,15 +373,20 @@ class VentasController
 
         case 'facturacion-multiple-tickets': {
             $q = trim((string)($_POST['q'] ?? $_GET['q'] ?? $raw['q'] ?? ''));
-            $limite = self::asInt($_POST['limite'] ?? $_GET['limite'] ?? $raw['limite'] ?? 50);
+            $pagina = self::asInt($_POST['pagina'] ?? $_GET['pagina'] ?? $raw['pagina'] ?? 1);
+            $limite = self::asInt($_POST['limite'] ?? $_GET['limite'] ?? $raw['limite'] ?? 10);
 
             global $pdo;
             $schema = new FacturacionSchemaHelper($pdo);
             $model = new FacturacionModel($pdo, $schema);
+            $result = $model->listarTicketsFacturablesMultiples($q, $pagina, $limite);
 
             echo json_encode([
                 'ok' => true,
-                'tickets' => $model->listarTicketsFacturablesMultiples($q, $limite),
+                'tickets' => $result['tickets'] ?? [],
+                'total' => (int)($result['total'] ?? 0),
+                'pagina' => (int)($result['pagina'] ?? $pagina),
+                'limite' => (int)($result['limite'] ?? $limite),
             ], JSON_UNESCAPED_UNICODE);
             break;
         }

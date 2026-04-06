@@ -73,13 +73,17 @@ class FacturacionModel
     }
 
 
-    public function listarTicketsFacturablesMultiples(string $q = '', int $limite = 50): array
+    public function listarTicketsFacturablesMultiples(string $q = '', int $pagina = 1, int $limite = 50): array
     {
+        $pagina = max(1, $pagina);
         $limite = max(1, min(200, $limite));
+        $offset = ($pagina - 1) * $limite;
+
         $params = [];
-        $sql = "SELECT v.id_venta, v.folio, v.fecha, v.total, c.nombre AS cliente_nombre
-                FROM ventas v
+        $fromWhere = " FROM ventas v
                 LEFT JOIN clientes c ON c.id_cliente = v.id_cliente
+                LEFT JOIN usuarios u ON u.id_usuario = v.id_usuario
+                LEFT JOIN formas_pago fp ON fp.id_forma_pago = v.id_forma_pago
                 LEFT JOIN ventas_cfdi vc ON vc.id_venta = v.id_venta AND UPPER(COALESCE(vc.estatus, '')) = 'TIMBRADO'
                 LEFT JOIN ventas_cfdi_tickets vct ON vct.id_venta = v.id_venta
                 WHERE COALESCE(v.activo, 1) = 1
@@ -89,18 +93,38 @@ class FacturacionModel
 
         $q = trim($q);
         if ($q !== '') {
-            $sql .= " AND (v.folio LIKE :q OR CAST(v.id_venta AS CHAR) LIKE :q OR c.nombre LIKE :q)";
+            $fromWhere .= " AND (v.folio LIKE :q OR CAST(v.id_venta AS CHAR) LIKE :q OR c.nombre LIKE :q)";
             $params[':q'] = '%' . $q . '%';
         }
 
-        $sql .= " ORDER BY v.id_venta DESC LIMIT :lim";
+        $sqlTotal = 'SELECT COUNT(*)' . $fromWhere;
+        $stTotal = $this->conn->prepare($sqlTotal);
+        foreach ($params as $k => $v) {
+            $stTotal->bindValue($k, $v);
+        }
+        $stTotal->execute();
+        $total = (int)$stTotal->fetchColumn();
+
+        $sql = "SELECT v.id_venta, v.folio, v.fecha, v.total, c.nombre AS cliente_nombre,
+                       COALESCE(u.nombre, u.usuario, '—') AS usuario,
+                       COALESCE(fp.descripcion, fp.nombre, '—') AS forma_pago"
+            . $fromWhere
+            . " ORDER BY v.id_venta DESC LIMIT :lim OFFSET :off";
+
         $st = $this->conn->prepare($sql);
         foreach ($params as $k => $v) {
             $st->bindValue($k, $v);
         }
         $st->bindValue(':lim', $limite, PDO::PARAM_INT);
+        $st->bindValue(':off', $offset, PDO::PARAM_INT);
         $st->execute();
-        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'tickets' => $st->fetchAll(PDO::FETCH_ASSOC) ?: [],
+            'total' => $total,
+            'pagina' => $pagina,
+            'limite' => $limite,
+        ];
     }
 
     public function registrarTicketsEnCfdi(int $idCfdi, array $idsVenta): void
