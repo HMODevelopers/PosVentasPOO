@@ -278,6 +278,7 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
   let initialFormLoaded = false;
   let ticketPage = 1;
   const ticketLimit = 10;
+  let isRefreshingPreview = false;
 
   const mxn = n => new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(Number(n||0));
   const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -310,6 +311,77 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
     $select.html(html).val(currentValue !== undefined && currentValue !== null ? String(currentValue) : '');
   }
 
+  function updateTipoCambioUi(){
+    const moneda = String($('#fac-select-moneda').val() || '').trim().toUpperCase();
+    const $tipoCambio = $('#fac-input-tipo-cambio');
+    if (moneda === 'MXN' || !moneda) {
+      $tipoCambio.prop('readonly', true).val('1');
+      $('#fac-tipo-cambio-help').text('Para MXN el tipo de cambio es 1.');
+      return;
+    }
+    $tipoCambio.prop('readonly', false);
+    if (!$tipoCambio.val()) $tipoCambio.val('1');
+    $('#fac-tipo-cambio-help').text('Captura el tipo de cambio para moneda extranjera.');
+  }
+
+  function getValidationState(){
+    const state = {
+      bloques: { emisor: true, receptor: true, comprobante: true, conceptos: true, totales: true },
+      listaErrores: []
+    };
+    const pushError = (bloque, mensaje) => {
+      state.bloques[bloque] = false;
+      state.listaErrores.push({ bloque, mensaje });
+    };
+
+    const emisorRfc = String($('#fac-emisor-rfc').text() || '').trim();
+    const emisorNombre = String($('#fac-emisor-nombre').text() || '').trim();
+    if (!emisorRfc || emisorRfc === '—') pushError('emisor', 'Falta RFC del emisor');
+    if (!emisorNombre || emisorNombre === '—') pushError('emisor', 'Falta nombre del emisor');
+
+    const rfc = String($('#fac-input-rfc').val() || '').trim();
+    const nombre = String($('#fac-input-razon-social').val() || '').trim();
+    const cp = String($('#fac-input-cp').val() || '').trim();
+    const regimen = String($('#fac-select-regimen').val() || '').trim();
+    const usoCfdi = String($('#fac-select-uso-cfdi').val() || '').trim();
+    if (!rfc) pushError('receptor', 'Falta RFC del receptor');
+    if (!nombre) pushError('receptor', 'Falta Nombre o razón social del receptor');
+    if (!cp) pushError('receptor', 'Falta Código postal del receptor');
+    if (!regimen) pushError('receptor', 'Falta Régimen fiscal del receptor');
+    if (!usoCfdi) pushError('receptor', 'Falta Uso CFDI del receptor');
+
+    const moneda = String($('#fac-select-moneda').val() || '').trim().toUpperCase();
+    const metodo = String($('#fac-select-metodo-pago').val() || '').trim();
+    const forma = String($('#fac-select-forma-pago').val() || '').trim();
+    const tipoComprobante = String($('#fac-select-tipo-comprobante').val() || '').trim();
+    const exportacion = String($('#fac-select-exportacion').val() || '').trim();
+    const tipoCambioRaw = String($('#fac-input-tipo-cambio').val() || '').trim();
+    const tipoCambioNum = Number(tipoCambioRaw);
+    if (!moneda) pushError('comprobante', 'Falta moneda');
+    if (!metodo) pushError('comprobante', 'Falta Método de pago');
+    if (!forma) pushError('comprobante', 'Falta Forma de pago');
+    if (!tipoComprobante) pushError('comprobante', 'Falta Tipo de comprobante');
+    if (!exportacion) pushError('comprobante', 'Falta clave de Exportación');
+    if (!tipoCambioRaw || Number.isNaN(tipoCambioNum) || tipoCambioNum <= 0) {
+      pushError('comprobante', 'Falta Tipo de cambio válido');
+    } else if (moneda === 'MXN' && Math.abs(tipoCambioNum - 1) > 0.000001) {
+      pushError('comprobante', 'Para moneda MXN el tipo de cambio debe ser 1');
+    }
+
+    const conceptos = Array.isArray(draft?.venta?.conceptos) ? draft.venta.conceptos : [];
+    if (!conceptos.length) pushError('conceptos', 'Debes agregar al menos un ticket con conceptos');
+
+    const subtotal = Number(draft?.venta?.subtotal || 0);
+    const total = Number(draft?.venta?.total || 0);
+    if (!Number.isFinite(subtotal) || subtotal < 0) pushError('totales', 'Subtotal inválido');
+    if (!Number.isFinite(total) || total <= 0) pushError('totales', 'Total inválido');
+
+    const ticketsCount = selectedTickets.size;
+    const hasErrors = state.listaErrores.length > 0;
+    state.facturable = !hasErrors && ticketsCount > 0;
+    return state;
+  }
+
   function renderValidationReport(report){
     const blocks = report?.bloques || {};
     const lista = Array.isArray(report?.listaErrores) ? report.listaErrores : [];
@@ -327,7 +399,18 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
       $('#fac-validaciones').html('<li class="cfdi-validation-list__item is-success"><strong>Validación</strong>La información está completa. Ya puedes facturar la venta.</li>');
       return;
     }
-    $('#fac-validaciones').html(lista.map(msg => `<li class="cfdi-validation-list__item"><strong>Validación</strong>${esc(msg)}</li>`).join(''));
+    $('#fac-validaciones').html(lista.map(item => {
+      const msg = typeof item === 'string' ? item : item?.mensaje;
+      const bloque = typeof item === 'object' && item?.bloque ? item.bloque : null;
+      const title = bloque ? `Validación · ${esc(String(bloque).toUpperCase())}` : 'Validación';
+      return `<li class="cfdi-validation-list__item"><strong>${title}</strong>${esc(msg || '')}</li>`;
+    }).join(''));
+  }
+
+  function revalidateForm(){
+    const validation = getValidationState();
+    renderValidationReport(validation);
+    $('#btnConfirmarFacturar').prop('disabled', !validation.facturable || isRefreshingPreview);
   }
 
   function clearConceptosTotales(){
@@ -340,8 +423,7 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
     $('#fac-detalles-body').html('<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
     $('#fac-total-subtotal,#fac-total-descuento,#fac-total-impuestos,#fac-total').text(mxn(0));
     $('#fac-importe-letra').text('No disponible en el flujo actual.');
-    renderValidationReport(null);
-    $('#btnConfirmarFacturar').prop('disabled', true);
+    revalidateForm();
   }
 
   function resetView(){
@@ -385,6 +467,7 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
 
     if (!$('#fac-input-tipo-cambio').val()) $('#fac-input-tipo-cambio').val(draftInit?.comprobante?.tipo_cambio || '1');
     if (!$('#fac-input-condiciones-pago').val()) $('#fac-input-condiciones-pago').val(draftInit?.comprobante?.condiciones_pago || '');
+    updateTipoCambioUi();
     initialFormLoaded = true;
   }
 
@@ -509,12 +592,12 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
   function refreshPreview(){
     const ids = Array.from(selectedTickets.keys());
     if(!ids.length){ clearConceptosTotales(); return; }
-    $('#fac-loader').show();
-    $('#fac-contenido').addClass('d-none');
+    isRefreshingPreview = true;
+    $('#btnAgregarTickets').prop('disabled', true);
+    $('#btnConfirmarFacturar').prop('disabled', true);
     $('#fac-error, #fac-success').addClass('d-none').empty();
 
     $.post(VENTAS_URL,{accion:'facturacion-multiple-preview',ids_ventas:ids},resp=>{
-      $('#fac-loader').hide();
       if(!resp?.ok){ $('#fac-error').removeClass('d-none').text(resp?.msg||'Error de preview'); return; }
 
       const ctx = resp.contexto || {};
@@ -522,7 +605,6 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
       applyInitialContext(ctx);
       const venta = ctx.venta || {};
       const conceptos = Array.isArray(draft?.venta?.conceptos) ? draft.venta.conceptos : [];
-      const report = resp.validation_report || draft.validaciones || null;
 
       $('#fac-id-venta').val(venta.id_venta || ids[0]);
       $('#fac-folio').text((draft?.venta?.tickets_folios || []).join(', ') || venta.folio || '—');
@@ -544,14 +626,14 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
       }).join('');
       $('#fac-detalles-body').html(rows || '<tr><td colspan="10" class="text-center text-muted">Sin conceptos</td></tr>');
 
-      renderValidationReport(report);
       $('#fac-warning').toggleClass('d-none', !(Array.isArray(resp.advertencias) && resp.advertencias.length)).html((resp.advertencias||[]).join('<br>'));
-      $('#btnConfirmarFacturar').prop('disabled', !resp.facturable);
-      $('#fac-contenido').removeClass('d-none');
+      revalidateForm();
     },'json').fail(xhr=>{
-      $('#fac-loader').hide();
-      $('#fac-contenido').removeClass('d-none');
       $('#fac-error').removeClass('d-none').text(xhr?.responseJSON?.msg || 'Error al cargar preview.');
+    }).always(function(){
+      isRefreshingPreview = false;
+      $('#btnAgregarTickets').prop('disabled', false);
+      revalidateForm();
     });
   }
 
@@ -604,7 +686,20 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
     $('#fac-select-uso-cfdi').val(c.uso_cfdi||'');
     $('#fac-input-residencia-fiscal').val(c.residencia_fiscal || '');
     $('#fac-input-num-reg-id-trib').val(c.num_reg_id_trib || '');
+    revalidateForm();
   });
+  $(document).on('select2:clear','#fac-select-cliente',function(){
+    $('#fac-id-cliente-sat').val('');
+    revalidateForm();
+  });
+  $(document).on('change','#fac-select-moneda',function(){
+    updateTipoCambioUi();
+    revalidateForm();
+  });
+  $(document).on('input change',
+    '#fac-input-rfc,#fac-input-razon-social,#fac-input-cp,#fac-select-regimen,#fac-select-uso-cfdi,#fac-select-metodo-pago,#fac-select-forma-pago,#fac-input-tipo-cambio,#fac-select-tipo-comprobante,#fac-select-exportacion',
+    function(){ revalidateForm(); }
+  );
 
   $(document).on('submit','#formFacturarVenta',function(e){
     e.preventDefault();
