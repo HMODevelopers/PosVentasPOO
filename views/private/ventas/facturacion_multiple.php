@@ -30,6 +30,7 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
   <link href="<?= BASE_URL ?>/assets/css/bootstrap.min.css" rel="stylesheet" />
   <link href="<?= BASE_URL ?>/assets/css/icons.min.css" rel="stylesheet" />
   <link href="<?= BASE_URL ?>/assets/css/app.min.css" rel="stylesheet" />
+  <link href="<?= BASE_URL ?>/assets/css/loader.css" rel="stylesheet" />
   <link href="<?= BASE_URL ?>/assets/libs/select2/select2.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css"/>
   <style>
@@ -97,6 +98,12 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
 <body>
 <?php include_once __DIR__ . '/../../../includes/header.php'; ?>
 <div class="wrapper">
+  <div class="wrapper-loader fade" id="LoadingImage" style="display: none;">
+    <div class="loader">
+      <div class="loader__figure"></div>
+      <p class="loader__label">Cargando...</p>
+    </div>
+  </div>
   <div class="container-fluid">
     <?php include_once __DIR__ . '/../../../includes/breadcrumb.php'; ?>
 
@@ -268,6 +275,7 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
 <script>const BASE_URL='<?= BASE_URL ?>';</script>
 <script src="<?= BASE_URL ?>/assets/js/vendor.min.js"></script>
 <script src="<?= BASE_URL ?>/assets/js/app.min.js"></script>
+<script src="<?= BASE_URL ?>/assets/js/loader.js"></script>
 <script src="<?= BASE_URL ?>/assets/libs/select2/select2.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
 <script>

@@ -354,7 +354,11 @@ class VentasController
             $cfdiActual = $ctx['cfdi_actual'] ?? [];
             $advertencias = [];
 
-            if (strtoupper((string)($cfdiActual['estatus'] ?? '')) === 'TIMBRADO') {
+            $yaTimbrada = strtoupper((string)($cfdiActual['estatus'] ?? '')) === 'TIMBRADO';
+            if (!$yaTimbrada) {
+                $yaTimbrada = in_array($idVenta, $model->obtenerVentasYaTimbradas([$idVenta]), true);
+            }
+            if ($yaTimbrada) {
                 $advertencias[] = 'La venta ya cuenta con un CFDI timbrado.';
             }
 
@@ -421,6 +425,13 @@ class VentasController
             $schema = new FacturacionSchemaHelper($pdo);
             $model = new FacturacionModel($pdo, $schema);
             $validator = new FacturacionValidator();
+            $idsYaTimbrados = $model->obtenerVentasYaTimbradas($ids);
+            if (!empty($idsYaTimbrados)) {
+                self::jsonError(
+                    'Algunos tickets ya están timbrados y no pueden volver a facturarse: ' . implode(', ', $idsYaTimbrados),
+                    422
+                );
+            }
 
             $baseId = (int)$ids[0];
             $ctxBase = $model->loadContext($baseId);
@@ -605,9 +616,20 @@ class VentasController
                 $idsVentasMulti = [];
             }
             $idsVentasMulti = array_values(array_unique(array_filter(array_map('intval', $idsVentasMulti), fn($id) => $id > 0)));
-            if (!empty($resp['ok']) && $idsVentasMulti) {
+            if ($idsVentasMulti) {
                 $schema = new FacturacionSchemaHelper($pdo);
                 $model = new FacturacionModel($pdo, $schema);
+                $idsYaTimbrados = $model->obtenerVentasYaTimbradas($idsVentasMulti);
+                if (!empty($idsYaTimbrados)) {
+                    self::jsonError(
+                        'Algunos tickets ya están timbrados y no pueden volver a facturarse: ' . implode(', ', $idsYaTimbrados),
+                        422
+                    );
+                }
+            }
+            if (!empty($resp['ok']) && $idsVentasMulti) {
+                $schema = $schema ?? new FacturacionSchemaHelper($pdo);
+                $model = $model ?? new FacturacionModel($pdo, $schema);
                 $cfdi = $resp['cfdi'] ?? null;
                 $idCfdi = (int)($cfdi['id_cfdi'] ?? $cfdi['id_venta_cfdi'] ?? 0);
                 if ($idCfdi > 0) {
@@ -621,6 +643,7 @@ class VentasController
                     }
                     try {
                         $model->registrarTicketsEnCfdi($idCfdi, $idsParticipantes, $idVenta);
+                        $model->actualizarOrigenFacturacion($idsParticipantes, 'MULTIPLE');
                         if ($txLocal && $pdo->inTransaction()) {
                             $pdo->commit();
                         }

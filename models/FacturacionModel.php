@@ -84,10 +84,21 @@ class FacturacionModel
                 LEFT JOIN clientes c ON c.id_cliente = v.id_cliente
                 LEFT JOIN usuarios u ON u.id_usuario = v.id_usuario
                 LEFT JOIN formas_pago fp ON fp.id_forma_pago = v.id_forma_pago
-                LEFT JOIN ventas_cfdi vc ON vc.id_venta = v.id_venta AND vc.estatus = 'TIMBRADO'
                 WHERE v.activo = 1
                   AND v.estatus IN ('Activa', 'Credito')
-                  AND vc.id_cfdi IS NULL";
+                  AND NOT EXISTS (
+                    SELECT 1
+                      FROM ventas_cfdi vc
+                     WHERE vc.id_venta = v.id_venta
+                       AND vc.estatus = 'TIMBRADO'
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1
+                      FROM ventas_cfdi_tickets vct
+                      INNER JOIN ventas_cfdi vcp ON vcp.id_cfdi = vct.id_cfdi_principal
+                     WHERE vct.id_venta = v.id_venta
+                       AND vcp.estatus = 'TIMBRADO'
+                  )";
 
         $q = trim($q);
         if ($q !== '') {
@@ -152,6 +163,60 @@ class FacturacionModel
                 ':id_venta' => $idVenta,
             ]);
         }
+    }
+
+    public function actualizarOrigenFacturacion(array $idsVenta, string $origen): void
+    {
+        if (!$this->schema->tableExists('ventas') || !$this->schema->hasColumn('ventas', 'origen_facturacion')) {
+            return;
+        }
+
+        $origenNormalizado = strtoupper(trim($origen));
+        if (!in_array($origenNormalizado, ['INDIVIDUAL', 'MULTIPLE'], true)) {
+            return;
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $idsVenta), fn($id) => $id > 0)));
+        if (!$ids) {
+            return;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $sql = "UPDATE ventas SET origen_facturacion = ? WHERE id_venta IN ($placeholders)";
+        $st = $this->conn->prepare($sql);
+        $st->execute(array_merge([$origenNormalizado], $ids));
+    }
+
+    public function obtenerVentasYaTimbradas(array $idsVenta): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $idsVenta), fn($id) => $id > 0)));
+        if (!$ids) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $sql = "SELECT v.id_venta
+                  FROM ventas v
+                 WHERE v.id_venta IN ($placeholders)
+                   AND (
+                        EXISTS (
+                            SELECT 1
+                              FROM ventas_cfdi vc
+                             WHERE vc.id_venta = v.id_venta
+                               AND vc.estatus = 'TIMBRADO'
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                              FROM ventas_cfdi_tickets vct
+                              INNER JOIN ventas_cfdi vcp ON vcp.id_cfdi = vct.id_cfdi_principal
+                             WHERE vct.id_venta = v.id_venta
+                               AND vcp.estatus = 'TIMBRADO'
+                        )
+                   )";
+        $st = $this->conn->prepare($sql);
+        $st->execute($ids);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return array_values(array_unique(array_map(static fn(array $row): int => (int)($row['id_venta'] ?? 0), $rows)));
     }
 
     public function createOrGetCfdiRecord(int $idVenta, array $data): array

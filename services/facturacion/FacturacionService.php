@@ -233,6 +233,10 @@ class FacturacionService
                 'response_payload' => $mapped['raw_response_json'],
             ]);
 
+            if ($operacionExitosaFinal) {
+                $this->model->actualizarOrigenFacturacion([$idVenta], 'INDIVIDUAL');
+            }
+
             $this->logger->log([
                 'id_cfdi' => $cfdi['id_cfdi'] ?? null,
                 'id_venta' => $idVenta,

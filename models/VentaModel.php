@@ -376,11 +376,65 @@ class VentaModel
                                          WHERE a2.id_venta = v.id_venta AND a2.activo=1)
                     ) AS saldo,
                     v.estatus_credito,
-                    cfdi.estatus AS estatus_fiscal,
-                    cfdi.uuid AS cfdi_uuid,
-                    cfdi.referencia AS cfdi_referencia
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                              FROM ventas_cfdi vc
+                             WHERE vc.id_venta = v.id_venta
+                               AND vc.estatus = 'TIMBRADO'
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                              FROM ventas_cfdi_tickets vct
+                              INNER JOIN ventas_cfdi vcp ON vcp.id_cfdi = vct.id_cfdi_principal
+                             WHERE vct.id_venta = v.id_venta
+                               AND vcp.estatus = 'TIMBRADO'
+                        ) THEN 'TIMBRADO'
+                        ELSE COALESCE((
+                            SELECT vc2.estatus
+                              FROM ventas_cfdi vc2
+                             WHERE vc2.id_venta = v.id_venta
+                             ORDER BY vc2.id_cfdi DESC
+                             LIMIT 1
+                        ), '')
+                    END AS estatus_fiscal,
+                    COALESCE(
+                        (
+                            SELECT vc3.uuid
+                              FROM ventas_cfdi vc3
+                             WHERE vc3.id_venta = v.id_venta
+                             ORDER BY vc3.id_cfdi DESC
+                             LIMIT 1
+                        ),
+                        (
+                            SELECT vcp2.uuid
+                              FROM ventas_cfdi_tickets vct2
+                              INNER JOIN ventas_cfdi vcp2 ON vcp2.id_cfdi = vct2.id_cfdi_principal
+                             WHERE vct2.id_venta = v.id_venta
+                               AND vcp2.estatus = 'TIMBRADO'
+                             ORDER BY vcp2.id_cfdi DESC
+                             LIMIT 1
+                        )
+                    ) AS cfdi_uuid,
+                    COALESCE(
+                        (
+                            SELECT vc4.referencia
+                              FROM ventas_cfdi vc4
+                             WHERE vc4.id_venta = v.id_venta
+                             ORDER BY vc4.id_cfdi DESC
+                             LIMIT 1
+                        ),
+                        (
+                            SELECT vcp3.referencia
+                              FROM ventas_cfdi_tickets vct3
+                              INNER JOIN ventas_cfdi vcp3 ON vcp3.id_cfdi = vct3.id_cfdi_principal
+                             WHERE vct3.id_venta = v.id_venta
+                               AND vcp3.estatus = 'TIMBRADO'
+                             ORDER BY vcp3.id_cfdi DESC
+                             LIMIT 1
+                        )
+                    ) AS cfdi_referencia
                 FROM ventas v
-                LEFT JOIN ventas_cfdi cfdi ON cfdi.id_venta = v.id_venta
                 LEFT JOIN clientes     c  ON v.id_cliente     = c.id_cliente
                 INNER JOIN usuarios    u  ON v.id_usuario     = u.id_usuario
                 INNER JOIN cajas       cj ON v.id_caja        = cj.id_caja
@@ -521,13 +575,101 @@ class VentaModel
                                          WHERE a2.id_venta = v.id_venta AND a2.activo=1)
                     ) AS saldo,
                     v.estatus_credito,
-                    cfdi.estatus AS estatus_fiscal,
-                    cfdi.uuid AS cfdi_uuid,
-                    cfdi.referencia AS cfdi_referencia,
-                    cfdi.fecha_timbrado AS cfdi_fecha_timbrado,
-                    cfdi.mensaje_respuesta AS cfdi_mensaje_respuesta
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                              FROM ventas_cfdi vc
+                             WHERE vc.id_venta = v.id_venta
+                               AND vc.estatus = 'TIMBRADO'
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                              FROM ventas_cfdi_tickets vct
+                              INNER JOIN ventas_cfdi vcp ON vcp.id_cfdi = vct.id_cfdi_principal
+                             WHERE vct.id_venta = v.id_venta
+                               AND vcp.estatus = 'TIMBRADO'
+                        ) THEN 'TIMBRADO'
+                        ELSE COALESCE((
+                            SELECT vc2.estatus
+                              FROM ventas_cfdi vc2
+                             WHERE vc2.id_venta = v.id_venta
+                             ORDER BY vc2.id_cfdi DESC
+                             LIMIT 1
+                        ), '')
+                    END AS estatus_fiscal,
+                    COALESCE(
+                        (
+                            SELECT vc3.uuid
+                              FROM ventas_cfdi vc3
+                             WHERE vc3.id_venta = v.id_venta
+                             ORDER BY vc3.id_cfdi DESC
+                             LIMIT 1
+                        ),
+                        (
+                            SELECT vcp2.uuid
+                              FROM ventas_cfdi_tickets vct2
+                              INNER JOIN ventas_cfdi vcp2 ON vcp2.id_cfdi = vct2.id_cfdi_principal
+                             WHERE vct2.id_venta = v.id_venta
+                               AND vcp2.estatus = 'TIMBRADO'
+                             ORDER BY vcp2.id_cfdi DESC
+                             LIMIT 1
+                        )
+                    ) AS cfdi_uuid,
+                    COALESCE(
+                        (
+                            SELECT vc4.referencia
+                              FROM ventas_cfdi vc4
+                             WHERE vc4.id_venta = v.id_venta
+                             ORDER BY vc4.id_cfdi DESC
+                             LIMIT 1
+                        ),
+                        (
+                            SELECT vcp3.referencia
+                              FROM ventas_cfdi_tickets vct3
+                              INNER JOIN ventas_cfdi vcp3 ON vcp3.id_cfdi = vct3.id_cfdi_principal
+                             WHERE vct3.id_venta = v.id_venta
+                               AND vcp3.estatus = 'TIMBRADO'
+                             ORDER BY vcp3.id_cfdi DESC
+                             LIMIT 1
+                        )
+                    ) AS cfdi_referencia,
+                    COALESCE(
+                        (
+                            SELECT vc5.fecha_timbrado
+                              FROM ventas_cfdi vc5
+                             WHERE vc5.id_venta = v.id_venta
+                             ORDER BY vc5.id_cfdi DESC
+                             LIMIT 1
+                        ),
+                        (
+                            SELECT vcp4.fecha_timbrado
+                              FROM ventas_cfdi_tickets vct4
+                              INNER JOIN ventas_cfdi vcp4 ON vcp4.id_cfdi = vct4.id_cfdi_principal
+                             WHERE vct4.id_venta = v.id_venta
+                               AND vcp4.estatus = 'TIMBRADO'
+                             ORDER BY vcp4.id_cfdi DESC
+                             LIMIT 1
+                        )
+                    ) AS cfdi_fecha_timbrado,
+                    COALESCE(
+                        (
+                            SELECT vc6.mensaje_respuesta
+                              FROM ventas_cfdi vc6
+                             WHERE vc6.id_venta = v.id_venta
+                             ORDER BY vc6.id_cfdi DESC
+                             LIMIT 1
+                        ),
+                        (
+                            SELECT vcp5.mensaje_respuesta
+                              FROM ventas_cfdi_tickets vct5
+                              INNER JOIN ventas_cfdi vcp5 ON vcp5.id_cfdi = vct5.id_cfdi_principal
+                             WHERE vct5.id_venta = v.id_venta
+                               AND vcp5.estatus = 'TIMBRADO'
+                             ORDER BY vcp5.id_cfdi DESC
+                             LIMIT 1
+                        )
+                    ) AS cfdi_mensaje_respuesta
              FROM ventas v
-             LEFT JOIN ventas_cfdi cfdi ON cfdi.id_venta = v.id_venta
              LEFT JOIN clientes     c  ON v.id_cliente     = c.id_cliente
              INNER JOIN usuarios    u  ON v.id_usuario     = u.id_usuario
              INNER JOIN cajas       cj ON v.id_caja        = cj.id_caja
