@@ -25,7 +25,7 @@ class VentasController
         $raw = json_decode(file_get_contents('php://input'), true);
         if (!is_array($raw)) { $raw = []; }
 
-        $accion = $_REQUEST['accion'] ?? $raw['accion'] ?? '';
+        $accion = $_REQUEST['accion'] ?? $_REQUEST['action'] ?? $raw['accion'] ?? $raw['action'] ?? '';
 
         try {
 
@@ -380,13 +380,28 @@ class VentasController
             $schema = new FacturacionSchemaHelper($pdo);
             $model = new FacturacionModel($pdo, $schema);
             $result = $model->listarTicketsFacturablesMultiples($q, $pagina, $limite);
+            $total = (int)($result['total'] ?? 0);
+            $paginaResp = (int)($result['pagina'] ?? $pagina);
+            $limiteResp = (int)($result['limite'] ?? $limite);
+            $paginas = $limiteResp > 0 ? (int)ceil($total / $limiteResp) : 0;
+            $desde = $total > 0 ? (($paginaResp - 1) * $limiteResp) + 1 : 0;
+            $hasta = $total > 0 ? min($paginaResp * $limiteResp, $total) : 0;
 
             echo json_encode([
                 'ok' => true,
-                'tickets' => $result['tickets'] ?? [],
-                'total' => (int)($result['total'] ?? 0),
-                'pagina' => (int)($result['pagina'] ?? $pagina),
-                'limite' => (int)($result['limite'] ?? $limite),
+                'items' => $result['tickets'] ?? [],
+                'tickets' => $result['tickets'] ?? [], // compatibilidad legacy frontend
+                'paginacion' => [
+                    'pagina' => $paginaResp,
+                    'limite' => $limiteResp,
+                    'total' => $total,
+                    'paginas' => $paginas,
+                    'desde' => $desde,
+                    'hasta' => $hasta,
+                ],
+                'total' => $total, // compatibilidad legacy frontend
+                'pagina' => $paginaResp, // compatibilidad legacy frontend
+                'limite' => $limiteResp, // compatibilidad legacy frontend
             ], JSON_UNESCAPED_UNICODE);
             break;
         }

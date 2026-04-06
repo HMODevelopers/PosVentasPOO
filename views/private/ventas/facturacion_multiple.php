@@ -401,15 +401,27 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
     const q = $('#multi-ticket-search').val() || '';
     ticketPage = page;
     $.get(VENTAS_URL,{accion:'facturacion-multiple-tickets',q,pagina:page,limite:ticketLimit},resp=>{
-      const rows = Array.isArray(resp?.tickets) ? resp.tickets : [];
-      const total = Number(resp?.total || rows.length || 0);
-      const desde = total === 0 ? 0 : ((page-1) * ticketLimit) + 1;
-      const hasta = Math.min(page * ticketLimit, total);
+      if (!resp?.ok) {
+        const msg = resp?.msg || 'Error al cargar tickets.';
+        const detail = resp?.error ? ` (${resp.error})` : '';
+        $('#multi-ticket-body').html(`<tr><td colspan="7" class="text-center text-danger">${esc(msg + detail)}</td></tr>`);
+        $('#multi-ticket-info').text('No fue posible cargar los tickets.');
+        $('#multi-ticket-pagination').empty();
+        return;
+      }
+
+      const rows = Array.isArray(resp?.items) ? resp.items : (Array.isArray(resp?.tickets) ? resp.tickets : []);
+      const pag = resp?.paginacion || {};
+      const total = Number(pag?.total ?? resp?.total ?? rows.length ?? 0);
+      const currentPage = Number(pag?.pagina ?? page);
+      const currentLimit = Number(pag?.limite ?? ticketLimit);
+      const desde = Number(pag?.desde ?? (total === 0 ? 0 : ((currentPage - 1) * currentLimit) + 1));
+      const hasta = Number(pag?.hasta ?? Math.min(currentPage * currentLimit, total));
       $('#multi-ticket-info').text(`Mostrando ${desde} a ${hasta} de ${total} tickets`);
 
       if(!rows.length){
         $('#multi-ticket-body').html('<tr><td colspan="7" class="text-center text-muted">Sin tickets disponibles</td></tr>');
-        buildTicketPagination(page, total, ticketLimit);
+        buildTicketPagination(currentPage, total, currentLimit);
         return;
       }
       const html = rows.map(r=>{
@@ -419,14 +431,20 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
           <td class="text-center">${esc(r.usuario || '—')}</td>
           <td class="text-center">${esc(r.forma_pago || '—')}</td>
           <td class="text-right"><b>${mxn(r.total||0)}</b></td>
-          <td class="text-center">${esc(r.cliente_nombre || 'Público en general')}</td>
+          <td class="text-center">${esc(r.cliente || 'Público general')}</td>
           <td class="text-center">${esc(fechaMx(r.fecha))}</td>
           <td class="text-center"><button type="button" class="btn btn-sm ${added?'btn-secondary':'btn-primary'} btn-ticket-add" data-id="${id}" data-folio="${esc(r.folio||'')}">${added?'Agregado':'Agregar'}</button></td>
         </tr>`;
       }).join('');
       $('#multi-ticket-body').html(html);
-      buildTicketPagination(page, total, ticketLimit);
-    },'json');
+      buildTicketPagination(currentPage, total, currentLimit);
+    },'json').fail(xhr=>{
+      const msg = xhr?.responseJSON?.msg || 'Error al cargar tickets.';
+      const detail = xhr?.responseJSON?.error ? ` (${xhr.responseJSON.error})` : '';
+      $('#multi-ticket-body').html(`<tr><td colspan="7" class="text-center text-danger">${esc(msg + detail)}</td></tr>`);
+      $('#multi-ticket-info').text('No fue posible cargar los tickets.');
+      $('#multi-ticket-pagination').empty();
+    });
   }
 
   function refreshPreview(){
