@@ -98,7 +98,7 @@ $_SESSION['LAST_ACTIVITY']  = time();
             <div class="col-lg-12">
               <div class="row">
                 <!-- Folio -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                   <div class="form-group">
                     <label for="Folio" class="control-label">Folio</label>
                     <div class="input-group">
@@ -110,8 +110,21 @@ $_SESSION['LAST_ACTIVITY']  = time();
                   </div>
                 </div>
 
+                <!-- Código -->
+                <div class="col-md-3">
+                  <div class="form-group">
+                    <label for="FCodigo" class="control-label">Código</label>
+                    <div class="input-group">
+                      <input type="text" id="FCodigo" class="form-control filtrar" autocomplete="off">
+                      <div class="input-group-append clean-filter">
+                        <span class="input-group-text"><i class="mdi mdi-close-circle text-danger" onclick="clearField('FCodigo')"></i></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Estatus -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                   <div class="form-group">
                     <label for="FEstatus" class="control-label">Estatus</label>
                     <select id="FEstatus" class="form-control filtrar">
@@ -125,7 +138,7 @@ $_SESSION['LAST_ACTIVITY']  = time();
                 </div>
 
                 <!-- Fecha (SIN valor por defecto para NO filtrar de inicio) -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                   <div class="form-group">
                     <label for="Fecha" class="control-label">Fecha</label>
                     <div class="input-group">
@@ -246,6 +259,7 @@ $_SESSION['LAST_ACTIVITY']  = time();
 
     function cargarVentasDetalle(pagina){
       const folio  = $('#Folio').val() || '';
+      const codigo = $('#FCodigo').val() || '';
       const fecha  = ($('#Fecha').val() || '').trim();
       const estatus= $('#FEstatus').val() || '';
 
@@ -254,6 +268,7 @@ $_SESSION['LAST_ACTIVITY']  = time();
         pagina,
         limite:limitePorPagina,
         folio,
+        codigo,
         fecha: fecha || null,
         estatus
       }, function(resp){

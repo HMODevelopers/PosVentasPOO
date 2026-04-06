@@ -423,11 +423,12 @@ class VentaModel
     }
 
     /* ========================= Listado detalle ventas ========================= */
-    public function obtenerVentasDetalle($pagina = 1, $limite = 10, $folio = '', $fecha = '', $estatus = '')
+    public function obtenerVentasDetalle($pagina = 1, $limite = 10, $folio = '', $codigo = '', $fecha = '', $estatus = '')
     {
         $offset = ($pagina - 1) * $limite;
 
         $folio   = is_string($folio)   ? trim($folio)   : '';
+        $codigo  = is_string($codigo)  ? trim($codigo)  : '';
         $estatus = is_string($estatus) ? trim($estatus) : '';
         $fecha   = is_string($fecha)   ? trim($fecha)   : ($fecha ?? '');
 
@@ -460,6 +461,7 @@ class VentaModel
         $params = [];
 
         if ($folio !== '')   { $sql .= " AND v.folio LIKE :folio";     $params[':folio']   = "%$folio%"; }
+        if ($codigo !== '')  { $sql .= " AND p.codigo LIKE :codigo";   $params[':codigo']  = "%$codigo%"; }
         if (!empty($fecha))  { $sql .= " AND DATE(v.fecha) = :fecha";  $params[':fecha']   = $fecha; }
         if ($estatus !== '') { $sql .= " AND v.estatus = :estatus";    $params[':estatus'] = $estatus; }
 
@@ -473,19 +475,22 @@ class VentaModel
         return $st->fetchAll(\PDO::FETCH_ASSOC);
     }
 
-    public function contarVentasDetalle($folio = '', $fecha = '', $estatus = '')
+    public function contarVentasDetalle($folio = '', $codigo = '', $fecha = '', $estatus = '')
     {
         $folio   = is_string($folio)   ? trim($folio)   : '';
+        $codigo  = is_string($codigo)  ? trim($codigo)  : '';
         $estatus = is_string($estatus) ? trim($estatus) : '';
         $fecha   = is_string($fecha)   ? trim($fecha)   : ($fecha ?? '');
 
         $sql = "SELECT COUNT(*)
                 FROM ventas v
                 INNER JOIN ventas_detalle d ON d.id_venta = v.id_venta AND (d.activo = 1 OR d.activo IS NULL)
+                LEFT JOIN productos p       ON p.id_producto = d.id_producto
                 WHERE v.activo = 1";
         $params = [];
 
         if ($folio !== '')   { $sql .= " AND v.folio LIKE :folio";     $params[':folio']   = "%$folio%"; }
+        if ($codigo !== '')  { $sql .= " AND p.codigo LIKE :codigo";   $params[':codigo']  = "%$codigo%"; }
         if (!empty($fecha))  { $sql .= " AND DATE(v.fecha) = :fecha";  $params[':fecha']   = $fecha; }
         if ($estatus !== '') { $sql .= " AND v.estatus = :estatus";    $params[':estatus'] = $estatus; }
 
