@@ -40,12 +40,12 @@ acl_bootstrap();
               <li><a href="<?= BASE_URL ?>/views/private/ventas/index.php">Historial de ventas</a></li>
               <li><a href="<?= BASE_URL ?>/views/private/ventas/listadetalle.php">Historial de ventas detalle</a></li>
             <?php endif; ?>
+             <?php if (can('ventas.creditos_historial')): ?>
+              <li><a href="<?= BASE_URL ?>/views/private/reportes/historial_credito_clientes.php">Historial de crédito de clientes</a></li>
+            <?php endif; ?>
             <?php if (can('ventas.prestamos')): ?>
               <!-- CAMBIO: ortografía "Préstamos" -->
               <li><a href="<?= BASE_URL ?>/views/private/prestamos/index.php">Préstamos y abonos</a></li>
-            <?php endif; ?>
-            <?php if (can('ventas.creditos_historial')): ?>
-              <li><a href="<?= BASE_URL ?>/views/private/reportes/historial_credito_clientes.php">Historial de crédito de clientes</a></li>
             <?php endif; ?>
             <?php if (can('ventas.pos')): ?>
               <!-- CAMBIO: conservamos tu POS en /caja/index.php para no romper rutas -->

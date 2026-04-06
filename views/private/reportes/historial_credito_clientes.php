@@ -238,7 +238,7 @@ $(function(){
             <td class="text-right">${mxn(v.abonado_total)}</td>
             <td class="text-right">${mxn(v.saldo_actual)}</td>
             <td>${esc(v.estatus_credito_calculado||'')}</td>
-            <td><button class="btn btn-sm btn-light" data-toggle="collapse" data-target="#ab_${v.id_venta}">Ver abonos</button></td>
+            <td><center><button class="btn btn-sm btn-primary" data-toggle="collapse" data-target="#ab_${v.id_venta}">Ver abonos</button></center></td>
           </tr>
           <tr class="collapse" id="ab_${v.id_venta}">
             <td colspan="7">
