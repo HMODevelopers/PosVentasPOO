@@ -139,6 +139,10 @@ session_start();
       flex-wrap: wrap;
     }
 
+    .busqueda-avanzada-table td,
+    .busqueda-avanzada-table th { vertical-align: middle; }
+    .busqueda-avanzada-table .badge-stock { min-width: 68px; }
+
   </style>
 </head>
 <body>
@@ -167,6 +171,9 @@ session_start();
           <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
               <h5 class="mb-0">Buscar productos</h5>
+              <button id="btnBusquedaAvanzada" type="button" class="btn btn-sm btn-outline-primary">
+                <i class="mdi mdi-table-search me-1"></i> Búsqueda avanzada
+              </button>
             </div>
 
             <div class="card-body">
@@ -289,6 +296,49 @@ session_start();
       </div><!-- /pos-layout -->
       <!-- ===================== /CONTENIDO POS ===================== -->
 
+      <!-- ========== Modal de búsqueda avanzada (apoyo operativo) ========== -->
+      <div class="modal fade" id="modalBusquedaAvanzada" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">
+                <i class="mdi mdi-table-search me-1"></i> Búsqueda avanzada de productos
+              </h5>
+              <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-3">
+                <label class="form-label" for="txtBuscarAvanzado">Buscar por código, descripción o proveedor</label>
+                <input id="txtBuscarAvanzado" type="text" class="form-control" autocomplete="off" placeholder="Escribe para filtrar resultados...">
+              </div>
+              <div class="table-responsive">
+                <table class="table table-hover table-sm busqueda-avanzada-table mb-0" id="tablaBusquedaAvanzada">
+                  <thead class="table-light">
+                    <tr>
+                      <th style="min-width: 120px;">Código</th>
+                      <th style="min-width: 260px;">Producto</th>
+                      <th class="text-end">Existencia</th>
+                      <th class="text-end">Precio Taller</th>
+                      <th class="text-end">Precio Público</th>
+                      <th style="min-width: 140px;">Proveedor</th>
+                      <th class="text-center" style="width: 85px;">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td colspan="7" class="text-center text-muted py-4">Escribe para buscar productos.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-light" data-dismiss="modal">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Guarda el último id_venta para posible reimpresión del ticket -->
       <input type="hidden" id="tk-idventa" value="">
     </div><!-- /container-fluid -->
@@ -384,6 +434,8 @@ session_start();
     let idxFocus      = -1;
     let ultResultados = [];
     let debTimer      = null;
+    let debTimerAvz   = null;
+    let ultimaBusqueda = '';
     const detalleCache = new Map();
     let totalActual   = 0;
 
@@ -550,28 +602,37 @@ session_start();
     // 5) BUSCADOR DE PRODUCTOS
     // ============================================================
     const $input = $('#txtBuscar'), $panel = $('#panelSug');
+    const $modalBusquedaAvz = $('#modalBusquedaAvanzada');
+    const $inputBusquedaAvz = $('#txtBuscarAvanzado');
+    const $tablaBusquedaAvzBody = $('#tablaBusquedaAvanzada tbody');
 
     function debounce(fn, ms){ clearTimeout(debTimer); debTimer = setTimeout(fn, ms); }
+    function debounceAvanzada(fn, ms){ clearTimeout(debTimerAvz); debTimerAvz = setTimeout(fn, ms); }
+    const esc = s => $('<div>').text((s ?? '').toString()).html();
 
-    function sugHTMLBasico(p){
-      return `
-        <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-          data-i="${p.__i}" data-id="${p.id_producto}">
-          <div class="me-2" style="min-width:0">
-            <div class="text-truncate"><strong>${p.codigo}</strong> — ${p.descripcion}</div>
-            <div class="small text-muted" data-slot="extra">Cargando detalles…</div>
-          </div>
-          <i class="mdi mdi-plus-circle-outline"></i>
-        </a>`;
+    function precioAplicable(p){
+      const t = tipoPrecioActual();
+      if (t === 'taller') return Number(p.precio_taller ?? 0);
+      if (t === 'proveedor') return Number(p.precio_proveedor ?? 0);
+      return Number(p.precio_publico ?? 0);
     }
 
-    function sugHTMLDetallado(det){
-      const pub  = Number(det.precio_publico ?? 0);
-      const tal  = Number(det.precio_taller ?? 0);
-      const stk  = Number(det.stock_actual ?? det.existencia ?? 0);
-      const prov = det.proveedor ?? '';
-      const extra = `<span>Taller: ${mxn(tal)}</span> · <span>Público: ${mxn(pub)}</span> · <span>Exist: ${fix2(stk)}</span>${prov?` · <span>Prov: ${prov}</span>`:''}`;
-      return { extra, sinStock: (vendibleDe(det) <= 0) };
+    function sugHTMLBasico(p){
+      const stk = Number(p.stock_actual ?? p.existencia ?? 0);
+      const prov = p.proveedor ?? '';
+      const precio = precioAplicable(p);
+      const sinStock = stk <= 0;
+      return `
+        <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center ${sinStock ? 'disabled' : ''}"
+          data-i="${p.__i}" data-id="${p.id_producto}" aria-disabled="${sinStock ? 'true' : 'false'}">
+          <div class="me-2" style="min-width:0">
+            <div class="text-truncate"><strong>${esc(p.codigo)}</strong> — ${esc(p.descripcion)}</div>
+            <div class="small text-muted">
+              Precio: ${mxn(precio)} · Exist: ${fix2(stk)}${prov ? ` · Prov: ${esc(prov)}` : ''}
+            </div>
+          </div>
+          <span class="btn btn-sm btn-outline-primary"><i class="mdi mdi-plus-circle-outline"></i></span>
+        </a>`;
     }
 
     function renderSugerencias(list){
@@ -579,41 +640,89 @@ session_start();
       idxFocus = -1;
       $panel.empty();
 
-      if(!ultResultados.length) return $panel.addClass('d-none');
+      if(!ultResultados.length){
+        $panel.addClass('d-none');
+        return;
+      }
 
       ultResultados.forEach(p=>$panel.append(sugHTMLBasico(p)));
       $panel.removeClass('d-none');
+    }
 
-      ultResultados.forEach(p=>{
-        const id = p.id_producto;
-        const $row = $panel.find(`[data-id="${id}"]`);
+    function enfocarBusqueda(){
+      setTimeout(()=>{
+        $input.trigger('focus');
+      }, 40);
+    }
 
-        if(detalleCache.has(id)){
-          const det = detalleCache.get(id);
-          const {extra,sinStock} = sugHTMLDetallado(det);
-          $row.find('[data-slot="extra"]').html(extra);
-          $row.toggleClass('disabled', sinStock).attr('aria-disabled', sinStock ? 'true' : null);
-        }
+    function buscar(q, {mantenerPanel=true, limite=20} = {}){
+      if(!q || q.length < 2){
+        if (!mantenerPanel) $panel.addClass('d-none').empty();
+        return;
+      }
+      ultimaBusqueda = q;
+      $.post(`${BASE}/controllers/ProductosController.php`, {accion:'buscar-min', q, limite})
+        .done(r=>renderSugerencias(r?.data||[]))
+        .fail(()=>{
+          if (!mantenerPanel) $panel.addClass('d-none').empty();
+        });
+    }
 
-        $.post(`${BASE}/controllers/ProductosController.php`, {accion:'detalle', id_producto:id})
-          .done(r=>{
-            const det = r?.data || {};
-            detalleCache.set(id, det);
-            const {extra,sinStock} = sugHTMLDetallado(det);
-            $row.find('[data-slot="extra"]').html(extra);
-            $row.toggleClass('disabled', sinStock).attr('aria-disabled', sinStock ? 'true' : null);
-          });
+    function renderTablaAvanzada(list){
+      $tablaBusquedaAvzBody.empty();
+      if (!list.length){
+        $tablaBusquedaAvzBody.html('<tr><td colspan="7" class="text-center text-muted py-4">No se encontraron productos.</td></tr>');
+        return;
+      }
+
+      list.forEach(p=>{
+        const stk = num(p.stock_actual ?? p.existencia ?? 0);
+        const badge = stk > 0 ? 'bg-success' : 'bg-secondary';
+        $tablaBusquedaAvzBody.append(`
+          <tr>
+            <td><strong>${esc(p.codigo)}</strong></td>
+            <td>${esc(p.descripcion)}</td>
+            <td class="text-end"><span class="badge ${badge} badge-stock">${fix2(stk)}</span></td>
+            <td class="text-end">${mxn(p.precio_taller ?? 0)}</td>
+            <td class="text-end">${mxn(p.precio_publico ?? 0)}</td>
+            <td>${esc(p.proveedor ?? '')}</td>
+            <td class="text-center">
+              <button type="button" class="btn btn-sm btn-outline-primary" data-avz-add="${Number(p.id_producto)}" ${stk <= 0 ? 'disabled' : ''}>
+                <i class="mdi mdi-plus"></i>
+              </button>
+            </td>
+          </tr>
+        `);
       });
     }
 
-    function buscar(q){
-      if(!q || q.length < 2){ $panel.addClass('d-none').empty(); return; }
-      $.post(`${BASE}/controllers/ProductosController.php`, {accion:'buscar-min', q, limite:20})
-        .done(r=>renderSugerencias(r?.data||[]))
-        .fail(()=> $panel.addClass('d-none').empty());
+    function buscarAvanzado(q){
+      if (!q || q.length < 2){
+        $tablaBusquedaAvzBody.html('<tr><td colspan="7" class="text-center text-muted py-4">Escribe al menos 2 caracteres para buscar.</td></tr>');
+        return;
+      }
+      $.post(`${BASE}/controllers/ProductosController.php`, {accion:'buscar-min', q, limite:120})
+        .done(r=>renderTablaAvanzada(r?.data || []))
+        .fail(()=> $tablaBusquedaAvzBody.html('<tr><td colspan="7" class="text-center text-danger py-4">No se pudo cargar la búsqueda avanzada.</td></tr>'));
     }
 
-    function seleccionarPorId(idProd){
+    function moverFocoSugerencias(delta){
+      if (!$panel.children().length) return;
+      idxFocus = Math.max(0, Math.min((idxFocus < 0 ? 0 : idxFocus + delta), ultResultados.length - 1));
+      $panel.children().removeClass('active');
+      const $target = $panel.children().eq(idxFocus).addClass('active');
+      if ($target.length) {
+        const panelTop = $panel.scrollTop();
+        const panelHeight = $panel.innerHeight();
+        const elTop = $target.position().top + panelTop;
+        const elBottom = elTop + $target.outerHeight();
+        if (elBottom > panelTop + panelHeight) $panel.scrollTop(elBottom - panelHeight);
+        if (elTop < panelTop) $panel.scrollTop(elTop);
+      }
+    }
+
+    function seleccionarPorId(idProd, opts = {}){
+      const {preservarBusqueda=true, cerrarAvanzada=false} = opts;
       $.post(`${BASE}/controllers/ProductosController.php`, {accion:'detalle', id_producto:idProd})
         .done(r=>{
           const det = r?.data;
@@ -628,25 +737,84 @@ session_start();
 
           detalleCache.set(idProd, det);
           agregarDesdeDetalle(det);
-          $input.val('');
-          $panel.addClass('d-none').empty();
+          if (cerrarAvanzada) $modalBusquedaAvz.modal('hide');
+          if (preservarBusqueda) {
+            const termino = $input.val().trim();
+            if (termino.length >= 2) {
+              buscar(termino, {mantenerPanel:true});
+            }
+          } else {
+            $input.val('');
+            $panel.addClass('d-none').empty();
+          }
+          enfocarBusqueda();
         })
         .fail(()=> toastr.error('No se pudo obtener el detalle del producto'));
     }
 
     $('#txtBuscar').on('input', function(){
-      debounce(()=>buscar(this.value.trim()), 220);
+      debounce(()=>buscar(this.value.trim(), {mantenerPanel:true}), 180);
+    });
+
+    $('#txtBuscar').on('keydown', function(e){
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        moverFocoSugerencias(1);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        moverFocoSugerencias(-1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        if ($panel.hasClass('d-none')) return;
+        e.preventDefault();
+        let selected = idxFocus >= 0 ? ultResultados[idxFocus] : ultResultados[0];
+        if (!selected && ultimaBusqueda.length >= 2) {
+          buscar(ultimaBusqueda, {mantenerPanel:true});
+          return;
+        }
+        if (selected) seleccionarPorId(Number(selected.id_producto), {preservarBusqueda:true});
+      }
     });
 
     $('#panelSug').on('click','.list-group-item',function(e){
       e.preventDefault();
       if($(this).hasClass('disabled')) return;
-      seleccionarPorId(Number($(this).data('id')));
+      seleccionarPorId(Number($(this).data('id')), {preservarBusqueda:true});
+    });
+
+    $('#panelSug').on('mouseenter','.list-group-item',function(){
+      idxFocus = Number($(this).data('i'));
+      $panel.children().removeClass('active');
+      $(this).addClass('active');
+    });
+
+    $('#btnBusquedaAvanzada').on('click', ()=>{
+      $modalBusquedaAvz.modal('show');
+    });
+
+    $modalBusquedaAvz.on('shown.bs.modal', ()=>{
+      const term = $input.val().trim();
+      $inputBusquedaAvz.val(term);
+      buscarAvanzado(term);
+      setTimeout(()=> $inputBusquedaAvz.trigger('focus'), 40);
+    });
+
+    $inputBusquedaAvz.on('input', function(){
+      debounceAvanzada(()=>buscarAvanzado(this.value.trim()), 220);
+    });
+
+    $tablaBusquedaAvzBody.on('click', 'button[data-avz-add]', function(){
+      const id = Number($(this).data('avz-add'));
+      if (!id) return;
+      seleccionarPorId(id, {preservarBusqueda:true, cerrarAvanzada:true});
     });
 
     $(document).on('click', e=>{
-      if(!$(e.target).closest('#txtBuscar,#panelSug').length){
-        $panel.addClass('d-none').empty();
+      if(!$(e.target).closest('#txtBuscar,#panelSug,#btnBusquedaAvanzada').length){
+        $panel.addClass('d-none');
       }
     });
 
@@ -1363,10 +1531,12 @@ session_start();
 
     $('#btnCancelar').on('click', ()=>{
       carrito=[]; pintarCarrito(); $('#selCliente').val(''); $('#txtBuscar').val('');
+      $panel.addClass('d-none').empty();
       $('#fechaVenta').val('<?= date('Y-m-d') ?>');
       $('#tpPrecio').val('taller').trigger('change');
       cargarFormasPago();
       pintarFolioSugerido();
+      enfocarBusqueda();
     });
 
     // ============================================================
@@ -1376,6 +1546,7 @@ session_start();
     cargarFormasPago();
     pintarFolioSugerido();
     $('#fechaVenta').on('change', pintarFolioSugerido);
+    enfocarBusqueda();
 
   })();
   </script>

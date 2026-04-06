@@ -436,21 +436,49 @@ class ProductoModel
     public function buscarMin(string $q = '', int $limite = 50)
     {
         $lim = max(1, (int)$limite);
+        $q = trim($q);
 
-        $sql = "SELECT id_producto, codigo, descripcion, precio_proveedor
-                FROM productos
-                WHERE activo = 1";
+        $sql = "SELECT
+                    p.id_producto,
+                    p.codigo,
+                    p.descripcion,
+                    p.stock_actual,
+                    p.precio_proveedor,
+                    p.precio_taller,
+                    p.precio_publico,
+                    pr.nombre AS proveedor
+                FROM productos p
+                LEFT JOIN proveedores pr ON pr.id_proveedor = p.id_proveedor
+                WHERE p.activo = 1";
+
         $useQ = ($q !== '');
         if ($useQ) {
-            $sql .= " AND (codigo LIKE :q1 OR descripcion LIKE :q2)";
+            $sql .= " AND (
+                        p.codigo = :qeq
+                        OR p.codigo LIKE :q_like_codigo
+                        OR p.descripcion LIKE :q_like_descripcion
+                        OR pr.nombre LIKE :q_like_proveedor
+                      )";
+            $sql .= " ORDER BY
+                        (p.codigo = :qeq_order) DESC,
+                        (p.codigo LIKE :q_prefix) DESC,
+                        p.descripcion ASC";
+        } else {
+            $sql .= " ORDER BY p.descripcion ASC";
         }
-        $sql .= " ORDER BY descripcion ASC LIMIT {$lim}";
+
+        $sql .= " LIMIT {$lim}";
 
         $st = $this->conn->prepare($sql);
         if ($useQ) {
             $like = "%{$q}%";
-            $st->bindValue(':q1', $like, PDO::PARAM_STR);
-            $st->bindValue(':q2', $like, PDO::PARAM_STR);
+            $prefix = "{$q}%";
+            $st->bindValue(':qeq', $q, PDO::PARAM_STR);
+            $st->bindValue(':q_like_codigo', $like, PDO::PARAM_STR);
+            $st->bindValue(':q_like_descripcion', $like, PDO::PARAM_STR);
+            $st->bindValue(':q_like_proveedor', $like, PDO::PARAM_STR);
+            $st->bindValue(':qeq_order', $q, PDO::PARAM_STR);
+            $st->bindValue(':q_prefix', $prefix, PDO::PARAM_STR);
         }
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC);
