@@ -611,7 +611,25 @@ class VentasController
                 $cfdi = $resp['cfdi'] ?? null;
                 $idCfdi = (int)($cfdi['id_cfdi'] ?? $cfdi['id_venta_cfdi'] ?? 0);
                 if ($idCfdi > 0) {
-                    $model->registrarTicketsEnCfdi($idCfdi, $idsVentasMulti);
+                    $idsParticipantes = $idsVentasMulti;
+                    $idsParticipantes[] = $idVenta;
+                    $idsParticipantes = array_values(array_unique(array_filter(array_map('intval', $idsParticipantes), fn($id) => $id > 0)));
+
+                    $txLocal = !$pdo->inTransaction();
+                    if ($txLocal) {
+                        $pdo->beginTransaction();
+                    }
+                    try {
+                        $model->registrarTicketsEnCfdi($idCfdi, $idsParticipantes, $idVenta);
+                        if ($txLocal && $pdo->inTransaction()) {
+                            $pdo->commit();
+                        }
+                    } catch (Throwable $e) {
+                        if ($txLocal && $pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+                        throw $e;
+                    }
                 }
             }
 

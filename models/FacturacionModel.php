@@ -125,25 +125,32 @@ class FacturacionModel
         ];
     }
 
-    public function registrarTicketsEnCfdi(int $idCfdi, array $idsVenta): void
+    public function registrarTicketsEnCfdi(int $idCfdiPrincipal, array $idsVenta, ?int $idVentaPrincipal = null): void
     {
         if (!$this->schema->tableExists('ventas_cfdi_tickets')) {
             return;
         }
 
         $ids = array_values(array_unique(array_filter(array_map('intval', $idsVenta), fn($id) => $id > 0)));
+        if ($idVentaPrincipal !== null && $idVentaPrincipal > 0) {
+            $ids[] = $idVentaPrincipal;
+            $ids = array_values(array_unique($ids));
+        }
         if (!$ids) {
             return;
         }
 
-        $sql = 'INSERT INTO ventas_cfdi_tickets (id_cfdi, id_venta, created_at) VALUES (:id_cfdi, :id_venta, NOW())';
-        $st = $this->conn->prepare($sql);
+        $deleteSql = 'DELETE FROM ventas_cfdi_tickets WHERE id_cfdi_principal = :id_cfdi_principal';
+        $insertSql = 'INSERT INTO ventas_cfdi_tickets (id_cfdi_principal, id_venta, created_at) VALUES (:id_cfdi_principal, :id_venta, NOW())';
+        $deleteSt = $this->conn->prepare($deleteSql);
+        $insertSt = $this->conn->prepare($insertSql);
+
+        $deleteSt->execute([':id_cfdi_principal' => $idCfdiPrincipal]);
         foreach ($ids as $idVenta) {
-            try {
-                $st->execute([':id_cfdi' => $idCfdi, ':id_venta' => $idVenta]);
-            } catch (Throwable $e) {
-                // Ignora duplicados para mantener idempotencia
-            }
+            $insertSt->execute([
+                ':id_cfdi_principal' => $idCfdiPrincipal,
+                ':id_venta' => $idVenta,
+            ]);
         }
     }
 

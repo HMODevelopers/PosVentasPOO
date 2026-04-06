@@ -18,12 +18,11 @@ WHERE NOT EXISTS (
 -- 3) Trazabilidad CFDI <-> tickets múltiples
 CREATE TABLE IF NOT EXISTS ventas_cfdi_tickets (
   id_cfdi_ticket BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  id_cfdi BIGINT UNSIGNED NOT NULL,
+  id_cfdi_principal BIGINT UNSIGNED NOT NULL,
   id_venta BIGINT UNSIGNED NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id_cfdi_ticket),
-  UNIQUE KEY uk_cfdi_venta (id_cfdi, id_venta),
-  UNIQUE KEY uk_venta_unica (id_venta),
-  KEY idx_cfdi (id_cfdi),
+  UNIQUE KEY uk_cfdi_venta (id_cfdi_principal, id_venta),
+  KEY idx_cfdi_principal (id_cfdi_principal),
   KEY idx_venta (id_venta)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
