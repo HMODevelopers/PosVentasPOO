@@ -146,7 +146,7 @@ class VentasController
             $pagos    = method_exists($ventaModel, 'obtenerPagosVenta') ? $ventaModel->obtenerPagosVenta($idVenta) : [];
             global $pdo;
             $cfdiModel = new FacturacionModel($pdo, new FacturacionSchemaHelper($pdo));
-            $cfdiVenta = $cfdiModel->getCfdiByVenta($idVenta);
+            $cfdiVenta = $cfdiModel->getCfdiEmitidoByVenta($idVenta);
 
             $idFp    = (int)($venta['id_forma_pago'] ?? 0);
             $fpDesc  = (string)($venta['forma_pago'] ?? '');
@@ -674,7 +674,7 @@ class VentasController
             global $pdo;
             $schema = new FacturacionSchemaHelper($pdo);
             $model = new FacturacionModel($pdo, $schema);
-            $cfdi = $model->getCfdiByVenta($idVenta);
+            $cfdi = $model->getCfdiEmitidoByVenta($idVenta);
             if (!$cfdi) {
                 self::jsonError('No existe CFDI para la venta.', 404);
             }

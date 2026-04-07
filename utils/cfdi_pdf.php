@@ -133,7 +133,7 @@ if ($idVenta <= 0) {
 
 $schema = new FacturacionSchemaHelper($pdo);
 $model = new FacturacionModel($pdo, $schema);
-$cfdi = $model->getCfdiByVenta($idVenta);
+$cfdi = $model->getCfdiEmitidoByVenta($idVenta);
 if (!$cfdi) {
     failResponse(404, 'No existe CFDI relacionado para la venta solicitada.');
 }

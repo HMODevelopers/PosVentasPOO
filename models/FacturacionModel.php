@@ -17,7 +17,7 @@ class FacturacionModel
     {
         $venta = $this->getVenta($idVenta);
         $detalles = $this->getVentaDetalle($idVenta);
-        $cfdiActual = $this->getCfdiByVenta($idVenta);
+        $cfdiActual = $this->getCfdiEmitidoByVenta($idVenta);
         $emisor = $this->getEmisorByVenta($idVenta);
         $draft = $this->getDraftFacturacion($cfdiActual ?: []);
         $receptor = $this->getReceptorFromFacturacionData($draft, $cfdiActual ?: []);
@@ -70,6 +70,36 @@ class FacturacionModel
         $st = $this->conn->prepare('SELECT * FROM ventas_cfdi WHERE id_venta = :id ORDER BY ' . $this->orderByCfdi() . ' LIMIT 1');
         $st->execute([':id' => $idVenta]);
         return $st->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    public function getCfdiEmitidoByVenta(int $idVenta): ?array
+    {
+        $cfdiDirecto = $this->getCfdiByVenta($idVenta);
+        if ($cfdiDirecto) {
+            $cfdiDirecto['cfdi_relacionado'] = 0;
+            return $cfdiDirecto;
+        }
+
+        if (
+            !$this->schema->tableExists('ventas_cfdi')
+            || !$this->schema->tableExists('ventas_cfdi_tickets')
+        ) {
+            return null;
+        }
+
+        $sql = 'SELECT vc.*
+                  FROM ventas_cfdi_tickets vct
+                  INNER JOIN ventas_cfdi vc ON vc.' . $this->pkCfdi() . ' = vct.id_cfdi_principal
+                 WHERE vct.id_venta = :id
+                 ORDER BY vc.' . $this->orderByCfdi() . '
+                 LIMIT 1';
+        $st = $this->conn->prepare($sql);
+        $st->execute([':id' => $idVenta]);
+        $cfdiRelacionado = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($cfdiRelacionado) {
+            $cfdiRelacionado['cfdi_relacionado'] = 1;
+        }
+        return $cfdiRelacionado;
     }
 
 
