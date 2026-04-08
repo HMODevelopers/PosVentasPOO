@@ -132,8 +132,9 @@ class FacturacionModel
 
         $q = trim($q);
         if ($q !== '') {
-            $fromWhere .= " AND (v.folio LIKE :q OR c.nombre LIKE :q)";
-            $params[':q'] = '%' . $q . '%';
+            $fromWhere .= " AND (v.folio LIKE :q_folio OR c.nombre LIKE :q_cliente)";
+            $params[':q_folio'] = '%' . $q . '%';
+            $params[':q_cliente'] = '%' . $q . '%';
         }
 
         $sqlTotal = 'SELECT COUNT(*)' . $fromWhere;

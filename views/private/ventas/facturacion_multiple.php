@@ -248,7 +248,7 @@ if ($sessionStart === 0 || (time() - $sessionStart) > $sessionTTL) {
       </div>
       <div class="modal-body">
         <div class="row">
-          <div class="col-md-8 mb-2"><input type="text" id="multi-ticket-search" class="form-control" placeholder="Buscar por folio, id o cliente"></div>
+          <div class="col-md-8 mb-2"><input type="text" id="multi-ticket-search" class="form-control" placeholder="Buscar por folio"></div>
           <div class="col-md-4 mb-2 text-md-right"><small class="text-muted" id="multi-ticket-info">Mostrando 0 a 0 de 0 tickets</small></div>
         </div>
         <div class="table-responsive">
