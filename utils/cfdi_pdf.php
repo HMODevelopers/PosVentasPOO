@@ -52,6 +52,27 @@ function satLabelValue(string $value, ?string $description): string
     return $value . ' - ' . $description;
 }
 
+function satSplitLabel(string $value, ?string $label): array
+{
+    $clave = trim($value);
+    $descripcion = trim((string)$label);
+
+    if ($descripcion === '') {
+        return [$clave, ''];
+    }
+
+    if ($clave !== '' && strpos($descripcion, $clave . ' - ') === 0) {
+        $descripcion = trim(substr($descripcion, strlen($clave . ' - ')));
+    } elseif (preg_match('/^([A-Za-z0-9]+)\s*-\s*(.+)$/u', $descripcion, $m)) {
+        if ($clave === '') {
+            $clave = trim($m[1]);
+        }
+        $descripcion = trim($m[2]);
+    }
+
+    return [$clave, $descripcion];
+}
+
 function satCatalogDescription(PDO $conn, FacturacionSchemaHelper $schema, string $table, string $value, array $valueColumns, array $descriptionColumns): ?string
 {
     $value = trim($value);
@@ -430,6 +451,7 @@ $headerTop = $pdf->GetY();
 $leftX = 8;
 $centerX = 46;
 $rightX = 136;
+$centerW = 88;
 
 $pdf->SetDrawColor(200, 200, 200);
 //$pdf->Rect($leftX, $headerTop, 35, 33);
@@ -438,23 +460,28 @@ if ($logoPath) {
 } else {
     $pdf->SetFont('Arial', 'B', 10);
     $pdf->SetXY($leftX, $headerTop + 13);
-    $pdf->Cell(35, 6, 'LOGO', 0, 0, 'C');
+    $pdf->Cell(35, 6, 'LOGO', 10, 10, 'C');
 }
 
-$pdf->SetXY($centerX, $headerTop);
+$pdf->SetXY($centerX + 10, $headerTop);
 $pdf->SetFont('Arial', 'B', 12);
-$pdf->Cell(120, 5.8, pdfTxt($emisor['Nombre'] ?: 'EMISOR'), 0, 1, 'C');
-$pdf->SetX($centerX);
+$pdf->Cell($centerW, 5.8, pdfTxt($emisor['Nombre'] ?: 'EMISOR'), 0, 1, 'C');
+$pdf->SetX($centerX + 10);
 $pdf->SetFont('Arial', 'B', 8.7);
-$pdf->Cell(120, 4.5, pdfTxt('RFC: ' . ($emisor['Rfc'] ?: 'N/D')), 0, 1, 'C');
-$pdf->SetX($centerX);
+$pdf->Cell($centerW, 4.5, pdfTxt('RFC: ' . ($emisor['Rfc'] ?: 'N/D')), 0, 1, 'C');
+$pdf->SetX($centerX + 10);
 $pdf->SetFont('Arial', '', 8);
-$pdf->MultiCell(120, 3.9, pdfTxt('RÉGIMEN FISCAL: ' . ($emisorLabels['RegimenFiscal'] ?: 'N/D')), 0, 'C');
-$pdf->SetX($centerX);
-$pdf->MultiCell(120, 3.9, pdfTxt('LUGAR EXPEDICIÓN: ' . ($comprobante['LugarExpedicion'] ?: 'N/D')), 0, 'C');
+[$regimenClave, $regimenDescripcion] = satSplitLabel((string)($emisor['RegimenFiscal'] ?? ''), (string)($emisorLabels['RegimenFiscal'] ?? ''));
+$pdf->MultiCell($centerW, 3.9, pdfTxt('RÉGIMEN FISCAL: ' . ($regimenClave !== '' ? $regimenClave : 'N/D')), 0, 'C');
+if ($regimenDescripcion !== '') {
+    $pdf->SetX($centerX + 10);
+    $pdf->MultiCell($centerW, 3.9, pdfTxt($regimenDescripcion), 0, 'C');
+}
+$pdf->SetX($centerX + 10);
+$pdf->MultiCell($centerW, 3.9, pdfTxt('LUGAR EXPEDICIÓN: ' . ($comprobante['LugarExpedicion'] ?: 'N/D')), 0, 'C');
 if (!empty($cfdi['sucursal_nombre'])) {
-    $pdf->SetX($centerX);
-    $pdf->MultiCell(88, 3.9, pdfTxt((string)$cfdi['sucursal_nombre']), 0, 'C');
+    $pdf->SetX($centerX + 10);
+    $pdf->MultiCell($centerW, 3.9, pdfTxt((string)$cfdi['sucursal_nombre']), 0, 'C');
 }
 
 $pdf->SetFillColor(245, 245, 245);
@@ -481,7 +508,8 @@ foreach ($rightInfo as $k => $v) {
     $pdf->SetFont('Arial', 'B', 7.5);
 }
 
-$pdf->SetY($headerTop + 38);
+$headerBottomY = max($headerTop + 38, $pdf->GetY() + 1);
+$pdf->SetY($headerBottomY);
 
 // Cliente
 $pdf->sectionTitle('CLIENTE');
@@ -505,9 +533,9 @@ $col = [
     'cant'   => 17,
     'unidad' => 17,
     'id'     => 24,
-    'desc'   => 80,
+    'desc'   => 74,
     'pu'     => 22,
-    'obj'    => 18,
+    'obj'    => 24,
     'imp'    => 22,
 ];
 
@@ -586,8 +614,14 @@ foreach ($conceptos as $c) {
 
     $descText = implode("\n", $detalle);
     $descLines = $getWrappedLines($pdf, $descText, $col['desc']);
+    [$objClave, $objDescripcion] = satSplitLabel((string)($c['ObjetoImp'] ?? ''), (string)($c['ObjetoImpLabel'] ?? ''));
+    $objText = $objClave !== '' ? $objClave : 'N/D';
+    if ($objDescripcion !== '') {
+        $objText .= "\n" . $objDescripcion;
+    }
+    $objLines = $getWrappedLines($pdf, $objText, $col['obj']);
     $lineHeight = 3.4;
-    $h = max(9, count($descLines) * $lineHeight + 2);
+    $h = max(9, count($descLines) * $lineHeight + 2, count($objLines) * $lineHeight + 2);
 
     if ($pdf->GetY() + $h > 220) {
         $pdf->AddPage();
@@ -623,12 +657,9 @@ foreach ($conceptos as $c) {
     $pdf->SetXY($x + $col['cant'] + $col['unidad'] + $col['id'] + $col['desc'], $y);
     $pdf->Cell($col['pu'], $h, mxn($c['ValorUnitario'] ?? 0), 0, 0, 'R');
 
-    $pdf->SetXY($x + $col['cant'] + $col['unidad'] + $col['id'] + $col['desc'] + $col['pu'], $y);
-    $objLabel = $c['ObjetoImpLabel'] ?? ($c['ObjetoImp'] ?? '');
-    if ($pdf->GetStringWidth(pdfTxt($objLabel)) > ($col['obj'] - 1.2)) {
-        $pdf->SetFont('Arial', '', 6.1);
-    }
-    $pdf->Cell($col['obj'], $h, pdfTxt($objLabel), 0, 0, 'C');
+    $pdf->SetXY($x + $col['cant'] + $col['unidad'] + $col['id'] + $col['desc'] + $col['pu'], $y + 1);
+    $pdf->SetFont('Arial', '', 6.1);
+    $pdf->MultiCell($col['obj'], $lineHeight, pdfTxt($objText), 0, 'C');
     $pdf->SetFont('Arial', '', 7.2);
 
     $pdf->SetXY($x + $col['cant'] + $col['unidad'] + $col['id'] + $col['desc'] + $col['pu'] + $col['obj'], $y);
