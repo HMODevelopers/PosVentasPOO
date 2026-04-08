@@ -32,6 +32,153 @@ function xmlAttr($node, string $name, string $default = ''): string
     return isset($attrs[$name]) ? trim((string)$attrs[$name]) : $default;
 }
 
+function satLabelValue(string $value, ?string $description): string
+{
+    $value = trim($value);
+    $description = trim((string)$description);
+
+    if ($value === '') {
+        return '';
+    }
+
+    if ($description === '') {
+        return $value;
+    }
+
+    if (strpos($value, ' - ') !== false) {
+        return $value;
+    }
+
+    return $value . ' - ' . $description;
+}
+
+function satCatalogDescription(PDO $conn, FacturacionSchemaHelper $schema, string $table, string $value, array $valueColumns, array $descriptionColumns): ?string
+{
+    $value = trim($value);
+    if ($value === '' || !$schema->tableExists($table)) {
+        return null;
+    }
+
+    $colValue = $schema->pickColumn($table, $valueColumns);
+    $colDescription = $schema->pickColumn($table, $descriptionColumns);
+    if (!$colValue || !$colDescription) {
+        return null;
+    }
+
+    $hasActivo = $schema->hasColumn($table, 'Activo') || $schema->hasColumn($table, 'activo');
+    $colActivo = $schema->hasColumn($table, 'Activo') ? 'Activo' : ($schema->hasColumn($table, 'activo') ? 'activo' : null);
+    $sql = sprintf(
+        'SELECT %s AS descripcion FROM %s WHERE %s = :clave%s LIMIT 1',
+        $colDescription,
+        $table,
+        $colValue,
+        ($hasActivo && $colActivo) ? (' AND ' . $colActivo . ' = 1') : ''
+    );
+    $st = $conn->prepare($sql);
+    $st->execute([':clave' => $value]);
+
+    $descripcion = $st->fetchColumn();
+    if (!is_string($descripcion)) {
+        return null;
+    }
+
+    $descripcion = trim($descripcion);
+    return $descripcion !== '' ? $descripcion : null;
+}
+
+function satResolveLabel(PDO $conn, FacturacionSchemaHelper $schema, string $catalogName, string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    $config = [
+        'tipo_comprobante' => [
+            'table' => 'cat_sat_tipo_comprobante',
+            'value_cols' => ['ClaveTipoComprobante', 'ClaveTipoDeComprobante', 'Clave'],
+            'description_cols' => ['Descripcion', 'Descripción', 'Nombre'],
+            'fallback' => [
+                'I' => 'Ingreso',
+                'E' => 'Egreso',
+                'T' => 'Traslado',
+                'N' => 'Nómina',
+                'P' => 'Pago',
+            ],
+        ],
+        'forma_pago' => [
+            'table' => 'formas_pago',
+            'value_cols' => ['clave_sat', 'ClaveFormaPago', 'Clave'],
+            'description_cols' => ['descripcion', 'Descripcion', 'Descripción', 'Nombre'],
+            'fallback' => [],
+        ],
+        'metodo_pago' => [
+            'table' => 'cat_sat_metodo_pago',
+            'value_cols' => ['ClaveMetodoPago', 'Clave'],
+            'description_cols' => ['Descripcion', 'Descripción', 'Nombre'],
+            'fallback' => [
+                'PUE' => 'Pago en una sola exhibición',
+                'PPD' => 'Pago en parcialidades o diferido',
+            ],
+        ],
+        'moneda' => [
+            'table' => 'cat_sat_moneda',
+            'value_cols' => ['ClaveMoneda', 'Clave'],
+            'description_cols' => ['Descripcion', 'Descripción', 'Nombre'],
+            'fallback' => [],
+        ],
+        'exportacion' => [
+            'table' => 'cat_sat_exportacion',
+            'value_cols' => ['ClaveExportacion', 'ClaveExportación', 'Clave'],
+            'description_cols' => ['Descripcion', 'Descripción', 'Nombre'],
+            'fallback' => [],
+        ],
+        'uso_cfdi' => [
+            'table' => 'cat_sat_uso_cfdi',
+            'value_cols' => ['ClaveUsoCFDI', 'Clave'],
+            'description_cols' => ['Descripcion', 'Descripción', 'Nombre'],
+            'fallback' => [],
+        ],
+        'regimen_fiscal' => [
+            'table' => 'cat_sat_regimen_fiscal',
+            'value_cols' => ['ClaveRegimenFiscal', 'Clave'],
+            'description_cols' => ['Descripcion', 'Descripción', 'Nombre'],
+            'fallback' => [],
+        ],
+        'objeto_imp' => [
+            'table' => 'cat_sat_objeto_imp',
+            'value_cols' => ['ClaveObjetoImp', 'ClaveObjetoImpuesto', 'Clave'],
+            'description_cols' => ['Descripcion', 'Descripción', 'Nombre'],
+            'fallback' => [
+                '01' => 'No objeto de impuesto',
+                '02' => 'Sí objeto de impuesto',
+                '03' => 'Sí objeto del impuesto y no obligado al desglose',
+                '04' => 'Sí objeto del impuesto y no causa impuesto',
+            ],
+        ],
+    ];
+
+    if (!isset($config[$catalogName])) {
+        return $value;
+    }
+
+    $def = $config[$catalogName];
+    $description = satCatalogDescription(
+        $conn,
+        $schema,
+        $def['table'],
+        $value,
+        $def['value_cols'],
+        $def['description_cols']
+    );
+
+    if ($description === null) {
+        $description = $def['fallback'][$value] ?? null;
+    }
+
+    return satLabelValue($value, $description);
+}
+
 function cadenaOriginalTfd(array $tfd): string
 {
     if (empty($tfd['UUID']) || empty($tfd['FechaTimbrado']) || empty($tfd['SelloCFD']) || empty($tfd['NoCertificadoSAT'])) {
@@ -187,12 +334,29 @@ $emisor = [
     'RegimenFiscal' => xmlAttr($emisorNode, 'RegimenFiscal'),
 ];
 
+$comprobanteLabels = [
+    'TipoDeComprobante' => satResolveLabel($pdo, $schema, 'tipo_comprobante', $comprobante['TipoDeComprobante']),
+    'FormaPago' => satResolveLabel($pdo, $schema, 'forma_pago', $comprobante['FormaPago']),
+    'MetodoPago' => satResolveLabel($pdo, $schema, 'metodo_pago', $comprobante['MetodoPago']),
+    'Moneda' => satResolveLabel($pdo, $schema, 'moneda', $comprobante['Moneda']),
+    'Exportacion' => satResolveLabel($pdo, $schema, 'exportacion', $comprobante['Exportacion']),
+];
+
+$emisorLabels = [
+    'RegimenFiscal' => satResolveLabel($pdo, $schema, 'regimen_fiscal', $emisor['RegimenFiscal']),
+];
+
 $receptor = [
     'Rfc' => xmlAttr($receptorNode, 'Rfc'),
     'Nombre' => xmlAttr($receptorNode, 'Nombre'),
     'DomicilioFiscalReceptor' => xmlAttr($receptorNode, 'DomicilioFiscalReceptor'),
     'RegimenFiscalReceptor' => xmlAttr($receptorNode, 'RegimenFiscalReceptor'),
     'UsoCFDI' => xmlAttr($receptorNode, 'UsoCFDI'),
+];
+
+$receptorLabels = [
+    'UsoCFDI' => satResolveLabel($pdo, $schema, 'uso_cfdi', $receptor['UsoCFDI']),
+    'RegimenFiscalReceptor' => satResolveLabel($pdo, $schema, 'regimen_fiscal', $receptor['RegimenFiscalReceptor']),
 ];
 
 $tfd = [
@@ -241,6 +405,7 @@ foreach ($conceptoNodes as $c) {
         'Descripcion' => xmlAttr($c, 'Descripcion'),
         'ValorUnitario' => xmlAttr($c, 'ValorUnitario', '0'),
         'ObjetoImp' => xmlAttr($c, 'ObjetoImp'),
+        'ObjetoImpLabel' => satResolveLabel($pdo, $schema, 'objeto_imp', xmlAttr($c, 'ObjetoImp')),
         'Importe' => xmlAttr($c, 'Importe', '0'),
         'traslados' => $trasladosConcepto,
     ];
@@ -284,7 +449,7 @@ $pdf->SetFont('Arial', 'B', 8.7);
 $pdf->Cell(120, 4.5, pdfTxt('RFC: ' . ($emisor['Rfc'] ?: 'N/D')), 0, 1, 'C');
 $pdf->SetX($centerX);
 $pdf->SetFont('Arial', '', 8);
-$pdf->MultiCell(120, 3.9, pdfTxt('RÉGIMEN FISCAL: ' . ($emisor['RegimenFiscal'] ?: 'N/D')), 0, 'C');
+$pdf->MultiCell(120, 3.9, pdfTxt('RÉGIMEN FISCAL: ' . ($emisorLabels['RegimenFiscal'] ?: 'N/D')), 0, 'C');
 $pdf->SetX($centerX);
 $pdf->MultiCell(120, 3.9, pdfTxt('LUGAR EXPEDICIÓN: ' . ($comprobante['LugarExpedicion'] ?: 'N/D')), 0, 'C');
 if (!empty($cfdi['sucursal_nombre'])) {
@@ -323,9 +488,9 @@ $pdf->sectionTitle('CLIENTE');
 $yCliente = $pdf->GetY() + 0.5;
 $pdf->kvInline('Nombre:', $receptor['Nombre'], 10, $yCliente, 36);
 $pdf->kvInline('RFC:', $receptor['Rfc'], 10, $yCliente + 5, 36);
-$pdf->kvInline('Uso CFDI:', $receptor['UsoCFDI'], 10, $yCliente + 10, 36);
+$pdf->kvInline('Uso CFDI:', $receptorLabels['UsoCFDI'], 10, $yCliente + 10, 36);
 $pdf->kvInline('Domicilio fiscal:', $receptor['DomicilioFiscalReceptor'], 10, $yCliente + 15, 36);
-$pdf->kvInline('Régimen fiscal receptor:', $receptor['RegimenFiscalReceptor'], 10, $yCliente + 20, 36);
+$pdf->kvInline('Régimen fiscal receptor:', $receptorLabels['RegimenFiscalReceptor'], 10, $yCliente + 20, 36);
 if (!empty($cfdi['cliente_direccion'])) {
     $pdf->kvInline('Dirección:', (string)$cfdi['cliente_direccion'], 10, $yCliente + 25, 36);
     $pdf->SetY($yCliente + 31);
@@ -459,7 +624,12 @@ foreach ($conceptos as $c) {
     $pdf->Cell($col['pu'], $h, mxn($c['ValorUnitario'] ?? 0), 0, 0, 'R');
 
     $pdf->SetXY($x + $col['cant'] + $col['unidad'] + $col['id'] + $col['desc'] + $col['pu'], $y);
-    $pdf->Cell($col['obj'], $h, pdfTxt($c['ObjetoImp'] ?? ''), 0, 0, 'C');
+    $objLabel = $c['ObjetoImpLabel'] ?? ($c['ObjetoImp'] ?? '');
+    if ($pdf->GetStringWidth(pdfTxt($objLabel)) > ($col['obj'] - 1.2)) {
+        $pdf->SetFont('Arial', '', 6.1);
+    }
+    $pdf->Cell($col['obj'], $h, pdfTxt($objLabel), 0, 0, 'C');
+    $pdf->SetFont('Arial', '', 7.2);
 
     $pdf->SetXY($x + $col['cant'] + $col['unidad'] + $col['id'] + $col['desc'] + $col['pu'] + $col['obj'], $y);
     $pdf->Cell($col['imp'], $h, mxn($c['Importe'] ?? 0), 0, 0, 'R');
@@ -482,12 +652,12 @@ $pdf->SetX($xLeft);
 $pdf->MultiCell(118, 4.1, pdfTxt($importeLetra), 0, 'L');
 
 $metaLeft = [
-    'Tipo de comprobante' => $comprobante['TipoDeComprobante'],
-    'Forma de pago' => $comprobante['FormaPago'],
-    'Método de pago' => $comprobante['MetodoPago'],
-    'Moneda' => $comprobante['Moneda'],
+    'Tipo de comprobante' => $comprobanteLabels['TipoDeComprobante'],
+    'Forma de pago' => $comprobanteLabels['FormaPago'],
+    'Método de pago' => $comprobanteLabels['MetodoPago'],
+    'Moneda' => $comprobanteLabels['Moneda'],
     'Versión' => $comprobante['Version'],
-    'Exportación' => $comprobante['Exportacion'],
+    'Exportación' => $comprobanteLabels['Exportacion'],
 ];
 foreach ($metaLeft as $k => $v) {
     $pdf->SetX($xLeft);
