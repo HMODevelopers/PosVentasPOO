@@ -265,4 +265,34 @@ class HistorialCreditoClientesModel
 
         return ['resumen' => $resumen, 'ventas' => $ventas];
     }
+
+    public function obtenerArticulosVenta(int $idVenta): array
+    {
+        if ($idVenta <= 0) return [];
+
+        $sql = "
+            SELECT
+                vd.id_venta_detalle,
+                vd.id_venta,
+                vd.id_producto,
+                vd.cantidad,
+                vd.precio_unitario,
+                vd.subtotal,
+                vd.objeto_imp,
+                vd.importe_iva,
+                0 AS descuento,
+                COALESCE(p.codigo, '') AS codigo,
+                COALESCE(p.descripcion, 'Producto no disponible') AS descripcion
+            FROM ventas_detalle vd
+            LEFT JOIN productos p ON p.id_producto = vd.id_producto
+            WHERE vd.id_venta = :id_venta
+              AND (vd.activo = 1 OR vd.activo IS NULL)
+            ORDER BY vd.id_venta_detalle ASC
+        ";
+
+        $st = $this->conn->prepare($sql);
+        $st->bindValue(':id_venta', $idVenta, PDO::PARAM_INT);
+        $st->execute();
+        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
 }

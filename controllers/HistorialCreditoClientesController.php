@@ -8,7 +8,7 @@ require_once __DIR__ . '/../models/HistorialCreditoClientesModel.php';
 header('Content-Type: application/json; charset=UTF-8');
 
 $model = new HistorialCreditoClientesModel();
-$accion = $_REQUEST['accion'] ?? '';
+$accion = $_REQUEST['accion'] ?? ($_REQUEST['action'] ?? '');
 
 try {
     switch ($accion) {
@@ -28,6 +28,7 @@ try {
             break;
 
         case 'detalle-cliente':
+        case 'por-cliente':
             $idCliente = (int)($_REQUEST['id_cliente'] ?? 0);
             if ($idCliente <= 0) {
                 http_response_code(400);
@@ -44,6 +45,18 @@ try {
 
             $payload = $model->obtenerDetalleCliente($idCliente, $filtros);
             echo json_encode(['ok' => true, 'data' => $payload], JSON_UNESCAPED_UNICODE);
+            break;
+
+        case 'articulos-venta':
+            $idVenta = (int)($_REQUEST['id_venta'] ?? 0);
+            if ($idVenta <= 0) {
+                http_response_code(400);
+                echo json_encode(['ok' => false, 'msg' => 'id_venta requerido'], JSON_UNESCAPED_UNICODE);
+                break;
+            }
+
+            $articulos = $model->obtenerArticulosVenta($idVenta);
+            echo json_encode(['ok' => true, 'data' => $articulos], JSON_UNESCAPED_UNICODE);
             break;
 
         default:

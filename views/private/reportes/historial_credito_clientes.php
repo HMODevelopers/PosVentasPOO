@@ -125,7 +125,7 @@ $_SESSION['LAST_ACTIVITY']  = time();
         <div class="table-responsive">
           <table class="table table-bordered table-sm table-striped mb-0">
             <thead>
-              <tr><th>Folio</th><th>Fecha de venta</th><th class="text-right">Total venta</th><th class="text-right">Total abonado</th><th class="text-right">Saldo actual</th><th>Estatus del crédito</th><th>Abonos</th></tr>
+              <tr><th>Folio</th><th>Fecha de venta</th><th class="text-right">Total venta</th><th class="text-right">Total abonado</th><th class="text-right">Saldo actual</th><th>Estatus del crédito</th><th>Acciones</th></tr>
             </thead>
             <tbody id="tbodyDetalleVentas"><tr><td colspan="7" class="text-center text-muted">Sin registros</td></tr></tbody>
           </table>
@@ -149,6 +149,17 @@ $(function(){
   const mxn = n => Number(n||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
   const esc = s => String(s==null?'':s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[m]));
   const fFecha = f => f ? String(f).substring(0,10) : '—';
+  const renderArticulosRows = (rows=[]) => {
+    if (!rows.length) return '<tr><td colspan="6" class="text-center text-muted">Sin artículos</td></tr>';
+    return rows.map(it=>`<tr>
+      <td class="text-right">${Number(it.cantidad||0)}</td>
+      <td>${esc(it.codigo || ('ID ' + Number(it.id_producto||0)))}</td>
+      <td>${esc(it.descripcion||'—')}</td>
+      <td class="text-right">${mxn(it.precio_unitario)}</td>
+      <td class="text-right">${mxn(it.subtotal)}</td>
+      <td class="text-right">${mxn(it.descuento)}</td>
+    </tr>`).join('');
+  };
 
   (function setMesActual(){
     const h = new Date(), y=h.getFullYear(), m=String(h.getMonth()+1).padStart(2,'0');
@@ -238,13 +249,24 @@ $(function(){
             <td class="text-right">${mxn(v.abonado_total)}</td>
             <td class="text-right">${mxn(v.saldo_actual)}</td>
             <td>${esc(v.estatus_credito_calculado||'')}</td>
-            <td><center><button class="btn btn-sm btn-primary" data-toggle="collapse" data-target="#ab_${v.id_venta}">Ver abonos</button></center></td>
+            <td class="text-center">
+              <button class="btn btn-sm btn-primary mr-1" data-toggle="collapse" data-target="#ab_${v.id_venta}">Ver abonos</button>
+              <button class="btn btn-sm btn-success" data-toggle="collapse" data-target="#art_${v.id_venta}">Ver artículos</button>
+            </td>
           </tr>
           <tr class="collapse" id="ab_${v.id_venta}">
             <td colspan="7">
               <table class="table table-bordered table-sm mb-0">
                 <thead><tr><th>Fecha abono</th><th class="text-right">Monto</th><th>Forma de pago</th><th>Referencia</th><th class="text-right">Saldo antes</th><th class="text-right">Saldo después</th><th>Usuario</th></tr></thead>
                 <tbody>${abRows}</tbody>
+              </table>
+            </td>
+          </tr>
+          <tr class="collapse" id="art_${v.id_venta}">
+            <td colspan="7">
+              <table class="table table-bordered table-sm mb-0">
+                <thead><tr><th class="text-right">Cantidad</th><th>Código</th><th>Descripción</th><th class="text-right">Precio unitario</th><th class="text-right">Importe</th><th class="text-right">Descuento</th></tr></thead>
+                <tbody id="art_body_${v.id_venta}" data-loaded="0"><tr><td colspan="6" class="text-center text-muted">Clic en "Ver artículos" para cargar</td></tr></tbody>
               </table>
             </td>
           </tr>`;
@@ -265,6 +287,23 @@ $(function(){
   });
   $('#pagination').on('click','a',function(e){ e.preventDefault(); paginaActual=Number($(this).data('p')||1); cargarResumen(); });
   $('#tbodyResumen').on('click','.btn-detalle',function(){ cargarDetalle(Number($(this).data('id')||0)); });
+  $('#tbodyDetalleVentas').on('show.bs.collapse','tr[id^=\"art_\"]',function(){
+    const idVenta = Number(String(this.id).replace('art_','') || 0);
+    if (!idVenta) return;
+    const $tb = $('#art_body_' + idVenta);
+    if (!$tb.length || String($tb.data('loaded')) === '1') return;
+
+    $tb.html('<tr><td colspan="6" class="text-center text-muted">Cargando artículos...</td></tr>');
+    $.getJSON(URL_CTRL, { accion:'articulos-venta', id_venta:idVenta })
+      .done(r=>{
+        const rows = Array.isArray(r?.data) ? r.data : [];
+        $tb.html(renderArticulosRows(rows));
+        $tb.data('loaded', 1);
+      })
+      .fail(()=>{
+        $tb.html('<tr><td colspan="6" class="text-center text-danger">No se pudieron cargar los artículos</td></tr>');
+      });
+  });
 
   cargarResumen();
 });
