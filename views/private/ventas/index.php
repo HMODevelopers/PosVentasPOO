@@ -665,6 +665,35 @@ function renderGarantiasEnDetalle(list) {
   $hr.show();
 }
 
+function resetDetalleCfdiState() {
+  $('#det-cfdi-head-row').empty();
+  $('#det-cfdi-body-row').empty();
+  $('#det-cfdi-empty').removeClass('d-none');
+  $('#det-cfdi-card').addClass('d-none');
+  $('#det-cfdi-xml').attr('href', '#').addClass('d-none');
+  $('#det-cfdi-pdf').attr('href', '#').addClass('d-none');
+}
+
+function resetDetalleVentaModalState() {
+  const $wrapsCredito = $('#wrap-det-estatus-credito, #wrap-det-abonado, #wrap-det-saldo, #wrap-det-abonos, #det-btn-abonar');
+
+  $('#det-error').hide().text('No se pudo cargar el detalle.');
+  $('#det-loader').show();
+  $('#det-contenido').hide();
+  $('#modalDetalle').removeData('idVentaActual');
+
+  $('#det-folio, #det-fecha, #det-estatus, #det-cliente, #det-usuario, #det-caja, #det-forma, #det-tipo').text('—');
+  $('#det-total').text('$0.00');
+  $('#det-header-folio').text('—');
+  $('#det-tbody').empty();
+  $('#det-abonos-body').html('<tr><td colspan="4" class="text-center text-muted">Sin abonos</td></tr>');
+  $wrapsCredito.addClass('d-none');
+
+  renderDesglosePagos({}, [], 0);
+  renderGarantiasEnDetalle([]);
+  resetDetalleCfdiState();
+}
+
 /* ===== NUEVO: construir garantías desde los detalles (acumuladores/baterías) ===== */
 function construirGarantiasDesdeDetalles(dets){
   const out = [];
@@ -707,21 +736,9 @@ $(document).on('click','a.accion-ver-detalle',function(e){
   const id=$(this).data('id'); if(!id) return;
 
   // Estado inicial
-  $('#det-error').hide(); 
-  $('#det-contenido').hide(); 
-  $('#det-loader').show();
+  resetDetalleVentaModalState();
   $('#modalDetalle').data('idVentaActual', id).modal('show');
-
-  // Oculta bloques de crédito hasta saber si aplica
   const $wrapsCredito = $('#wrap-det-estatus-credito, #wrap-det-abonado, #wrap-det-saldo, #wrap-det-abonos, #det-btn-abonar');
-  $wrapsCredito.addClass('d-none');
-
-  // Limpia tablas
-  $('#det-tbody').empty();
-  $('#det-total').text('$0.00');
-  $('#det-header-folio').text('—');
-  renderCfdiDetalle(null, id);
-  $('#det-abonos-body').html('<tr><td colspan="4" class="text-center text-muted">Sin abonos</td></tr>');
 
   // Obtiene detalle
   $.get(typeof VENTAS_URL!=='undefined'?VENTAS_URL:'/controllers/VentasController.php',{accion:'detalle',id_venta:id},function(resp){
@@ -839,6 +856,10 @@ $(document).on('click','a.accion-ver-detalle',function(e){
     $('#det-loader').hide();
     $('#det-error').show().text('Error al cargar el detalle.');
   });
+});
+
+$(document).on('hidden.bs.modal', '#modalDetalle', function(){
+  resetDetalleVentaModalState();
 });
 
 
@@ -3432,6 +3453,8 @@ $(function(){
 });
 
 function renderCfdiDetalle(cfdi, idVenta){
+  resetDetalleCfdiState();
+
   const data = cfdi || {};
   const estatus = String(data.estatus || '').toUpperCase();
   const columnasCfdi = [

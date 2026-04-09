@@ -526,6 +526,29 @@ session_start();
     // ============================================================
     // 4) SERVICIOS (AJAX) PARA CARGAR DATOS
     // ============================================================
+    function fechaHoyYMDLocal(){
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function restaurarFechaVentaHoy(){
+      $('#fechaVenta').val(fechaHoyYMDLocal());
+    }
+
+    function prepararNuevaVenta(){
+      carrito=[];
+      pintarCarrito();
+      $('#selCliente').val('');
+      restaurarFechaVentaHoy();
+      $('#tpPrecio').val('taller');
+      cargarFormasPago();
+      pintarFolioSugerido();
+      enfocarBusqueda();
+    }
+
     function pintarFolioSugerido(){
       const fecha = $('#fechaVenta').val();
       $.get(`${BASE}/controllers/VentasController.php`, { accion:'folio-sugerido', fecha })
@@ -1227,10 +1250,7 @@ session_start();
         }
 
         // Reset de pantalla
-        carrito=[]; pintarCarrito(); $('#selCliente').val('');
-        $('#tpPrecio').val('taller');
-        cargarFormasPago();
-        pintarFolioSugerido();
+        prepararNuevaVenta();
       });
     }
 
@@ -1545,13 +1565,10 @@ session_start();
     });
 
     $('#btnCancelar').on('click', ()=>{
-      carrito=[]; pintarCarrito(); $('#selCliente').val(''); $('#txtBuscar').val('');
+      prepararNuevaVenta();
+      $('#txtBuscar').val('');
       $panel.addClass('d-none').empty();
-      $('#fechaVenta').val('<?= date('Y-m-d') ?>');
-      $('#tpPrecio').val('taller').trigger('change');
-      cargarFormasPago();
-      pintarFolioSugerido();
-      enfocarBusqueda();
+      $('#tpPrecio').trigger('change');
     });
 
     // ============================================================
