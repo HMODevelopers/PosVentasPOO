@@ -317,8 +317,8 @@ session_start();
             </div>
             <div class="modal-body">
               <div class="mb-3">
-                <label class="form-label" for="txtBuscarAvanzado">Buscar por código, descripción o proveedor</label>
-                <input id="txtBuscarAvanzado" type="text" class="form-control" autocomplete="off" placeholder="Escribe para filtrar resultados...">
+                <label class="form-label" for="txtBuscarAvanzado">Refinar por descripción del producto</label>
+                <input id="txtBuscarAvanzado" type="text" class="form-control" autocomplete="off" placeholder="Escribe descripción para refinar los resultados previos...">
               </div>
               <div class="table-responsive">
                 <table class="table table-hover table-sm busqueda-avanzada-table mb-0" id="tablaBusquedaAvanzada">
@@ -443,7 +443,7 @@ session_start();
     let debTimer      = null;
     let debTimerAvz   = null;
     let ultimaBusqueda = '';
-    let filtroBaseAvanzado = '';
+    let resultadosBaseAvanzada = [];
     const detalleCache = new Map();
     let totalActual   = 0;
 
@@ -650,11 +650,13 @@ session_start();
       $panel.empty();
 
       if(!ultResultados.length){
+        resultadosBaseAvanzada = [];
         $panel.addClass('d-none');
         return;
       }
 
       ultResultados.forEach(p=>$panel.append(sugHTMLBasico(p)));
+      resultadosBaseAvanzada = ultResultados.map(({__i, ...rest}) => ({...rest}));
       $panel.removeClass('d-none');
     }
 
@@ -706,18 +708,17 @@ session_start();
     }
 
     function buscarAvanzado(qVisible){
-      const qBase = (filtroBaseAvanzado || '').trim();
-      const qRefinado = (qVisible || '').trim();
-      const qCompuesto = [qBase, qRefinado].filter(Boolean).join(' ').trim();
-
-      if (!qCompuesto || qCompuesto.length < 2){
-        $tablaBusquedaAvzBody.html('<tr><td colspan="7" class="text-center text-muted py-4">Escribe al menos 2 caracteres para buscar.</td></tr>');
+      if (!resultadosBaseAvanzada.length){
+        $tablaBusquedaAvzBody.html('<tr><td colspan="7" class="text-center text-muted py-4">Primero realiza una búsqueda principal por código o descripción.</td></tr>');
         return;
       }
 
-      $.post(`${BASE}/controllers/ProductosController.php`, {accion:'buscar-min', q: qCompuesto, limite:120})
-        .done(r=>renderTablaAvanzada(r?.data || []))
-        .fail(()=> $tablaBusquedaAvzBody.html('<tr><td colspan="7" class="text-center text-danger py-4">No se pudo cargar la búsqueda avanzada.</td></tr>'));
+      const filtroDescripcion = normalize(qVisible || '');
+      const refinados = !filtroDescripcion
+        ? resultadosBaseAvanzada
+        : resultadosBaseAvanzada.filter(p => normalize(p.descripcion || '').includes(filtroDescripcion));
+
+      renderTablaAvanzada(refinados);
     }
 
     function moverFocoSugerencias(delta){
@@ -810,7 +811,7 @@ session_start();
     });
 
     $modalBusquedaAvz.on('shown.bs.modal', ()=>{
-      filtroBaseAvanzado = $input.val().trim();
+      resultadosBaseAvanzada = ultResultados.map(({__i, ...rest}) => ({...rest}));
       $inputBusquedaAvz.val('');
       buscarAvanzado('');
       setTimeout(()=> $inputBusquedaAvz.trigger('focus'), 40);
