@@ -21,7 +21,6 @@ function controller_permission_map(): array {
         'FormasPagoController.php'         => 'catalogos.menu',
         'InventarioMovimientosController.php' => 'inventarios.movimientos',
         'KardexProductoController.php'     => 'inventarios.movimientos',
-        'LogoutController.php'             => 'menu.inicio',
         'PermisosController.php'           => 'sistema.roles',
         'PrestamosController.php'          => 'ventas.prestamos',
         'ProductosController.php'          => 'inventarios.productos',
@@ -32,6 +31,13 @@ function controller_permission_map(): array {
         'UnidadesSatController.php'        => 'catalogos.unidades',
         'UsuariosController.php'           => 'sistema.usuarios',
         'VentasController.php'             => 'ventas.menu',
+    ];
+}
+
+
+function controller_auth_only_actions(): array {
+    return [
+        'LogoutController.php',
     ];
 }
 
@@ -56,6 +62,10 @@ function controller_guard(string $controllerFile, ?string $requiredPermission = 
 
     if (!isset($_SESSION['usuario'])) {
         $respond(401, 'No autenticado.');
+    }
+
+    if (in_array(basename($controllerFile), controller_auth_only_actions(), true)) {
+        return;
     }
 
     $permissionMap = controller_permission_map();
