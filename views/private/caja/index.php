@@ -68,6 +68,13 @@ session_start();
     .sugerencias { position:absolute; z-index:1050; width:99%; max-height:320px; overflow:auto; }
     .sugerencias .list-group-item { cursor:pointer; }
     .sugerencias .active { background:#f1f1f1; }
+    .sugerencias .list-group-item:hover,
+    .sugerencias .list-group-item.active { color:#1f2937 !important; }
+    .sugerencias .list-group-item:hover .small,
+    .sugerencias .list-group-item.active .small {
+      color:#374151 !important;
+      font-weight:500;
+    }
     .sugerencias .disabled, .sugerencias .disabled * { cursor:not-allowed!important; opacity:.9; }
 
     /* Resumen de total */
@@ -436,6 +443,7 @@ session_start();
     let debTimer      = null;
     let debTimerAvz   = null;
     let ultimaBusqueda = '';
+    let filtroBaseAvanzado = '';
     const detalleCache = new Map();
     let totalActual   = 0;
 
@@ -620,7 +628,8 @@ session_start();
     function sugHTMLBasico(p){
       const stk = Number(p.stock_actual ?? p.existencia ?? 0);
       const prov = p.proveedor ?? '';
-      const precio = precioAplicable(p);
+      const precioTaller = Number(p.precio_taller ?? 0);
+      const precioPublico = Number(p.precio_publico ?? 0);
       const sinStock = stk <= 0;
       return `
         <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center ${sinStock ? 'disabled' : ''}"
@@ -628,7 +637,7 @@ session_start();
           <div class="me-2" style="min-width:0">
             <div class="text-truncate"><strong>${esc(p.codigo)}</strong> — ${esc(p.descripcion)}</div>
             <div class="small text-muted">
-              Precio: ${mxn(precio)} · Exist: ${fix2(stk)}${prov ? ` · Prov: ${esc(prov)}` : ''}
+              Taller: ${mxn(precioTaller)} · Público: ${mxn(precioPublico)} · Exist: ${fix2(stk)}${prov ? ` · Prov: ${esc(prov)}` : ''}
             </div>
           </div>
           <span class="btn btn-sm btn-outline-primary"><i class="mdi mdi-plus-circle-outline"></i></span>
@@ -696,12 +705,17 @@ session_start();
       });
     }
 
-    function buscarAvanzado(q){
-      if (!q || q.length < 2){
+    function buscarAvanzado(qVisible){
+      const qBase = (filtroBaseAvanzado || '').trim();
+      const qRefinado = (qVisible || '').trim();
+      const qCompuesto = [qBase, qRefinado].filter(Boolean).join(' ').trim();
+
+      if (!qCompuesto || qCompuesto.length < 2){
         $tablaBusquedaAvzBody.html('<tr><td colspan="7" class="text-center text-muted py-4">Escribe al menos 2 caracteres para buscar.</td></tr>');
         return;
       }
-      $.post(`${BASE}/controllers/ProductosController.php`, {accion:'buscar-min', q, limite:120})
+
+      $.post(`${BASE}/controllers/ProductosController.php`, {accion:'buscar-min', q: qCompuesto, limite:120})
         .done(r=>renderTablaAvanzada(r?.data || []))
         .fail(()=> $tablaBusquedaAvzBody.html('<tr><td colspan="7" class="text-center text-danger py-4">No se pudo cargar la búsqueda avanzada.</td></tr>'));
     }
@@ -796,9 +810,9 @@ session_start();
     });
 
     $modalBusquedaAvz.on('shown.bs.modal', ()=>{
-      const term = $input.val().trim();
-      $inputBusquedaAvz.val(term);
-      buscarAvanzado(term);
+      filtroBaseAvanzado = $input.val().trim();
+      $inputBusquedaAvz.val('');
+      buscarAvanzado('');
       setTimeout(()=> $inputBusquedaAvz.trigger('focus'), 40);
     });
 

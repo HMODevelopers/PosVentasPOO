@@ -437,6 +437,7 @@ class ProductoModel
     {
         $lim = max(1, (int)$limite);
         $q = trim($q);
+        $tokens = preg_split('/\s+/', $q, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         $sql = "SELECT
                     p.id_producto,
@@ -453,15 +454,30 @@ class ProductoModel
 
         $useQ = ($q !== '');
         if ($useQ) {
+            $tokenClauses = [];
+            foreach ($tokens as $idx => $tok) {
+                $tokenClauses[] = "(p.codigo LIKE :tok_codigo_{$idx} OR p.descripcion LIKE :tok_desc_{$idx})";
+            }
+
             $sql .= " AND (
                         p.codigo = :qeq
                         OR p.codigo LIKE :q_like_codigo
                         OR p.descripcion LIKE :q_like_descripcion
-                        OR pr.nombre LIKE :q_like_proveedor
                       )";
+
+            if (!empty($tokenClauses)) {
+                $sql .= " AND " . implode(' AND ', $tokenClauses);
+            }
+
             $sql .= " ORDER BY
-                        (p.codigo = :qeq_order) DESC,
-                        (p.codigo LIKE :q_prefix) DESC,
+                        CASE
+                          WHEN p.codigo = :ord_codigo_exacto THEN 1
+                          WHEN p.codigo LIKE :ord_codigo_inicio THEN 2
+                          WHEN p.codigo LIKE :ord_codigo_contiene THEN 3
+                          WHEN p.descripcion LIKE :ord_desc_inicio THEN 4
+                          WHEN p.descripcion LIKE :ord_desc_contiene THEN 5
+                          ELSE 6
+                        END ASC,
                         p.descripcion ASC";
         } else {
             $sql .= " ORDER BY p.descripcion ASC";
@@ -476,9 +492,17 @@ class ProductoModel
             $st->bindValue(':qeq', $q, PDO::PARAM_STR);
             $st->bindValue(':q_like_codigo', $like, PDO::PARAM_STR);
             $st->bindValue(':q_like_descripcion', $like, PDO::PARAM_STR);
-            $st->bindValue(':q_like_proveedor', $like, PDO::PARAM_STR);
-            $st->bindValue(':qeq_order', $q, PDO::PARAM_STR);
-            $st->bindValue(':q_prefix', $prefix, PDO::PARAM_STR);
+            $st->bindValue(':ord_codigo_exacto', $q, PDO::PARAM_STR);
+            $st->bindValue(':ord_codigo_inicio', $prefix, PDO::PARAM_STR);
+            $st->bindValue(':ord_codigo_contiene', $like, PDO::PARAM_STR);
+            $st->bindValue(':ord_desc_inicio', $prefix, PDO::PARAM_STR);
+            $st->bindValue(':ord_desc_contiene', $like, PDO::PARAM_STR);
+
+            foreach ($tokens as $idx => $tok) {
+                $tokLike = "%{$tok}%";
+                $st->bindValue(":tok_codigo_{$idx}", $tokLike, PDO::PARAM_STR);
+                $st->bindValue(":tok_desc_{$idx}", $tokLike, PDO::PARAM_STR);
+            }
         }
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC);
