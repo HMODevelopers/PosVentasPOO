@@ -1864,7 +1864,7 @@ function pintarCarrito(){
         <input type="text" class="form-control form-control-sm" data-ed-poliza="${idx}" maxlength="80"
                pattern="[A-Za-z0-9-]+" value="${it.numero_poliza ? it.numero_poliza : ''}" placeholder="Captura póliza">
       </div>` : '';
-    const qtyAttrs = requierePoliza ? 'min="1" step="1" readonly' : 'min="1" step="1"';
+    const qtyAttrs = requierePoliza ? 'min="1" step="1" readonly' : 'min="0.01" step="0.01"';
 
     tb.append(`
       <tr>
@@ -1915,20 +1915,25 @@ $tbody.on('click','button[data-ed-inc]', function(){
   if (esProductoAcumulador(carrito[i])) { carrito[i].cantidad = 1; pintarCarrito(); return; }
   const vendible=Math.max(0, Number(carrito[i].stock_actual) - Number(carrito[i].stock_minimo));
   const max = Number(carrito[i].original||0) + vendible;
-  const next=Number(carrito[i].cantidad)+1;
+  const actual = parseFloat(carrito[i].cantidad) || 0;
+  const next = actual + 1;
   carrito[i].cantidad = next>max ? (toastr.info('Se alcanzó el máximo vendible.'), max) : next;
   pintarCarrito();
 });
 $tbody.on('click','button[data-ed-dec]', function(){
   const i=Number(this.dataset.edDec); if(isNaN(i)||!carrito[i]) return;
   if (esProductoAcumulador(carrito[i])) { carrito[i].cantidad = 1; pintarCarrito(); return; }
-  carrito[i].cantidad=Math.max(1,Number(carrito[i].cantidad)-1);
+  const actual = parseFloat(carrito[i].cantidad) || 0;
+  carrito[i].cantidad=Math.max(0.01, actual-1);
   pintarCarrito();
 });
 $tbody.on('change','input[data-ed-qty]', function(){
   const i=Number(this.dataset.edQty); if(isNaN(i)||!carrito[i]) return;
   if (esProductoAcumulador(carrito[i])) { carrito[i].cantidad = 1; this.value='1.00'; return; }
-  let val=Math.max(1, Number(this.value||1));
+  const raw = String(this.value || '').replace(',', '.');
+  let val=parseFloat(raw);
+  if (!Number.isFinite(val)) val = parseFloat(carrito[i].cantidad) || 0.01;
+  val=Math.max(0.01, val);
   const max=Number(this.dataset.max||0);
   if (val>max){ val=max; toastr.info('Se ajustó a máximo vendible.'); }
   carrito[i].cantidad=val; pintarCarrito();
@@ -1939,14 +1944,16 @@ $tbody.on('input change','input[data-ed-poliza]', function(){
 });
 $tbody.on('change','input[data-ed-unit]', function(){
   const i=Number(this.dataset.edUnit); if(isNaN(i)||!carrito[i]) return;
-  let unit=Number(this.value); if(isNaN(unit)||unit<0) unit=0;
+  const raw = String(this.value || '').replace(',', '.');
+  let unit=parseFloat(raw); if(!Number.isFinite(unit)||unit<0) unit=0;
   carrito[i].override_unit = unit;
   pintarCarrito();
 });
 $tbody.on('change','input[data-ed-sub]', function(){
   const i=Number(this.dataset.edSub); if(isNaN(i)||!carrito[i]) return;
-  let sub=Number(this.value); if(isNaN(sub)||sub<0) sub=0;
-  const qty=Math.max(1, Number(carrito[i].cantidad)||1);
+  const raw = String(this.value || '').replace(',', '.');
+  let sub=parseFloat(raw); if(!Number.isFinite(sub)||sub<0) sub=0;
+  const qty=Math.max(0.01, parseFloat(carrito[i].cantidad)||0.01);
   carrito[i].override_unit = Number((sub/qty).toFixed(2));
   pintarCarrito();
 });
@@ -2012,7 +2019,7 @@ $('#btnGuardarEdicion').on('click', function(){
   };
   const detalles = carrito.map(it=>{
     const unit = precioDeItem(it);
-    const baseCant = Math.max(1, Number(it.cantidad)||1);
+    const baseCant = Math.max(0.01, parseFloat(it.cantidad)||0.01);
     const cant = esProductoAcumulador(it) ? 1 : baseCant;
     return {
       id_producto: it.id_producto,
@@ -2084,8 +2091,8 @@ window.abrirEditarVenta = function(idVenta){
             precio_taller:Number(p.precio_taller ?? 0),
             precio_proveedor:Number(p.precio_proveedor ?? 0),
             proveedor:p.proveedor ?? null,
-            original:Number(d.cantidad||0),
-            cantidad:Number(d.cantidad||0),
+            original:parseFloat(d.cantidad||0),
+            cantidad:parseFloat(d.cantidad||0),
             numero_poliza:(d.numero_poliza ?? '').toString().trim()
           };
           if (esProductoAcumulador(item)) item.cantidad = 1;
