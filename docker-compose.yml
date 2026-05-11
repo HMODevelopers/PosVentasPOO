@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    container_name: posventaspoo_app
+    restart: always
+    ports:
+      - "8083:80"
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - mysql_default
+
+networks:
+  mysql_default:
+    external: true
+
