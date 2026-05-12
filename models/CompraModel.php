@@ -904,24 +904,41 @@ class CompraModel
     {
         $ppv = max(0.0, $ppv);
         $nom = strtolower(trim($provNombre));
-        $IVA = 1.16;
 
-        // Defaults
+        $IVA = 1.16;
+        $FACTOR_MERMA_GARANTIA = 1.05;
+        $FACTOR_TALLER_DESDE_PUBLICO = 0.8;
+
+        /*
+        * $ppv = precio proveedor
+        * $CN  = costo neto calculado
+        * $PB  = precio público
+        * $PT  = precio taller
+        *
+        * La merma/garantía del 5% NO modifica:
+        * - precio proveedor
+        * - costo neto
+        *
+        * La merma/garantía del 5% SÍ modifica:
+        * - precio público
+        * - precio taller
+        *
+        * BDH queda excluido del aumento.
+        */
+
+        // Regla predeterminada
         $CN = $ppv * $IVA;
         $PB = ($ppv * 1.8) * $IVA;
-        $PT = $PB * 0.8;
 
         switch ($nom) {
             case 'permor':
                 $CN = $ppv * 0.64 * $IVA * 0.89 * 0.95;
                 $PB = $ppv * 1.024;
-                $PT = $PB / 1.25;
                 break;
 
             case 'apymsa':
                 $CN = $ppv * 1.044;
                 $PB = $ppv * 1.70694;
-                $PT = $ppv * 1.365552;
                 break;
 
             case 'bdh':
@@ -933,7 +950,6 @@ class CompraModel
             case 'switchero':
                 $CN = $ppv;
                 $PB = $ppv * 1.8125;
-                $PT = $ppv * 1.45;
                 break;
 
             case 'serva':
@@ -945,10 +961,25 @@ class CompraModel
             case 'visa':
                 $CN = $ppv * $IVA;
                 $PB = ($ppv * 1.8) * $IVA;
-                $PT = $PB * 0.8;
                 break;
         }
 
-        return [round($CN, 2), round($PB, 2), round($PT, 2)];
+        /*
+        * Ajuste por merma/garantías:
+        * - No aplica a BDH.
+        * - Aumenta 5% el precio público.
+        * - El precio taller queda aumentado porque se recalcula desde el nuevo precio público.
+        * - No modifica costo neto.
+        */
+        if ($nom !== 'bdh') {
+            $PB *= $FACTOR_MERMA_GARANTIA;
+            $PT = $PB * $FACTOR_TALLER_DESDE_PUBLICO;
+        }
+
+        return [
+            round($CN, 2),
+            round($PB, 2),
+            round($PT, 2),
+        ];
     }
 }

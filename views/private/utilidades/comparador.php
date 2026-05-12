@@ -197,56 +197,80 @@ session_start();
       let lastPPVGeneral = 0; // Para propagar solo a filas no editadas
 
       /* ========= Reglas JS (réplica exacta de tu PHP) ========= */
-      function calcularPreciosPorProveedor(ppv, provNombre){
-        ppv = Math.max(0, Number(ppv||0));
-        const nom = String(provNombre||'').trim().toLowerCase();
-        const IVA = 1.16;
+    function calcularPreciosPorProveedor(ppv, provNombre){
+      ppv = Math.max(0, Number(ppv || 0));
+      const nom = String(provNombre || '').trim().toLowerCase();
 
-        // Defaults
-        let CN = ppv * IVA;
-        let PB = (ppv * 1.8) * IVA;
-        let PT = PB * 0.8;
+      const IVA = 1.16;
+      const FACTOR_MERMA_GARANTIA = 1.05;
+      const FACTOR_TALLER_DESDE_PUBLICO = 0.8;
 
-        switch(nom){
-          case 'permor':
-            CN = ppv * 0.64 * IVA * 0.89 * 0.95;
-            PB = ppv * 1.024;
-            PT = PB / 1.25;
-            break;
+      /*
+      * ppv = precio proveedor
+      * CN  = costo neto calculado
+      * PB  = precio público
+      * PT  = precio taller
+      *
+      * Regla de merma/garantías:
+      * - No aplica a BDH.
+      * - Aumenta 5% el precio público.
+      * - Aumenta 5% el precio taller al recalcularlo desde el nuevo precio público.
+      * - No modifica costo neto.
+      * - No modifica precio proveedor.
+      */
 
-          case 'apymsa':
-            CN = ppv * 1.044;
-            PB = ppv * 1.70694;
-            PT = ppv * 1.365552; // (= PB / 1.25)
-            break;
+      // Regla predeterminada
+      let CN = ppv * IVA;
+      let PB = (ppv * 1.8) * IVA;
+      let PT = PB * FACTOR_TALLER_DESDE_PUBLICO;
 
-          case 'bdh':
-            CN = ppv;
-            PB = ppv * IVA;
-            PT = ppv;
-            break;
+      switch (nom) {
+        case 'permor':
+          CN = ppv * 0.64 * IVA * 0.89 * 0.95;
+          PB = ppv * 1.024;
+          break;
 
-          case 'switchero':
-            CN = ppv;
-            PB = ppv * 1.8125;
-            PT = ppv * 1.45;
-            break;
+        case 'apymsa':
+          CN = ppv * 1.044;
+          PB = ppv * 1.70694;
+          break;
 
-          case 'serva':
-          case 'dirco':
-          case 'ciosa':
-          case 'diriego':
-          case 'delatsa':
-          case 'calderon':
-          case 'visa':
-            CN = ppv * IVA;
-            PB = (ppv * 1.8) * IVA;
-            PT = PB * 0.8;
-            break;
-        }
-        const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
-        return [r2(CN), r2(PB), r2(PT)];
+        case 'bdh':
+          CN = ppv;
+          PB = ppv * IVA;
+          PT = ppv;
+          break;
+
+        case 'switchero':
+          CN = ppv;
+          PB = ppv * 1.8125;
+          break;
+
+        case 'serva':
+        case 'dirco':
+        case 'ciosa':
+        case 'diriego':
+        case 'delatsa':
+        case 'calderon':
+        case 'visa':
+          CN = ppv * IVA;
+          PB = (ppv * 1.8) * IVA;
+          break;
       }
+
+      if (nom !== 'bdh') {
+        PB *= FACTOR_MERMA_GARANTIA;
+        PT = PB * FACTOR_TALLER_DESDE_PUBLICO;
+      }
+
+      const r2 = n => Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
+
+      return [
+        r2(CN),
+        r2(PB),
+        r2(PT)
+      ];
+    }
 
       /* ========= Utils ========= */
       const num = v => { const n = parseFloat(v); return isNaN(n)?0:n; };
