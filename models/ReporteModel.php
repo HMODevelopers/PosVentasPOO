@@ -52,8 +52,8 @@ class ReporteModel {
         $q = trim($filtros['q'] ?? '');
 
         // Expresiones de precio/importe (sin agrupar, por renglón)
-        $precioExpr  = "d.precio_unitario";
-        $importeExpr = "COALESCE(d.subtotal, d.cantidad * d.precio_unitario)";
+        $precioExpr  = "vd.precio_unitario";
+        $importeExpr = "COALESCE(vd.subtotal, vd.cantidad * vd.precio_unitario)";
 
         $sql = "
             SELECT
@@ -65,23 +65,23 @@ class ReporteModel {
                 v.estatus_credito,
 
                 -- DETALLE TAL CUAL
-                d.id_venta_detalle,
-                d.id_producto,
-                d.cantidad,
+                vd.id_venta_detalle,
+                vd.id_producto,
+                vd.cantidad,
                 $precioExpr  AS precio_unitario,
                 $importeExpr AS importe,
 
                 -- PRODUCTO / UNIDAD (solo para mostrar)
-                COALESCE(p.codigo, CONCAT('#', d.id_producto)) AS codigo,
+                COALESCE(p.codigo, CONCAT('#', vd.id_producto)) AS codigo,
                 COALESCE(p.descripcion, '') AS descripcion,
                 COALESCE(u.descripcion, 'Pza') AS unidad
             FROM ventas v
-            INNER JOIN ventas_detalle d ON d.id_venta = v.id_venta
-            LEFT JOIN productos p       ON p.id_producto = d.id_producto
+            INNER JOIN ventas_detalle vd ON vd.id_venta = v.id_venta
+            LEFT JOIN productos p       ON p.id_producto = vd.id_producto
             LEFT JOIN unidades_sat u    ON u.id_unidad_sat = p.id_unidad_sat
             WHERE
                 v.activo     = 1
-                AND d.activo = 1
+                AND vd.activo = 1
                 AND v.id_cliente = :idCliente
                 AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
                 AND v.fecha >= :ini
@@ -103,12 +103,12 @@ class ReporteModel {
             $params[':q'] = "%{$q}%";
         }
 
-        // Orden: MÁS VIEJO → MÁS NUEVO, luego folio, luego renglón
+        // Orden intencional: v.fecha conserva la cronología, v.folio agrupa la venta y vd.id_venta_detalle mantiene la secuencia real de captura de productos.
         $sql .= "
             ORDER BY
                 v.fecha ASC,
                 v.folio ASC,
-                d.id_venta_detalle ASC
+                vd.id_venta_detalle ASC
             LIMIT {$limite} OFFSET {$offset}
         ";
 
@@ -184,8 +184,8 @@ class ReporteModel {
         );
         $q = trim($filtros['q'] ?? '');
 
-        $precioExpr  = "d.precio_unitario";
-        $importeExpr = "COALESCE(d.subtotal, d.cantidad * d.precio_unitario)";
+        $precioExpr  = "vd.precio_unitario";
+        $importeExpr = "COALESCE(vd.subtotal, vd.cantidad * vd.precio_unitario)";
 
         $sql = "
             SELECT
@@ -193,22 +193,22 @@ class ReporteModel {
                 v.estatus_credito,
                 DATE(v.fecha) AS fecha_venta,
 
-                d.id_venta_detalle,
-                d.id_producto,
-                d.cantidad,
+                vd.id_venta_detalle,
+                vd.id_producto,
+                vd.cantidad,
                 $precioExpr  AS precio_unitario,
                 $importeExpr AS importe,
 
-                COALESCE(p.codigo, CONCAT('#', d.id_producto)) AS codigo,
+                COALESCE(p.codigo, CONCAT('#', vd.id_producto)) AS codigo,
                 COALESCE(p.descripcion, '') AS descripcion,
                 COALESCE(u.descripcion, 'Pza') AS unidad
             FROM ventas v
-            INNER JOIN ventas_detalle d ON d.id_venta = v.id_venta
-            LEFT JOIN productos p       ON p.id_producto = d.id_producto
+            INNER JOIN ventas_detalle vd ON vd.id_venta = v.id_venta
+            LEFT JOIN productos p       ON p.id_producto = vd.id_producto
             LEFT JOIN unidades_sat u    ON u.id_unidad_sat = p.id_unidad_sat
             WHERE
                 v.activo     = 1
-                AND d.activo = 1
+                AND vd.activo = 1
                 AND v.id_cliente = :idCliente
                 AND (v.estatus_credito IS NOT NULL AND v.estatus_credito <> 'N/A')
                 AND v.fecha >= :ini
@@ -231,10 +231,11 @@ class ReporteModel {
         }
 
         $sql .= "
+            -- Orden intencional: fecha real de venta, folio y detalle de captura.
             ORDER BY
                 v.fecha ASC,
                 v.folio ASC,
-                d.id_venta_detalle ASC
+                vd.id_venta_detalle ASC
         ";
 
         $st = $this->conn->prepare($sql);
