@@ -38,7 +38,7 @@
                 <label for="etq-modo">Modo</label>
                 <select id="etq-modo" class="form-control">
                   <option value="hoja">Hoja (A4, grilla)</option>
-                  <option value="rollo">Rollo (1 por página)</option>
+                  <option value="rollo" selected>Rollo (1 por página)</option>
                 </select>
               </div>
               <div class="form-group col-md-2">
@@ -47,7 +47,7 @@
               </div>
               <div class="form-group col-md-3">
                 <label for="etq-tienda">Tienda</label>
-                <input type="text" id="etq-tienda" class="form-control" value="REFASOFT" maxlength="40">
+                <input type="text" id="etq-tienda" class="form-control" value="REFACCIONARIA RIVERA" maxlength="40">
               </div>
             </div>
 
@@ -63,7 +63,7 @@
               </div>
               <div class="form-group col-md-9 d-flex align-items-end">
                 <div class="custom-control custom-checkbox mr-3">
-                  <input class="custom-control-input" id="etq-show-price" type="checkbox" checked>
+                  <input class="custom-control-input" id="etq-show-price" type="checkbox">
                   <label class="custom-control-label" for="etq-show-price">Mostrar precio</label>
                 </div>
                 <div class="custom-control custom-checkbox">
@@ -128,7 +128,7 @@
   </div>
 </div>
 
-<style>
+<style id="etqLabelStyles">
   /* ========= Estilos de preview/impresión de etiquetas ========= */
   .etq-root{
     --lab-w: 50mm;   /* ajustado por JS */
@@ -148,18 +148,21 @@
     width: var(--lab-w);
     height: var(--lab-h);
     border: 1px dashed #aaa;
-    padding: 2mm 2.2mm 1.5mm;
-    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 1mm;
+    display: flex;
+    flex-direction: column;
     background: #fff;
+    box-sizing: border-box;
+    overflow: visible;
   }
-  .etq-brand{ font-weight: 700; font-size: 10pt; line-height: 1; letter-spacing: .2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .etq-desc{ margin-top: .5mm; font-size: 8pt; line-height: 1.1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .etq-price{ margin-top: .5mm; font-weight: 800; font-size: 14pt; line-height: 1; }
-  .etq-bottom{ display: flex; align-items: center; justify-content: space-between; gap: 2mm; }
-  .etq-barwrap{ width: 100%; margin-top: .5mm; }
-  .etq-code{ font-size: 7pt; line-height: 1; margin-top: .5mm; text-align: right; opacity: .85; }
+  .etq-header{ flex: 0 0 auto; min-height: 0; }
+  .etq-brand{ font-weight: 700; font-size: 9pt; line-height: 1; letter-spacing: .2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .etq-desc{ margin-top: .45mm; max-height: 6mm; font-size: 7.5pt; line-height: 1.08; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; text-align: center; }
+  .etq-price{ margin-top: .4mm; font-weight: 800; font-size: 11pt; line-height: 1; text-align: center; }
+  .etq-barwrap{ flex: 1 1 auto; min-height: 6mm; width: 100%; padding: 0 .8mm; margin-top: .5mm; display: flex; align-items: flex-end; justify-content: center; box-sizing: border-box; }
+  .etq-barcode{ display: block; max-width: 100%; height: auto; }
+  .etq-code{ flex: 0 0 auto; font-family: Arial, Helvetica, sans-serif; font-size: 7.5pt; font-weight: 600; line-height: 1; margin-top: .45mm; text-align: center; white-space: nowrap; }
 
   /* Rollo: 1 por página (se activa solo al imprimir) */
-  .etq-rollo .etq-label{ border: none; page-break-after: always; }
-  .etq-rollo .etq-label:last-child{ page-break-after: auto; }
+  .etq-rollo .etq-label{ border: none; }
 </style>

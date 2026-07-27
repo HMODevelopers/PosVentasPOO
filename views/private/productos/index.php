@@ -1354,231 +1354,298 @@ session_start();
       });
     </script>
 
-    <!-- =================== NUEVO: Lógica del modal de Etiquetas =================== -->
+    <!-- =================== Lógica del modal de Etiquetas =================== -->
     <script>
     (function($){
-      // Evita doble inicialización si el script se carga más de una vez
-      if (window.__etqInit) return; window.__etqInit = true;
+      'use strict';
+      if (window.__etqInit) return;
+      window.__etqInit = true;
 
-      // ===== Helpers =====
-      const MXN = n => '$' + Number(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-      function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
-      function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+      const PX_PER_MM = 96 / 25.4;
+      const MIN_MODULE_MM = 0.125; // un punto a 203 dpi; por debajo no se imprime
+      const MAX_MODULE_MM = 0.42;
+      const MAX_COPIES = 500;
+      const JSBARCODE_URL = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+      const DEFAULTS = Object.freeze({
+        w: 50, h: 30, modo: 'rollo', copias: 1,
+        precio_campo: 'precio_publico', show_price: false, show_desc: true,
+        barcode_fmt: 'CODE128', barcode_field: 'codigo', tienda: 'REFACCIONARIA RIVERA'
+      });
+      let jsBarcodePromise = null;
 
-      function ensureJsBarcode(ready){
-        if (window.JsBarcode) return ready();
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
-        s.onload = ready;
-        document.head.appendChild(s);
+      function notify(type, message){
+        if (window.toastr && typeof toastr[type] === 'function') toastr[type](message);
+        else alert(message);
       }
 
-      function renderBarcodesIn(root){
-        const area = (typeof root === 'string') ? document.querySelector(root) : root;
-        if (!area) return;
-        area.querySelectorAll('svg.etq-barcode').forEach(svg=>{
-          const val = (svg.getAttribute('data-value') || '').trim();
-          let fmt = (svg.getAttribute('data-format') || 'CODE128').trim();
-          const onlyDigits = /^\d+$/;
-          if (fmt === 'EAN13' && !(onlyDigits.test(val) && (val.length === 12 || val.length === 13))) fmt = 'CODE128';
-          if (fmt === 'EAN8'  && !(onlyDigits.test(val) && (val.length === 7  || val.length === 8)))  fmt = 'CODE128';
-          if (fmt === 'UPC'   && !(onlyDigits.test(val) && (val.length === 11 || val.length === 12))) fmt = 'CODE128';
-          try{
-            JsBarcode(svg, val, { format: fmt, displayValue: false, lineColor: "#000", width: 1.2, height: 40, margin: 0 });
-          }catch(e){
-            try{ JsBarcode(svg, val, { format:'CODE128', displayValue:false, width:1.2, height:40, margin:0 }); }catch(_){}
-          }
+      function loadJsBarcode(){
+        if (window.JsBarcode) return Promise.resolve(window.JsBarcode);
+        if (jsBarcodePromise) return jsBarcodePromise;
+        jsBarcodePromise = new Promise(function(resolve, reject){
+          const script = document.createElement('script');
+          script.src = JSBARCODE_URL;
+          script.onload = function(){ resolve(window.JsBarcode); };
+          script.onerror = function(){ reject(new Error('No fue posible cargar la librería de códigos de barras.')); };
+          document.head.appendChild(script);
         });
+        return jsBarcodePromise;
+      }
+
+      function resetControls(){
+        $('#etq-w').val(DEFAULTS.w);
+        $('#etq-h').val(DEFAULTS.h);
+        $('#etq-modo').val(DEFAULTS.modo);
+        $('#etq-copias').val(DEFAULTS.copias);
+        $('#etq-precio').val(DEFAULTS.precio_campo);
+        $('#etq-show-price').prop('checked', DEFAULTS.show_price);
+        $('#etq-show-desc').prop('checked', DEFAULTS.show_desc);
+        $('#etq-barcode-fmt').val(DEFAULTS.barcode_fmt);
+        $('#etq-barcode-field').val(DEFAULTS.barcode_field);
+        $('#etq-tienda').val(DEFAULTS.tienda);
+      }
+
+      function readOptions(){
+        return {
+          w: Number($('#etq-w').val()),
+          h: Number($('#etq-h').val()),
+          modo: $('#etq-modo').val(),
+          copias: Number($('#etq-copias').val()),
+          precio_campo: $('#etq-precio').val(),
+          show_price: $('#etq-show-price').is(':checked'),
+          show_desc: $('#etq-show-desc').is(':checked'),
+          barcode_fmt: $('#etq-barcode-fmt').val(),
+          barcode_field: $('#etq-barcode-field').val(),
+          tienda: String($('#etq-tienda').val() || '')
+        };
+      }
+
+      function barcodeValue(prod, opts){
+        return opts.barcode_field === 'id_producto'
+          ? String(prod.id_producto == null ? '' : prod.id_producto)
+          : String(prod.codigo == null ? '' : prod.codigo);
+      }
+
+      function validateOptions(prod, opts){
+        if (!Number.isFinite(opts.w) || opts.w <= 0) return 'El ancho debe ser mayor que cero.';
+        if (!Number.isFinite(opts.h) || opts.h <= 0) return 'El alto debe ser mayor que cero.';
+        if (opts.w < 10 || opts.w > 100 || opts.h < 10 || opts.h > 100) return 'El tamaño permitido es de 10 a 100 mm.';
+        const minHeight = opts.show_price ? 22 : 18;
+        if (opts.h < minHeight) return 'La altura mínima para esta combinación de contenido es ' + minHeight + ' mm.';
+        if (!Number.isInteger(opts.copias) || opts.copias < 1 || opts.copias > MAX_COPIES) return 'Las copias deben ser un entero entre 1 y 500.';
+        if (!opts.tienda.trim()) return 'El nombre de la tienda no puede estar vacío.';
+
+        const value = barcodeValue(prod, opts);
+        if (!value.trim()) return 'El código del producto no puede estar vacío.';
+        if (opts.barcode_fmt === 'CODE128' && !/^[\x20-\x7E]+$/.test(value)) return 'CODE128 admite únicamente caracteres ASCII imprimibles.';
+        if (opts.barcode_fmt === 'EAN13' && !/^\d{12,13}$/.test(value)) return 'EAN-13 requiere 12 o 13 dígitos.';
+        if (opts.barcode_fmt === 'EAN8' && !/^\d{7,8}$/.test(value)) return 'EAN-8 requiere 7 u 8 dígitos.';
+        if (opts.barcode_fmt === 'UPC' && !/^\d{11,12}$/.test(value)) return 'UPC requiere 11 o 12 dígitos.';
+        return '';
+      }
+
+      function formatPrice(value){
+        return '$' + Number(value || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      }
+
+      function appendText(parent, className, value){
+        const node = document.createElement('div');
+        node.className = className;
+        node.textContent = value;
+        parent.appendChild(node);
+        return node;
+      }
+
+      function buildLabel(prod, opts){
+        const value = barcodeValue(prod, opts);
+        const label = document.createElement('div');
+        label.className = 'etq-label';
+
+        const header = document.createElement('div');
+        header.className = 'etq-header';
+        appendText(header, 'etq-brand', opts.tienda.trim());
+        if (opts.show_desc) appendText(header, 'etq-desc', String(prod.descripcion == null ? '' : prod.descripcion));
+        if (opts.show_price) appendText(header, 'etq-price', formatPrice(prod[opts.precio_campo]));
+        label.appendChild(header);
+
+        const barWrap = document.createElement('div');
+        barWrap.className = 'etq-barwrap';
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'etq-barcode');
+        svg.dataset.value = value;
+        svg.dataset.format = opts.barcode_fmt;
+        barWrap.appendChild(svg);
+        label.appendChild(barWrap);
+        appendText(label, 'etq-code', value);
+        return label;
+      }
+
+      function barcodeHeightPx(opts){
+        let reservedMm = 3 + 3.4 + 3.1 + 1.5; // padding, tienda, código y separaciones
+        if (opts.show_desc) reservedMm += 5.8;
+        if (opts.show_price) reservedMm += 4.2;
+        return Math.max(20, Math.min(52, (opts.h - reservedMm) * PX_PER_MM));
+      }
+
+      function renderBarcode(svg, opts){
+        const value = svg.dataset.value;
+        const format = svg.dataset.format;
+        const availableMm = opts.w - 3.6; // 2 mm de padding + 1.6 mm de zona silenciosa interna
+        if (availableMm <= 0) throw new Error('El ancho no deja espacio útil para el código de barras.');
+
+        const base = { format: format, displayValue: false, lineColor: '#000', width: 1, height: barcodeHeightPx(opts), margin: 0 };
+        window.JsBarcode(svg, value, base);
+        const modules = parseFloat(svg.getAttribute('width'));
+        if (!Number.isFinite(modules) || modules <= 0) throw new Error('No fue posible calcular el ancho del código de barras.');
+
+        const availablePx = availableMm * PX_PER_MM;
+        const modulePx = Math.min(MAX_MODULE_MM * PX_PER_MM, availablePx / modules);
+        const moduleMm = modulePx / PX_PER_MM;
+        if (moduleMm + 0.0001 < MIN_MODULE_MM) {
+          throw new Error('El código necesita al menos ' + (modules * MIN_MODULE_MM + 3.6).toFixed(1) + ' mm de ancho para imprimirse de forma legible.');
+        }
+
+        window.JsBarcode(svg, value, Object.assign({}, base, { width: modulePx }));
+        svg.dataset.modules = String(modules);
+        svg.dataset.moduleMm = moduleMm.toFixed(4);
+        svg.setAttribute('aria-label', value);
+        return { modules: modules, moduleMm: moduleMm };
       }
 
       function renderPreview(prod, opts){
+        const error = validateOptions(prod, opts);
+        if (error) return Promise.reject(new Error(error));
         const root = document.getElementById('etqRoot');
         const grid = document.getElementById('etqGrid');
-        if (!root || !grid) return;
-
-        root.style.setProperty('--lab-w', (Number(opts.w)||50) + 'mm');
-        root.style.setProperty('--lab-h', (Number(opts.h)||30) + 'mm');
+        root.style.setProperty('--lab-w', opts.w + 'mm');
+        root.style.setProperty('--lab-h', opts.h + 'mm');
         root.classList.toggle('etq-rollo', opts.modo === 'rollo');
+        grid.replaceChildren(buildLabel(prod, opts)); // preview: siempre exactamente una etiqueta
 
-        grid.innerHTML = '';
-
-        const copies = Math.min(500, Math.max(1, Number(opts.copias)||1));
-        const showPrice = !!opts.show_price;
-        const showDesc  = !!opts.show_desc;
-        const tienda    = (opts.tienda||'').trim() || 'REFASOFT';
-
-        // valor de barcode
-        const bcVal = (opts.barcode_field === 'id_producto')
-          ? String(prod.id_producto)
-          : (prod.codigo || String(prod.id_producto));
-
-        for (let i = 0; i < copies; i++){
-          const el = document.createElement('div');
-          el.className = 'etq-label';
-          el.innerHTML = `
-            <div>
-              <div class="etq-brand">${escapeHtml(tienda)}</div>
-              ${showDesc ? `<div class="etq-desc">${escapeHtml(prod.descripcion||'')}</div>` : ``}
-              ${showPrice ? `<div class="etq-price">${MXN(prod[opts.precio_campo] || 0)}</div>` : ``}
-            </div>
-            <div class="etq-bottom">
-              <div class="etq-barwrap">
-                <svg class="etq-barcode" data-value="${escapeAttr(bcVal)}" data-format="${escapeAttr(opts.barcode_fmt||'CODE128')}"></svg>
-              </div>
-            </div>
-            <div class="etq-code">${escapeHtml(bcVal)}</div>
-          `;
-          grid.appendChild(el);
-        }
-
-        ensureJsBarcode(()=>renderBarcodesIn('#etqArea'));
+        return loadJsBarcode().then(function(){
+          renderBarcode(grid.querySelector('.etq-barcode'), opts);
+          $('#modalEtiquetas').data('opciones-etiqueta', opts);
+        });
       }
 
-      function imprimirEtiquetas($area, opts){
+      function printLabels(opts){
+        const source = document.querySelector('#etqGrid .etq-label');
+        const sharedStyles = document.getElementById('etqLabelStyles');
+        if (!source || !sharedStyles) throw new Error('No se encontró una vista previa válida para imprimir.');
+
         const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0'; iframe.style.bottom = '0';
-        iframe.style.width = '0'; iframe.style.height = '0';
-        iframe.style.border = '0'; iframe.style.visibility = 'hidden';
+        iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
         document.body.appendChild(iframe);
-
         const doc = iframe.contentDocument || iframe.contentWindow.document;
-        const wmm = Number(opts.w) || 50, hmm = Number(opts.h) || 30;
-        const modo = opts.modo || 'hoja';
-
-        const css = `
-          @page { size: ${modo==='rollo' ? `${wmm}mm ${hmm}mm` : 'A4'}; ${modo==='rollo' ? 'margin:0' : 'margin:10mm'}; }
-          * { box-sizing: border-box; }
-          body { font-family: Arial, Helvetica, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .etq-root{ --lab-w:${wmm}mm; --lab-h:${hmm}mm; --gap:2mm; }
-          .etq-sheet{ padding:${modo==='rollo' ? '0' : '10mm'}; }
-          .etq-grid{ display:${modo==='rollo' ? 'block' : 'grid'}; ${modo==='rollo' ? '' : 'grid-template-columns: repeat(auto-fill, minmax(var(--lab-w), 1fr)); gap: var(--gap);'} }
-          .etq-label{ width: var(--lab-w); height: var(--lab-h); ${modo==='rollo' ? 'border:none; page-break-after:always; padding:2mm 2.2mm 1.5mm; margin:0 auto;' : 'border:1px dashed #aaa; padding:2mm 2.2mm 1.5mm;'} display:flex; flex-direction:column; justify-content:space-between; }
-          .etq-label:last-child{ page-break-after:auto; }
-          .etq-brand{ font-weight:700; font-size:10pt; line-height:1; letter-spacing:.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-          .etq-desc{ margin-top:.5mm; font-size:8pt; line-height:1.1; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient: vertical; }
-          .etq-price{ margin-top:.5mm; font-weight:800; font-size:14pt; line-height:1; }
-          .etq-barwrap{ width:100%; margin-top:.5mm; }
-          .etq-code{ font-size:7pt; line-height:1; margin-top:.5mm; text-align:right; opacity:.85; }
-        `;
+        const pageSize = opts.modo === 'rollo' ? opts.w + 'mm ' + opts.h + 'mm' : 'A4';
+        const pageMargin = opts.modo === 'rollo' ? '0' : '10mm';
 
         doc.open();
-        doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Imprimir etiquetas</title>');
-        doc.write('<style>'+css+'</style>');
-        doc.write('</head><body>');
-        doc.write($area.html());
-        doc.write('<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>');
-        doc.write(`<script>
-          (function(){
-            function render(){
-              document.querySelectorAll('svg.etq-barcode').forEach(function(svg){
-                var val = (svg.getAttribute('data-value')||'').trim();
-                var fmt = (svg.getAttribute('data-format')||'CODE128').trim();
-                var onlyDigits = /^\\d+$/;
-                if (fmt==='EAN13' && !(onlyDigits.test(val) && (val.length===12 || val.length===13))) fmt='CODE128';
-                if (fmt==='EAN8'  && !(onlyDigits.test(val) && (val.length===7  || val.length===8)))  fmt='CODE128';
-                if (fmt==='UPC'   && !(onlyDigits.test(val) && (val.length===11 || val.length===12))) fmt='CODE128';
-                try{ JsBarcode(svg, val, {format:fmt, displayValue:false, width:1.2, height:40, margin:0}); }
-                catch(e){ try{ JsBarcode(svg, val, {format:'CODE128', displayValue:false, width:1.2, height:40, margin:0}); }catch(_){ } }
-              });
-              setTimeout(function(){ window.focus(); window.print(); setTimeout(function(){ window.close(); }, 300); }, 200);
-            }
-            if (window.JsBarcode) render();
-            else {
-              var s=document.createElement('script');
-              s.src='https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
-              s.onload=render; document.head.appendChild(s);
-            }
-          })();
-        <\/script>`);
-        doc.write('</body></html>');
+        doc.write('<!doctype html><html><head><meta charset="utf-8"><title>Imprimir etiquetas</title></head><body></body></html>');
         doc.close();
+        const style = doc.createElement('style');
+        style.textContent = sharedStyles.textContent + '\n' +
+          '@page{size:' + pageSize + ';margin:' + pageMargin + '}' +
+          'html,body{margin:0;padding:0;background:#fff}' +
+          '*,*::before,*::after{box-sizing:border-box}' +
+          '.etq-sheet{padding:' + (opts.modo === 'rollo' ? '0' : '10mm') + '}' +
+          '.etq-grid{display:' + (opts.modo === 'rollo' ? 'block' : 'grid;grid-template-columns:repeat(auto-fill,var(--lab-w));gap:var(--gap)') + '}' +
+          '.etq-label{break-inside:avoid;page-break-inside:avoid}' +
+          (opts.modo === 'rollo'
+            ? '.etq-label{break-after:page;page-break-after:always}.etq-label:last-child{break-after:auto;page-break-after:auto}'
+            : '');
+        doc.head.appendChild(style);
+
+        const root = doc.createElement('div');
+        root.className = 'etq-root' + (opts.modo === 'rollo' ? ' etq-rollo' : '');
+        root.style.setProperty('--lab-w', opts.w + 'mm');
+        root.style.setProperty('--lab-h', opts.h + 'mm');
+        const sheet = doc.createElement('div');
+        sheet.className = 'etq-sheet';
+        const grid = doc.createElement('div');
+        grid.className = 'etq-grid';
+        for (let i = 0; i < opts.copias; i++) grid.appendChild(doc.importNode(source, true));
+        sheet.appendChild(grid);
+        root.appendChild(sheet);
+        doc.body.appendChild(root);
+
+        setTimeout(function(){
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(function(){ iframe.remove(); }, 1000);
+        }, 150);
       }
 
-      // ===== API pública =====
+      function applyAndReport(prod, opts, onSuccess){
+        renderPreview(prod, opts).then(function(){
+          if (onSuccess) onSuccess();
+        }).catch(function(error){
+          notify('error', error.message || 'No fue posible generar la etiqueta.');
+        });
+      }
+
       window.mostrarModalEtiquetas = function(producto, opciones){
         const prod = Object.assign({
-          id_producto: 0, codigo:'', descripcion:'',
-          precio_publico:0, precio_taller:0, precio_proveedor:0
-        }, producto||{});
-
-        const opts = Object.assign({
-          w: Number($('#etq-w').val() || 50),
-          h: Number($('#etq-h').val() || 30),
-          copias: Number($('#etq-copias').val() || 6),
-          modo: $('#etq-modo').val() || 'hoja',
-          precio_campo: $('#etq-precio').val() || 'precio_publico',
-          show_price: $('#etq-show-price').is(':checked'),
-          show_desc:  $('#etq-show-desc').is(':checked'),
-          barcode_fmt: $('#etq-barcode-fmt').val() || 'CODE128',
-          barcode_field: $('#etq-barcode-field').val() || 'codigo',
-          tienda: $('#etq-tienda').val() || 'REFASOFT'
-        }, opciones||{});
-
-        // título del modal
-        $('#etq-nombre-prod').text(` · ${prod.descripcion||''}`);
-        // guarda el producto en el modal por si re-aplican
+          id_producto: 0, codigo: '', descripcion: '',
+          precio_publico: 0, precio_taller: 0, precio_proveedor: 0
+        }, producto || {});
+        resetControls();
+        const opts = Object.assign({}, DEFAULTS, opciones || {});
+        $('#etq-w').val(opts.w);
+        $('#etq-h').val(opts.h);
+        $('#etq-modo').val(opts.modo);
+        $('#etq-copias').val(opts.copias);
+        $('#etq-precio').val(opts.precio_campo);
+        $('#etq-show-price').prop('checked', !!opts.show_price);
+        $('#etq-show-desc').prop('checked', !!opts.show_desc);
+        $('#etq-barcode-fmt').val(opts.barcode_fmt);
+        $('#etq-barcode-field').val(opts.barcode_field);
+        $('#etq-tienda').val(opts.tienda);
+        $('#etq-nombre-prod').text(' · ' + String(prod.descripcion || ''));
         $('#modalEtiquetas').data('producto', prod);
-
-        renderPreview(prod, opts);
         $('#modalEtiquetas').modal('show');
+        applyAndReport(prod, readOptions());
       };
 
       window.mostrarModalEtiquetasPorId = function(idProducto, opciones){
-        $.get('<?= BASE_URL ?>/controllers/ProductosController.php', { accion:'detalle', id_producto:idProducto })
+        $.get('<?= BASE_URL ?>/controllers/ProductosController.php', { accion: 'detalle', id_producto: idProducto })
           .done(function(resp){
-            const p = resp?.data || resp?.producto || resp;
-            if (!p) { toastr.error('Producto no encontrado'); return; }
-            mostrarModalEtiquetas({
+            const p = resp && (resp.data || resp.producto || resp);
+            if (!p) { notify('error', 'Producto no encontrado.'); return; }
+            window.mostrarModalEtiquetas({
               id_producto: p.id_producto,
               codigo: p.codigo,
               descripcion: p.descripcion,
-              precio_publico: +p.precio_publico,
-              precio_taller: +p.precio_taller,
-              precio_proveedor: +p.precio_proveedor
+              precio_publico: Number(p.precio_publico),
+              precio_taller: Number(p.precio_taller),
+              precio_proveedor: Number(p.precio_proveedor)
             }, opciones);
           })
-          .fail(()=> toastr.error('Error al cargar el producto.'));
+          .fail(function(){ notify('error', 'Error al cargar el producto.'); });
       };
 
-      // ===== Eventos UI (delegados) =====
-      $(document).off('click', '.accion-etiquetas').on('click', '.accion-etiquetas', function(e){
-        e.preventDefault();
-        const id = $(this).data('id');
-        if (!id) { toastr.warning('ID de producto inválido'); return; }
-        // valores por defecto del modal
-        const opciones = { w:50, h:30, copias:1, modo:'hoja' };
-        mostrarModalEtiquetasPorId(id, opciones);
+      $(document).off('click', '.accion-etiquetas').on('click', '.accion-etiquetas', function(event){
+        event.preventDefault();
+        const id = Number($(this).data('id'));
+        if (!Number.isInteger(id) || id < 1) { notify('warning', 'ID de producto inválido.'); return; }
+        window.mostrarModalEtiquetasPorId(id);
       });
 
       $('#btnAplicarEtiquetas').on('click', function(){
-        const prod = $('#modalEtiquetas').data('producto') || {};
-        const opts = {
-          w: +$('#etq-w').val(), h: +$('#etq-h').val(), copias: +$('#etq-copias').val(),
-          modo: $('#etq-modo').val(),
-          precio_campo: $('#etq-precio').val(),
-          show_price: $('#etq-show-price').is(':checked'),
-          show_desc:  $('#etq-show-desc').is(':checked'),
-          barcode_fmt: $('#etq-barcode-fmt').val(),
-          barcode_field: $('#etq-barcode-field').val(),
-          tienda: $('#etq-tienda').val()
-        };
-        renderPreview(prod, opts);
+        applyAndReport($('#modalEtiquetas').data('producto') || {}, readOptions());
       });
 
       $('#btnImprimirEtiquetas').on('click', function(){
-        const opts = {
-          w: +$('#etq-w').val(), h: +$('#etq-h').val(),
-          modo: $('#etq-modo').val()
-        };
-        const $area = $('#etqArea');
-        if (!$area.length){ toastr.error('No se encontró el área de impresión'); return; }
-        imprimirEtiquetas($area, opts);
+        const prod = $('#modalEtiquetas').data('producto') || {};
+        const opts = readOptions();
+        applyAndReport(prod, opts, function(){
+          try { printLabels(opts); }
+          catch (error) { notify('error', error.message); }
+        });
       });
-
     })(jQuery);
     </script>
     <!-- =================== /Lógica del modal de Etiquetas =================== -->
+
 
     
 
