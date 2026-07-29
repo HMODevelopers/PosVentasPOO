@@ -133,6 +133,29 @@ class FacturacionValidator
             $erroresComprobante[] = 'La clave de exportación seleccionada no es válida.';
         }
 
+        if (count((array)($venta['tickets_ids'] ?? [])) > 1) {
+            $subtotal = (float)($ctx['totales']['subtotal'] ?? 0);
+            $descuento = (float)($ctx['totales']['descuento'] ?? 0);
+            $traslados = (float)($ctx['totales']['impuestos'] ?? 0);
+            $retenciones = 0.0;
+            foreach ($conceptos as $concepto) {
+                foreach ((array)($concepto['Retenciones'] ?? []) as $retencion) {
+                    $retenciones += (float)($retencion['Importe'] ?? 0);
+                }
+            }
+            $totalEsperado = round(
+                $subtotal
+                - $descuento
+                + $traslados
+                - $retenciones,
+                2
+            );
+            $totalEnviar = round((float)($ctx['totales']['total'] ?? 0), 2);
+            if (abs($totalEsperado - $totalEnviar) > 0.001) {
+                $erroresComprobante[] = 'El Total del CFDI múltiple no coincide con el total fiscal esperado. No se enviará al PAC.';
+            }
+        }
+
         if (!$conceptos) {
             $erroresConceptos[] = 'No se pudieron construir los conceptos del CFDI.';
         }

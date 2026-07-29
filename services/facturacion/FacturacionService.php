@@ -300,6 +300,8 @@ class FacturacionService
 
     private function applyInputOverrides(array $ctx, array $input): array
     {
+        $idsVentas = is_array($input['ids_ventas'] ?? null) ? $input['ids_ventas'] : [];
+        $esFacturacionMultiple = count($idsVentas) > 1;
         $conceptos = is_array($input['conceptos'] ?? null) ? $input['conceptos'] : [];
         if (!empty($conceptos)) {
             $ctx['conceptos'] = $conceptos;
@@ -314,14 +316,36 @@ class FacturacionService
         $totales = is_array($input['totales'] ?? null) ? $input['totales'] : [];
         if (!empty($totales)) {
             $ctx['totales'] = array_merge(is_array($ctx['totales'] ?? null) ? $ctx['totales'] : [], $totales);
+            if ($esFacturacionMultiple) {
+                $retenciones = 0.0;
+                foreach ($conceptos as $concepto) {
+                    foreach ((array)($concepto['Retenciones'] ?? []) as $retencion) {
+                        $retenciones += (float)($retencion['Importe'] ?? 0);
+                    }
+                }
+                $ctx['totales']['total'] = round(
+                    (float)($ctx['totales']['subtotal'] ?? 0)
+                    - (float)($ctx['totales']['descuento'] ?? 0)
+                    + (float)($ctx['totales']['impuestos'] ?? 0)
+                    - $retenciones,
+                    2
+                );
+                $ctx['venta']['tickets_ids'] = $idsVentas;
+            }
             if (is_array($ctx['venta'] ?? null)) {
                 $ctx['venta']['total'] = (float)($totales['total'] ?? ($ctx['venta']['total'] ?? 0));
+                if ($esFacturacionMultiple) {
+                    $ctx['venta']['total'] = (float)$ctx['totales']['total'];
+                }
             }
             if (is_array($ctx['factura_draft'] ?? null)) {
                 $ctx['factura_draft']['venta']['subtotal'] = (float)($totales['subtotal'] ?? 0);
                 $ctx['factura_draft']['venta']['descuento'] = (float)($totales['descuento'] ?? 0);
                 $ctx['factura_draft']['venta']['impuestos'] = (float)($totales['impuestos'] ?? 0);
                 $ctx['factura_draft']['venta']['total'] = (float)($totales['total'] ?? 0);
+                if ($esFacturacionMultiple) {
+                    $ctx['factura_draft']['venta']['total'] = (float)$ctx['totales']['total'];
+                }
             }
         }
 
@@ -443,6 +467,7 @@ class FacturacionService
             'totales' => is_array($input['totales'] ?? null) ? $input['totales'] : [],
             'conceptos' => is_array($input['conceptos'] ?? null) ? $input['conceptos'] : [],
             'draft_snapshot' => is_array($input['draft_snapshot'] ?? null) ? $input['draft_snapshot'] : [],
+            'ids_ventas' => is_array($input['ids_ventas'] ?? null) ? $input['ids_ventas'] : [],
         ];
 
         $requiredMap = [

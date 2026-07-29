@@ -437,14 +437,12 @@ class VentasController
             $ctxBase = $model->loadContext($baseId);
             $conceptos = [];
             $detalles = [];
-            $totalTickets = 0.0;
             $folios = [];
 
             foreach ($ids as $idVenta) {
                 $ctxTmp = $model->loadContext((int)$idVenta);
                 $ventaTmp = $ctxTmp['venta'] ?? [];
                 $folios[] = $ventaTmp['folio'] ?? ('#' . $idVenta);
-                $totalTickets += (float)($ventaTmp['total'] ?? 0);
                 foreach ((array)($ctxTmp['conceptos'] ?? []) as $concepto) {
                     $conceptos[] = $concepto;
                 }
@@ -456,6 +454,7 @@ class VentasController
             $subtotal = 0.0;
             $descuento = 0.0;
             $impuestos = 0.0;
+            $retenciones = 0.0;
             foreach ($conceptos as $concepto) {
                 $subtotal += (float)($concepto['Importe'] ?? 0);
                 $descuento += (float)($concepto['Descuento'] ?? 0);
@@ -463,11 +462,18 @@ class VentasController
                     $impuestos += (float)($traslado['Importe'] ?? 0);
                 }
                 foreach ((array)($concepto['Retenciones'] ?? []) as $retencion) {
-                    $impuestos -= (float)($retencion['Importe'] ?? 0);
+                    $retenciones += (float)($retencion['Importe'] ?? 0);
                 }
             }
+            $totalFiscal = round(
+                $subtotal
+                - $descuento
+                + $impuestos
+                - $retenciones,
+                2
+            );
 
-            $ctxBase['venta']['total'] = round($totalTickets, 2);
+            $ctxBase['venta']['total'] = $totalFiscal;
             $ctxBase['venta']['folio'] = implode(', ', $folios);
             $ctxBase['venta']['id_venta'] = $baseId;
             $ctxBase['venta']['tickets_ids'] = $ids;
@@ -478,7 +484,7 @@ class VentasController
                 'subtotal' => round($subtotal, 2),
                 'descuento' => round($descuento, 2),
                 'impuestos' => round($impuestos, 2),
-                'total' => round($totalTickets, 2),
+                'total' => $totalFiscal,
                 'importe_letra' => null,
             ];
             if (is_array($ctxBase['factura_draft'] ?? null)) {
@@ -489,7 +495,7 @@ class VentasController
                 $ctxBase['factura_draft']['venta']['subtotal'] = round($subtotal, 2);
                 $ctxBase['factura_draft']['venta']['descuento'] = round($descuento, 2);
                 $ctxBase['factura_draft']['venta']['impuestos'] = round($impuestos, 2);
-                $ctxBase['factura_draft']['venta']['total'] = round($totalTickets, 2);
+                $ctxBase['factura_draft']['venta']['total'] = $totalFiscal;
                 $ctxBase['factura_draft']['venta']['tickets_ids'] = $ids;
                 $ctxBase['factura_draft']['venta']['tickets_total'] = count($ids);
                 $ctxBase['factura_draft']['venta']['tickets_folios'] = $folios;
@@ -625,6 +631,7 @@ class VentasController
                 'totales' => is_array($postBody['totales'] ?? null) ? $postBody['totales'] : [],
                 'conceptos' => is_array($postBody['conceptos'] ?? null) ? $postBody['conceptos'] : [],
                 'draft_snapshot' => is_array($postBody['draft_snapshot'] ?? null) ? $postBody['draft_snapshot'] : [],
+                'ids_ventas' => $idsVentasMulti,
             ];
             error_log('[FACTURACION][payload-php-recibido] ' . json_encode([
                 'id_venta' => $idVenta,
