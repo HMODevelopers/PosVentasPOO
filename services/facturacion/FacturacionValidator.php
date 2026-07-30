@@ -133,27 +133,46 @@ class FacturacionValidator
             $erroresComprobante[] = 'La clave de exportación seleccionada no es válida.';
         }
 
-        if (count((array)($venta['tickets_ids'] ?? [])) > 1) {
-            $subtotal = (float)($ctx['totales']['subtotal'] ?? 0);
-            $descuento = (float)($ctx['totales']['descuento'] ?? 0);
-            $traslados = (float)($ctx['totales']['impuestos'] ?? 0);
-            $retenciones = 0.0;
-            foreach ($conceptos as $concepto) {
-                foreach ((array)($concepto['Retenciones'] ?? []) as $retencion) {
-                    $retenciones += (float)($retencion['Importe'] ?? 0);
-                }
+        $subtotal = 0.0;
+        $descuento = 0.0;
+        $traslados = 0.0;
+        $retenciones = 0.0;
+        foreach ($conceptos as $concepto) {
+            $subtotal += (float)($concepto['Importe'] ?? 0);
+            $descuento += (float)($concepto['Descuento'] ?? 0);
+            foreach ((array)($concepto['Traslados'] ?? []) as $traslado) {
+                $traslados += (float)($traslado['Importe'] ?? 0);
             }
-            $totalEsperado = round(
-                $subtotal
-                - $descuento
-                + $traslados
-                - $retenciones,
-                2
+            foreach ((array)($concepto['Retenciones'] ?? []) as $retencion) {
+                $retenciones += (float)($retencion['Importe'] ?? 0);
+            }
+        }
+        $subtotal = round($subtotal, 2);
+        $descuento = round($descuento, 2);
+        $traslados = round($traslados, 2);
+        $retenciones = round($retenciones, 2);
+        $totalEsperado = round(
+            $subtotal
+            - $descuento
+            + $traslados
+            - $retenciones,
+            2
+        );
+        $totalEnviar = round((float)($ctx['totales']['total'] ?? 0), 2);
+        $diferenciaTotal = round($totalEnviar - $totalEsperado, 2);
+        if (abs($diferenciaTotal) > 0.001) {
+            $erroresComprobante[] = sprintf(
+                'El Total del CFDI no coincide con la ecuación fiscal. No se enviará al PAC. '
+                . 'Subtotal: %.2f; descuento: %.2f; traslados: %.2f; retenciones: %.2f; '
+                . 'total esperado: %.2f; total recibido: %.2f; diferencia: %.2f.',
+                $subtotal,
+                $descuento,
+                $traslados,
+                $retenciones,
+                $totalEsperado,
+                $totalEnviar,
+                $diferenciaTotal
             );
-            $totalEnviar = round((float)($ctx['totales']['total'] ?? 0), 2);
-            if (abs($totalEsperado - $totalEnviar) > 0.001) {
-                $erroresComprobante[] = 'El Total del CFDI múltiple no coincide con el total fiscal esperado. No se enviará al PAC.';
-            }
         }
 
         if (!$conceptos) {

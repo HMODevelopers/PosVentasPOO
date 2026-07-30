@@ -331,10 +331,35 @@ class FacturacionService
                     2
                 );
                 $ctx['venta']['tickets_ids'] = $idsVentas;
+            } else {
+                $subtotalFiscal = 0.0;
+                $descuentoFiscal = 0.0;
+                $trasladosFiscal = 0.0;
+                $retencionesFiscal = 0.0;
+                foreach ((array)($ctx['conceptos'] ?? []) as $concepto) {
+                    $subtotalFiscal += (float)($concepto['Importe'] ?? 0);
+                    $descuentoFiscal += (float)($concepto['Descuento'] ?? 0);
+                    foreach ((array)($concepto['Traslados'] ?? []) as $traslado) {
+                        $trasladosFiscal += (float)($traslado['Importe'] ?? 0);
+                    }
+                    foreach ((array)($concepto['Retenciones'] ?? []) as $retencion) {
+                        $retencionesFiscal += (float)($retencion['Importe'] ?? 0);
+                    }
+                }
+                $ctx['totales']['subtotal'] = round($subtotalFiscal, 2);
+                $ctx['totales']['descuento'] = round($descuentoFiscal, 2);
+                $ctx['totales']['impuestos'] = round($trasladosFiscal, 2);
+                $ctx['totales']['total'] = round(
+                    $subtotalFiscal
+                    - $descuentoFiscal
+                    + $trasladosFiscal
+                    - $retencionesFiscal,
+                    2
+                );
             }
             if (is_array($ctx['venta'] ?? null)) {
                 $ctx['venta']['total'] = (float)($totales['total'] ?? ($ctx['venta']['total'] ?? 0));
-                if ($esFacturacionMultiple) {
+                if (isset($ctx['totales']['total'])) {
                     $ctx['venta']['total'] = (float)$ctx['totales']['total'];
                 }
             }
@@ -343,9 +368,12 @@ class FacturacionService
                 $ctx['factura_draft']['venta']['descuento'] = (float)($totales['descuento'] ?? 0);
                 $ctx['factura_draft']['venta']['impuestos'] = (float)($totales['impuestos'] ?? 0);
                 $ctx['factura_draft']['venta']['total'] = (float)($totales['total'] ?? 0);
-                if ($esFacturacionMultiple) {
-                    $ctx['factura_draft']['venta']['total'] = (float)$ctx['totales']['total'];
+                if (!$esFacturacionMultiple) {
+                    $ctx['factura_draft']['venta']['subtotal'] = (float)$ctx['totales']['subtotal'];
+                    $ctx['factura_draft']['venta']['descuento'] = (float)$ctx['totales']['descuento'];
+                    $ctx['factura_draft']['venta']['impuestos'] = (float)$ctx['totales']['impuestos'];
                 }
+                $ctx['factura_draft']['venta']['total'] = (float)$ctx['totales']['total'];
             }
         }
 

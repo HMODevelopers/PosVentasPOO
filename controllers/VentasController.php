@@ -347,6 +347,34 @@ class VentasController
             $validator = new FacturacionValidator();
 
             $ctx = $model->loadContext($idVenta);
+            $subtotalFiscal = 0.0;
+            $descuentoFiscal = 0.0;
+            $trasladosFiscal = 0.0;
+            $retencionesFiscal = 0.0;
+            foreach ((array)($ctx['conceptos'] ?? []) as $concepto) {
+                $subtotalFiscal += (float)($concepto['Importe'] ?? 0);
+                $descuentoFiscal += (float)($concepto['Descuento'] ?? 0);
+                foreach ((array)($concepto['Traslados'] ?? []) as $traslado) {
+                    $trasladosFiscal += (float)($traslado['Importe'] ?? 0);
+                }
+                foreach ((array)($concepto['Retenciones'] ?? []) as $retencion) {
+                    $retencionesFiscal += (float)($retencion['Importe'] ?? 0);
+                }
+            }
+            $ctx['totales']['subtotal'] = round($subtotalFiscal, 2);
+            $ctx['totales']['descuento'] = round($descuentoFiscal, 2);
+            $ctx['totales']['impuestos'] = round($trasladosFiscal, 2);
+            $ctx['totales']['total'] = round(
+                $subtotalFiscal
+                - $descuentoFiscal
+                + $trasladosFiscal
+                - $retencionesFiscal,
+                2
+            );
+            $ctx['factura_draft']['venta']['subtotal'] = $ctx['totales']['subtotal'];
+            $ctx['factura_draft']['venta']['descuento'] = $ctx['totales']['descuento'];
+            $ctx['factura_draft']['venta']['impuestos'] = $ctx['totales']['impuestos'];
+            $ctx['factura_draft']['venta']['total'] = $ctx['totales']['total'];
             $validationReport = $validator->validateDetailed($ctx);
             $validaciones = $validationReport['listaErrores'];
             $ctx['factura_draft']['validaciones'] = $validationReport;
