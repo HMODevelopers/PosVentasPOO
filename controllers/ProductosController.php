@@ -173,8 +173,8 @@ switch ($accion) {
         $q   = trim($_GET['q'] ?? $_POST['q'] ?? '');
         $lim = (int)($_GET['limite'] ?? $_POST['limite'] ?? 50);
         $lim = max(1, min($lim, 500));
-        $data = $productoModel->buscarMin($q, $lim);
-        echo json_encode(['data' => $data], JSON_UNESCAPED_UNICODE);
+        $resultado = $productoModel->buscarMinInteligente($q, $lim);
+        echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
     break;
 
     // ===== SIMULAR PRECIOS =====

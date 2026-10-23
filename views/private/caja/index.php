@@ -443,6 +443,9 @@ session_start();
     let debTimer      = null;
     let debTimerAvz   = null;
     let ultimaBusqueda = '';
+    let ultimaBusquedaResuelta = '';
+    let ultimaMetaBusqueda = {};
+    let secuenciaBusqueda = 0;
     let resultadosBaseAvanzada = [];
     const detalleCache = new Map();
     let totalActual   = 0;
@@ -640,6 +643,7 @@ session_start();
     function debounce(fn, ms){ clearTimeout(debTimer); debTimer = setTimeout(fn, ms); }
     function debounceAvanzada(fn, ms){ clearTimeout(debTimerAvz); debTimerAvz = setTimeout(fn, ms); }
     const esc = s => $('<div>').text((s ?? '').toString()).html();
+    const normalizarCodigoEscaneado = valor => (valor ?? '').replace(/['"‘’“”`´]/g, '-');
 
     function precioAplicable(p){
       const t = tipoPrecioActual();
@@ -654,6 +658,8 @@ session_start();
       const precioTaller = Number(p.precio_taller ?? 0);
       const precioPublico = Number(p.precio_publico ?? 0);
       const sinStock = stk <= 0;
+      const requiereConfirmacion = p.coincidencia_tipo === 'aproximada'
+        || ultimaMetaBusqueda.requiere_confirmacion === true;
       return `
         <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center ${sinStock ? 'disabled' : ''}"
           data-i="${p.__i}" data-id="${p.id_producto}" aria-disabled="${sinStock ? 'true' : 'false'}">
@@ -662,13 +668,15 @@ session_start();
             <div class="small text-muted">
               Taller: ${mxn(precioTaller)} · Público: ${mxn(precioPublico)} · Exist: ${fix2(stk)}${prov ? ` · Prov: ${esc(prov)}` : ''}
             </div>
+            ${requiereConfirmacion ? `<div class="small text-warning"><i class="mdi mdi-alert-outline"></i> Coincidencia similar o ambigua; confirma este producto</div>` : ''}
           </div>
           <span class="btn btn-sm btn-outline-primary"><i class="mdi mdi-plus-circle-outline"></i></span>
         </a>`;
     }
 
-    function renderSugerencias(list){
+    function renderSugerencias(list, meta = {}){
       ultResultados = (list||[]).map((p,i)=>({...p,__i:i}));
+      ultimaMetaBusqueda = meta || {};
       idxFocus = -1;
       $panel.empty();
 
@@ -689,15 +697,26 @@ session_start();
       }, 40);
     }
 
-    function buscar(q, {mantenerPanel=true, limite=20} = {}){
+    function buscar(q, {mantenerPanel=true, limite=20, autoAgregarInequivoco=false} = {}){
       if(!q || q.length < 2){
         if (!mantenerPanel) $panel.addClass('d-none').empty();
         return;
       }
       ultimaBusqueda = q;
+      const secuencia = ++secuenciaBusqueda;
       $.post(`${BASE}/controllers/ProductosController.php`, {accion:'buscar-min', q, limite})
-        .done(r=>renderSugerencias(r?.data||[]))
+        .done(r=>{
+          if (secuencia !== secuenciaBusqueda) return;
+          ultimaBusquedaResuelta = q;
+          renderSugerencias(r?.data||[], r?.match||{});
+
+          const idAuto = Number(r?.match?.id_producto || 0);
+          if (autoAgregarInequivoco && r?.match?.auto_resolver === true && idAuto > 0) {
+            seleccionarPorId(idAuto, {preservarBusqueda:true});
+          }
+        })
         .fail(()=>{
+          if (secuencia !== secuenciaBusqueda) return;
           if (!mantenerPanel) $panel.addClass('d-none').empty();
         });
     }
@@ -791,7 +810,16 @@ session_start();
     }
 
     $('#txtBuscar').on('input', function(){
-      debounce(()=>buscar(this.value.trim(), {mantenerPanel:true}), 180);
+      const inicio = this.selectionStart;
+      const fin = this.selectionEnd;
+      const valorNormalizado = normalizarCodigoEscaneado(this.value);
+
+      if (valorNormalizado !== this.value) {
+        this.value = valorNormalizado;
+        if (inicio !== null && fin !== null) this.setSelectionRange(inicio, fin);
+      }
+
+      debounce(()=>buscar(valorNormalizado.trim(), {mantenerPanel:true}), 180);
     });
 
     $('#txtBuscar').on('keydown', function(e){
@@ -806,8 +834,21 @@ session_start();
         return;
       }
       if (e.key === 'Enter') {
-        if ($panel.hasClass('d-none')) return;
         e.preventDefault();
+        const termino = normalizarCodigoEscaneado(this.value).trim();
+
+        if (termino.length < 2) return;
+        if ($panel.hasClass('d-none') || termino !== ultimaBusquedaResuelta) {
+          clearTimeout(debTimer);
+          buscar(termino, {mantenerPanel:true, autoAgregarInequivoco:true});
+          return;
+        }
+
+        if (ultimaMetaBusqueda.requiere_confirmacion === true && idxFocus < 0) {
+          toastr.info('Selecciona el producto correcto para confirmar la coincidencia.');
+          return;
+        }
+
         let selected = idxFocus >= 0 ? ultResultados[idxFocus] : ultResultados[0];
         if (!selected && ultimaBusqueda.length >= 2) {
           buscar(ultimaBusqueda, {mantenerPanel:true});

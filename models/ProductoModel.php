@@ -1,6 +1,7 @@
 <?php
 // Incluir conexión PDO (debe exponer $pdo)
 include_once '../includes/db.php';
+require_once __DIR__ . '/../services/ProductCodeMatcher.php';
 
 class ProductoModel
 {
@@ -435,6 +436,44 @@ class ProductoModel
 
     public function buscarMin(string $q = '', int $limite = 50)
     {
+        return $this->buscarMinInteligente($q, $limite)['data'];
+    }
+
+    public function buscarMinInteligente(string $q = '', int $limite = 50): array
+    {
+        $limite = max(1, min($limite, 500));
+        $q = trim($q);
+        $matcher = new ProductCodeMatcher();
+
+        if ($q === '') {
+            return $matcher->resolver($q, [], [], $this->buscarMinBase($q, $limite), [], $limite);
+        }
+
+        // La igualdad usa idx_cd_codigo y se comprueba antes de cualquier aproximación.
+        $exactos = $this->buscarPorCodigoExacto($q, 2);
+        $normalizado = ProductCodeMatcher::normalizarSustitucionesConocidas($q);
+        $equivalentes = $normalizado !== $q
+            ? $this->buscarPorCodigoExacto($normalizado, 2)
+            : [];
+        $regulares = $this->buscarMinBase($q, $limite);
+        $candidatos = [];
+
+        if (!$exactos && !$equivalentes && !$regulares) {
+            $candidatos = $this->buscarCandidatosSimilares($normalizado, $limite);
+        }
+
+        return $matcher->resolver(
+            $q,
+            $exactos,
+            $equivalentes,
+            $regulares,
+            $candidatos,
+            $limite
+        );
+    }
+
+    private function buscarMinBase(string $q = '', int $limite = 50): array
+    {
         $lim = max(1, (int)$limite);
         $q = trim($q);
         $tokens = preg_split('/\s+/', $q, -1, PREG_SPLIT_NO_EMPTY) ?: [];
@@ -504,6 +543,71 @@ class ProductoModel
                 $st->bindValue(":tok_desc_{$idx}", $tokLike, PDO::PARAM_STR);
             }
         }
+        $st->execute();
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function buscarPorCodigoExacto(string $codigo, int $limite = 2): array
+    {
+        $limite = max(1, min($limite, 2));
+        $sql = "SELECT
+                    p.id_producto,
+                    p.codigo,
+                    p.descripcion,
+                    p.stock_actual,
+                    p.precio_proveedor,
+                    p.precio_taller,
+                    p.precio_publico,
+                    pr.nombre AS proveedor
+                FROM productos p
+                LEFT JOIN proveedores pr ON pr.id_proveedor = p.id_proveedor
+                WHERE p.activo = 1 AND p.codigo = :codigo
+                ORDER BY p.id_producto ASC
+                LIMIT {$limite}";
+        $st = $this->conn->prepare($sql);
+        $st->bindValue(':codigo', $codigo, PDO::PARAM_STR);
+        $st->execute();
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Prefiltra por prefijo indexado y longitud antes de calcular Levenshtein.
+     * El límite acotado evita recorrer el catálogo completo en PHP.
+     */
+    private function buscarCandidatosSimilares(string $codigo, int $limite): array
+    {
+        $codigo = trim($codigo);
+        if ($codigo === '') return [];
+
+        $distancia = ProductCodeMatcher::distanciaMaxima($codigo);
+        $longitud = strlen($codigo);
+        $minLongitud = max(1, $longitud - $distancia);
+        $maxLongitud = $longitud + $distancia;
+        $longitudPrefijo = min(3, max(1, $longitud));
+        $prefijoBase = substr($codigo, 0, $longitudPrefijo);
+        $prefijo = strtr($prefijoBase, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
+        $limiteCandidatos = min(300, max(100, $limite * 10));
+
+        $sql = "SELECT
+                    p.id_producto,
+                    p.codigo,
+                    p.descripcion,
+                    p.stock_actual,
+                    p.precio_proveedor,
+                    p.precio_taller,
+                    p.precio_publico,
+                    pr.nombre AS proveedor
+                FROM productos p
+                LEFT JOIN proveedores pr ON pr.id_proveedor = p.id_proveedor
+                WHERE p.activo = 1
+                  AND p.codigo LIKE :prefijo ESCAPE '!'
+                  AND CHAR_LENGTH(p.codigo) BETWEEN :min_longitud AND :max_longitud
+                ORDER BY p.codigo ASC
+                LIMIT {$limiteCandidatos}";
+        $st = $this->conn->prepare($sql);
+        $st->bindValue(':prefijo', $prefijo, PDO::PARAM_STR);
+        $st->bindValue(':min_longitud', $minLongitud, PDO::PARAM_INT);
+        $st->bindValue(':max_longitud', $maxLongitud, PDO::PARAM_INT);
         $st->execute();
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
